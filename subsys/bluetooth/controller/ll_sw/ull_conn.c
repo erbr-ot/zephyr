@@ -368,7 +368,8 @@ int ll_tx_mem_enqueue(uint16_t handle, void *tx)
 }
 
 uint8_t ll_conn_update(uint16_t handle, uint8_t cmd, uint8_t status, uint16_t interval_min,
-		    uint16_t interval_max, uint16_t latency, uint16_t timeout)
+		    uint16_t interval_max, uint16_t latency, uint16_t timeout,
+		    uint16_t* offset)
 {
 	struct ll_conn *conn;
 
@@ -429,13 +430,24 @@ uint8_t ll_conn_update(uint16_t handle, uint8_t cmd, uint8_t status, uint16_t in
 			    conn->llcp_conn_param.ack) {
 				return BT_HCI_ERR_CMD_DISALLOWED;
 			}
-
 			conn->llcp_conn_param.status = 0U;
 			conn->llcp_conn_param.interval_min = interval_min;
 			conn->llcp_conn_param.interval_max = interval_max;
 			conn->llcp_conn_param.latency = latency;
 			conn->llcp_conn_param.timeout = timeout;
 			conn->llcp_conn_param.state = cmd;
+			conn->llcp_conn_param.offset0 = offset ? offset[0]
+							       : 0x0000;
+			conn->llcp_conn_param.offset1 = offset ? offset[1]
+							       : 0xffff;
+			conn->llcp_conn_param.offset2 = offset ? offset[2]
+							       : 0xffff;
+			conn->llcp_conn_param.offset3 = offset ? offset[3]
+							       : 0xffff;
+			conn->llcp_conn_param.offset4 = offset ? offset[4]
+							       : 0xffff;
+			conn->llcp_conn_param.offset5 = offset ? offset[5]
+							       : 0xffff;
 			conn->llcp_conn_param.cmd = 1U;
 			conn->llcp_conn_param.req++;
 
@@ -3775,12 +3787,12 @@ static inline void event_conn_param_req(struct ll_conn *conn,
 	p->latency = sys_cpu_to_le16(conn->llcp_conn_param.latency);
 	p->timeout = sys_cpu_to_le16(conn->llcp_conn_param.timeout);
 	p->preferred_periodicity = 0U;
-	p->offset0 = sys_cpu_to_le16(0x0000);
-	p->offset1 = sys_cpu_to_le16(0xffff);
-	p->offset2 = sys_cpu_to_le16(0xffff);
-	p->offset3 = sys_cpu_to_le16(0xffff);
-	p->offset4 = sys_cpu_to_le16(0xffff);
-	p->offset5 = sys_cpu_to_le16(0xffff);
+	p->offset0 = sys_cpu_to_le16(conn->llcp_conn_param.offset0);
+	p->offset1 = sys_cpu_to_le16(conn->llcp_conn_param.offset1);
+	p->offset2 = sys_cpu_to_le16(conn->llcp_conn_param.offset2);
+	p->offset3 = sys_cpu_to_le16(conn->llcp_conn_param.offset3);
+	p->offset4 = sys_cpu_to_le16(conn->llcp_conn_param.offset4);
+	p->offset5 = sys_cpu_to_le16(conn->llcp_conn_param.offset5);
 
 	/* Set CPR mutex */
 	cpr_active_set(conn);
@@ -3895,7 +3907,6 @@ static inline void event_conn_param_rsp(struct ll_conn *conn)
 
 		/* Initiate connection update procedure */
 		conn->llcp_cu.win_size = 1U;
-		conn->llcp_cu.win_offset_us = 0U;
 
 		interval_max = conn->llcp_conn_param.interval_max;
 		preferred_periodicity = conn->llcp_conn_param.preferred_periodicity;
@@ -3911,6 +3922,17 @@ static inline void event_conn_param_rsp(struct ll_conn *conn)
 			/* Choose maximum interval as default */
 			conn->llcp_cu.interval = interval_max;
 		}
+
+		/* Use valid offset0 in range [0..interval]. An offset of
+		 * 0xffff means not valid. Disregard other preferred offsets.
+		 */
+		if (conn->llcp_conn_param.offset0 <= conn->llcp_cu.interval) {
+			conn->llcp_cu.win_offset_us =
+				conn->llcp_conn_param.offset0 * 1250U;
+		} else {
+			conn->llcp_cu.win_offset_us = 0U;
+		}
+
 		conn->llcp_cu.latency = conn->llcp_conn_param.latency;
 		conn->llcp_cu.timeout = conn->llcp_conn_param.timeout;
 		conn->llcp_cu.state = LLCP_CUI_STATE_SELECT;
