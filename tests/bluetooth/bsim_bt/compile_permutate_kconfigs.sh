@@ -22,7 +22,7 @@ mkdir -p ${WORK_DIR}
 source ${ZEPHYR_BASE}/tests/bluetooth/bsim_bt/compile.source
 
 declare -a list=(
-#"CONFIG_BT_DATA_LEN_UPDATE="
+"CONFIG_BT_DATA_LEN_UPDATE="
 #"CONFIG_BT_PHY_UPDATE="
 #"CONFIG_BT_CTLR_MIN_USED_CHAN="
 #"CONFIG_BT_CTLR_LE_PING="
