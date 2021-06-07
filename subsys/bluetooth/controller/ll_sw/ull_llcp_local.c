@@ -115,9 +115,11 @@ void ull_cp_priv_lr_rx(struct ll_conn *conn, struct proc_ctx *ctx, struct node_r
 	case PROC_FEATURE_EXCHANGE:
 		lp_comm_rx(conn, ctx, rx);
 		break;
+#if defined(CONFIG_BT_CTLR_MIN_USED_CHAN)
 	case PROC_MIN_USED_CHANS:
 		lp_comm_rx(conn, ctx, rx);
 		break;
+#endif /* CONFIG_BT_CTLR_MIN_USED_CHAN */
 	case PROC_VERSION_EXCHANGE:
 		lp_comm_rx(conn, ctx, rx);
 		break;
@@ -152,9 +154,11 @@ void ull_cp_priv_lr_rx(struct ll_conn *conn, struct proc_ctx *ctx, struct node_r
 void ull_cp_priv_lr_tx_ack(struct ll_conn *conn, struct proc_ctx *ctx, struct node_tx *tx)
 {
 	switch (ctx->proc) {
+#if defined(CONFIG_BT_CTLR_MIN_USED_CHAN)
 	case PROC_MIN_USED_CHANS:
 		lp_comm_tx_ack(conn, ctx, tx);
 		break;
+#endif /* CONFIG_BT_CTLR_MIN_USED_CHAN */
 	case PROC_TERMINATE:
 		lp_comm_tx_ack(conn, ctx, tx);
 		break;
@@ -190,9 +194,11 @@ static void lr_act_run(struct ll_conn *conn)
 	case PROC_FEATURE_EXCHANGE:
 		lp_comm_run(conn, ctx, NULL);
 		break;
+#if defined(CONFIG_BT_CTLR_MIN_USED_CHAN)
 	case PROC_MIN_USED_CHANS:
 		lp_comm_run(conn, ctx, NULL);
 		break;
+#endif /* CONFIG_BT_CTLR_MIN_USED_CHAN */
 	case PROC_VERSION_EXCHANGE:
 		lp_comm_run(conn, ctx, NULL);
 		break;
