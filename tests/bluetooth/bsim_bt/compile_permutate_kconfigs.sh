@@ -24,8 +24,8 @@ source ${ZEPHYR_BASE}/tests/bluetooth/bsim_bt/compile.source
 declare -a list=(
 "CONFIG_BT_CENTRAL="
 "CONFIG_BT_PERIPHERAL="
-#"CONFIG_BT_CTLR_SLAVE_FEAT_REQ="
-#"CONFIG_BT_DATA_LEN_UPDATE="
+"CONFIG_BT_CTLR_SLAVE_FEAT_REQ="
+"CONFIG_BT_DATA_LEN_UPDATE="
 "CONFIG_BT_PHY_UPDATE="
 #"CONFIG_BT_CTLR_MIN_USED_CHAN="
 #"CONFIG_BT_CTLR_LE_PING="
@@ -53,9 +53,10 @@ perm_compile() {
 let n=${#list[@]}
 temp_conf_file=$(mktemp -p ${WORK_DIR})
 for (( i = 0; i < 2**n; i++ )); do
+    ## don't compile for CENTRAL=n AND PERIPHERAL=n
     if (( (i & 0x3) != 0x3 )); then
         perm_compile $n $i ${temp_conf_file}
-	fi
+    fi
 done
 
 trap "{ rm "${temp_conf_file}" ; exit 255; }" SIGINT SIGTERM ERR EXIT
