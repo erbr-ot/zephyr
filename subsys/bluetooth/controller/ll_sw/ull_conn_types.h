@@ -236,6 +236,9 @@ struct ll_conn {
 			LLCP_CPR_STATE_UPD,
 			LLCP_CPR_STATE_OFFS_REQ,
 			LLCP_CPR_STATE_OFFS_RDY,
+#if defined(CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE)
+			LLCP_CPR_STATE_USER_WAIT,
+#endif /* CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE */
 		} state:4 __packed;
 		uint8_t  cmd:1;
 		uint8_t  disabled:1;

@@ -231,6 +231,35 @@ static uint8_t default_phy_rx;
 static struct ll_conn conn_pool[CONFIG_BT_MAX_CONN];
 static void *conn_free;
 
+#if defined(CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE)
+#define CPR_APM_RESPOND_WAIT (0U) /* Wait for user response */
+#define CPR_APM_RESPOND_IMMEDIATE (1U) /* Immediate user response */
+
+/* Proprietary handling of CPR Anchor Point Movement Response
+ *
+ * When returning CPR_APM_RESPOND_WAIT the LLCP system changes to the
+ * LLCP_CPR_STATE_USER_WAIT state and an EXTERNAL trigger must set
+ *   (1) ll_conn::llcp_conn_param.state = LLCP_CPR_STATE_RSP;
+ *   (2) ll_conn::llcp_conn_param.cmd = 0U;
+ * for the response to be sent with the values provivded in
+ * ll_conn::llcp_conn_param.offset0..5
+ *
+ * When returning CPR_APM_RESPOND_IMMEDIATE the LLCP system will automatically
+ * respond with the values provivded in ll_conn::llcp_conn_param.offset0..5
+ *
+ * The value of ll_conn::llcp_conn_param.status will in any case determine the
+ * nature of the response sent:
+ *   0U                             - Accept CPR (possibly with changed offsets)
+ *   BT_HCI_ERR_UNSUPP_LL_PARAM_VAL - Reject CPR
+ *
+ * The function is only allowed to change:
+ *   ll_conn::llcp_conn_param.offset0..5
+ *   ll_conn::llcp_conn_param.state
+ *   ll_conn::llcp_conn_param.cmd
+ */
+extern int ull_handle_cpr_anchor_point_move(struct ll_conn *conn);
+#endif /* CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE */
+
 struct ll_conn *ll_conn_acquire(void)
 {
 	return mem_acquire(&conn_free);
@@ -4053,6 +4082,9 @@ static inline void event_conn_param_prep(struct ll_conn *conn,
 	case LLCP_CPR_STATE_APP_WAIT:
 	case LLCP_CPR_STATE_RSP_WAIT:
 	case LLCP_CPR_STATE_UPD_WAIT:
+#if defined(CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE)
+	case LLCP_CPR_STATE_USER_WAIT:
+#endif /* CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE */
 	case LLCP_CPR_STATE_UPD:
 		/* Do nothing */
 		break;
@@ -7025,6 +7057,24 @@ static inline int ctrl_rx(memq_link_t *link, struct node_rx_pdu **rx,
 				conn->llcp_conn_param.state =
 					LLCP_CPR_STATE_APP_WAIT;
 			} else {
+#if defined(CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE)
+				/* Defer handling of CPR anchor point move to
+				 * user extension code */
+				int res = ull_handle_cpr_anchor_point_move(conn);
+				if (res == CPR_APM_RESPOND_WAIT) {
+					/* Wait for user response */
+					conn->llcp_conn_param.state = LLCP_CPR_STATE_USER_WAIT;
+				} else if (res == CPR_APM_RESPOND_IMMEDIATE) {
+					/* Immediate user response */
+					conn->llcp_conn_param.cmd = 0U;
+					conn->llcp_conn_param.state = LLCP_CPR_STATE_RSP;
+
+					/* Mark for buffer for release */
+					(*rx)->hdr.type = NODE_RX_TYPE_RELEASE;
+				} else {
+					LL_ASSERT(0);
+				}
+#else /* CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE */
 				conn->llcp_conn_param.status = 0U;
 				conn->llcp_conn_param.cmd = 0U;
 				conn->llcp_conn_param.state =
@@ -7032,6 +7082,7 @@ static inline int ctrl_rx(memq_link_t *link, struct node_rx_pdu **rx,
 
 				/* Mark for buffer for release */
 				(*rx)->hdr.type = NODE_RX_TYPE_RELEASE;
+#endif /* CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE */
 			}
 
 			conn->llcp_conn_param.ack--;
