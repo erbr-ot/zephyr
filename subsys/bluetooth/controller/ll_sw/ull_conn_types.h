@@ -132,6 +132,7 @@ struct ll_conn {
 				uint8_t cmd:1;
 				uint8_t tx:3;
 				uint8_t rx:3;
+				uint8_t ack:1;
 				uint16_t instant;
 			} phy_upd_ind;
 #endif /* CONFIG_BT_CTLR_PHY */

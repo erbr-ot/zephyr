@@ -4564,6 +4564,9 @@ static inline void event_phy_upd_ind_prep(struct ll_conn *conn,
 		/* reset initiate flag */
 		conn->llcp.phy_upd_ind.initiate = 0U;
 
+		/* reset ack flag */
+		conn->llcp.phy_upd_ind.ack = 0U;
+
 		/* Check if both tx and rx PHY unchanged */
 		if (!((conn->llcp.phy_upd_ind.tx |
 		       conn->llcp.phy_upd_ind.rx) & 0x07)) {
@@ -4630,8 +4633,8 @@ static inline void event_phy_upd_ind_prep(struct ll_conn *conn,
 		ind->instant = sys_cpu_to_le16(conn->llcp.phy_upd_ind.instant);
 
 		ctrl_tx_enqueue(conn, tx);
-	} else if (((event_counter - conn->llcp.phy_upd_ind.instant) &
-		    0xFFFF) <= 0x7FFF) {
+	} else if (conn->llcp.phy_upd_ind.ack && (((event_counter - conn->llcp.phy_upd_ind.instant) &
+		    0xFFFF) <= 0x7FFF)) {
 		struct lll_conn *lll = &conn->lll;
 		struct node_rx_pdu *rx;
 		uint8_t old_tx, old_rx;
@@ -6117,6 +6120,7 @@ static inline uint8_t phy_upd_ind_recv(struct ll_conn *conn, memq_link_t *link,
 	conn->llcp.phy_upd_ind.rx = ind->c_to_p_phy;
 	conn->llcp.phy_upd_ind.instant = instant;
 	conn->llcp.phy_upd_ind.initiate = 0U;
+	conn->llcp.phy_upd_ind.ack = 1U;
 
 	/* Reserve the Rx-ed PHY Update Indication PDU in the connection
 	 * context, by appending to the LLCP node rx list. We do not mark it
@@ -6557,6 +6561,11 @@ static inline void ctrl_tx_ack(struct ll_conn *conn, struct node_tx **tx,
 		conn->lll.phy_tx_time = conn->llcp.phy_upd_ind.tx;
 		/* resume data packet tx */
 		conn->llcp_phy.pause_tx = 0U;
+		/* pdu acked */
+		conn->llcp.phy_upd_ind.ack = 1U;
+		/* update instant */
+		uint16_t instant = sys_le16_to_cpu(pdu_tx->llctrl.phy_upd_ind.instant);
+		conn->llcp.phy_upd_ind.instant = instant;
 		break;
 #endif /* CONFIG_BT_CENTRAL */
 #endif /* CONFIG_BT_CTLR_PHY */
