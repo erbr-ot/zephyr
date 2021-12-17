@@ -743,7 +743,7 @@ void bt_iso_recv(struct bt_conn *iso, struct net_buf *buf, uint8_t flags)
 int bt_iso_chan_send(struct bt_iso_chan *chan, struct net_buf *buf)
 {
 	struct bt_hci_iso_data_hdr *hdr;
-	static uint16_t sn;
+	static uint16_t sn = 0;
 
 	CHECKIF(!chan || !buf) {
 		BT_DBG("Invalid parameters: chan %p buf %p", chan, buf);
@@ -758,10 +758,11 @@ int bt_iso_chan_send(struct bt_iso_chan *chan, struct net_buf *buf)
 	}
 
 	hdr = net_buf_push(buf, sizeof(*hdr));
-	hdr->sn = sys_cpu_to_le16(sn++);
+	hdr->sn = sys_cpu_to_le16(sn);
 	hdr->slen = sys_cpu_to_le16(bt_iso_pkt_len_pack(net_buf_frags_len(buf)
 							- sizeof(*hdr),
 							BT_ISO_DATA_VALID));
+	sn++;
 
 	return bt_conn_send_cb(chan->iso, buf, bt_iso_send_cb, NULL);
 }
