@@ -462,11 +462,24 @@ static MEMQ_DECLARE(ull_done);
 
 #if defined(CONFIG_BT_CONN)
 static MFIFO_DEFINE(ll_pdu_rx_free, sizeof(void *), LL_PDU_RX_CNT);
-static MFIFO_DEFINE(tx_ack, sizeof(struct lll_tx),
-		    CONFIG_BT_BUF_ACL_TX_COUNT);
 
 static void *mark_update;
 #endif /* CONFIG_BT_CONN */
+
+#if defined(CONFIG_BT_CONN) || defined(CONFIG_BT_CTLR_CONN_ISO)
+#if defined(CONFIG_BT_CONN)
+#define BT_BUF_ACL_TX_COUNT CONFIG_BT_BUF_ACL_TX_COUNT
+#else
+#define BT_BUF_ACL_TX_COUNT 0
+#endif /* CONFIG_BT_CONN */
+#if defined(CONFIG_BT_CTLR_CONN_ISO)
+#define BT_CTLR_ISO_TX_BUFFERS CONFIG_BT_CTLR_ISO_TX_BUFFERS
+#else
+#define BT_CTLR_ISO_TX_BUFFERS 0
+#endif /* CONFIG_BT_CTLR_CONN_ISO */
+static MFIFO_DEFINE(tx_ack, sizeof(struct lll_tx),
+		    BT_BUF_ACL_TX_COUNT + BT_CTLR_ISO_TX_BUFFERS);
+#endif /* CONFIG_BT_CONN || CONFIG_BT_CTLR_CONN_ISO */
 
 static void *mark_disable;
 
@@ -2318,10 +2331,14 @@ static uint8_t tx_cmplt_get(uint16_t *handle, uint8_t *first, uint8_t last)
 
 		node_tx = tx->node;
 		p = (void *)node_tx->pdu;
+
 		if (!node_tx || (node_tx == (void *)1) ||
 		    (((uint32_t)node_tx & ~3) &&
 		     (p->ll_id == PDU_DATA_LLID_DATA_START ||
-		      p->ll_id == PDU_DATA_LLID_DATA_CONTINUE))) {
+		      p->ll_id == PDU_DATA_LLID_DATA_CONTINUE ||
+		      p->ll_id == PDU_CIS_LLID_COMPLETE_END ||
+		      p->ll_id == PDU_CIS_LLID_START_CONTINUE ||
+		      p->ll_id == PDU_CIS_LLID_FRAMED))) {
 			/* data packet, hence count num cmplt */
 			tx->node = (void *)1;
 			cmplt++;

@@ -94,9 +94,14 @@ static MFIFO_DEFINE(iso_tx, sizeof(struct lll_tx),
 
 static struct {
 	void *free;
-	uint8_t pool[CONFIG_BT_CTLR_ISO_TX_BUFFER_SIZE *
-			CONFIG_BT_CTLR_ISO_TX_BUFFERS];
+	uint8_t pool[ISO_TX_BUFFER_SIZE * CONFIG_BT_CTLR_ISO_TX_BUFFERS];
 } mem_iso_tx;
+
+static struct {
+	void *free;
+	uint8_t pool[sizeof(memq_link_t) * CONFIG_BT_CTLR_ISO_TX_BUFFERS];
+} mem_link_iso_tx;
+
 #endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
 
 /* Must be implemented by vendor */
@@ -521,24 +526,6 @@ void ll_iso_tx_mem_release(void *node_tx)
 {
 	mem_release(node_tx, &mem_iso_tx.free);
 }
-
-int ll_iso_tx_mem_enqueue(uint16_t handle, void *node_tx)
-{
-	struct lll_tx *tx;
-	uint8_t idx;
-
-	idx = MFIFO_ENQUEUE_GET(iso_tx, (void **) &tx);
-	if (!tx) {
-		return -ENOBUFS;
-	}
-
-	tx->handle = handle;
-	tx->node = node_tx;
-
-	MFIFO_ENQUEUE(iso_tx, idx);
-
-	return 0;
-}
 #endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
 
 int ull_iso_init(void)
@@ -753,6 +740,124 @@ void ull_iso_datapath_release(struct ll_iso_datapath *dp)
 	mem_release(dp, &datapath_free);
 }
 
+#if defined (CONFIG_BT_CTLR_ADV_ISO) || defined(CONFIG_BT_CTLR_CONN_ISO)
+/**
+ * @brief De-multiplex a number of waiting TX nodes
+ *
+ * De-multiplex a number of TX nodes in the shared FIFO to the linked node 
+ * lists of individual CISes.
+ * 
+ * @param count Number of TX nodes to demux
+ */
+static void ull_iso_tx_demux(uint8_t count)
+{
+	do {
+		struct ll_conn_iso_stream *cis;
+		struct lll_tx *lll_tx;
+
+		lll_tx = MFIFO_DEQUEUE_GET(iso_tx);
+		if (!lll_tx) {
+			break;
+		}
+
+		cis = ll_iso_stream_connected_get(lll_tx->handle);
+		if (cis) {
+			struct node_tx *tx = lll_tx->node;
+
+			tx->next = NULL;
+			if (!cis->tx_head) {
+				cis->tx_head = tx;
+				cis->tx_tail = NULL;
+			}
+
+			if (cis->tx_tail) {
+				cis->tx_tail->next = tx;
+			}
+
+			cis->tx_tail = tx;
+		} else {
+			/* Not a valid handle - create instant ACK with error */
+			struct node_tx *tx = lll_tx->node;
+			struct pdu_data *pdu = (void *)tx->pdu;
+
+			pdu->ll_id = PDU_DATA_LLID_RESV;
+			ll_tx_ack_put(LLL_HANDLE_INVALID, tx);
+		}
+
+		MFIFO_DEQUEUE(iso_tx);
+	} while (--count);
+}
+
+/**
+ * @brief Encode a number of TX nodes to LLL
+ * 
+ * @param cis   Connected ISO stream
+ * @param count Max. number of nodes to encode
+ */
+static void ull_iso_tx_lll_enqueue(struct ll_conn_iso_stream *cis, uint8_t count)
+{
+	while (cis->tx_head && count--) {
+		struct pdu_data *pdu_tx;
+		struct node_tx *tx;
+		memq_link_t *link;
+
+		tx = cis->tx_head;
+		cis->tx_head = cis->tx_head->next;
+
+		pdu_tx = (void *)tx->pdu;
+
+		link = mem_acquire(&mem_link_iso_tx.free);
+		LL_ASSERT(link);
+
+		memq_enqueue(link, tx, &cis->lll.memq_tx.tail);
+	}
+}
+
+static void iso_tx_demux(void *param)
+{
+	ull_iso_tx_demux(1);
+	ull_iso_tx_lll_enqueue(param, 1);
+}
+
+int ll_iso_tx_mem_enqueue(uint16_t handle, void *tx)
+{
+	static memq_link_t link;
+	static struct mayfly mfy = {0, 0, &link, NULL, iso_tx_demux};
+
+	struct ll_conn_iso_stream *cis;
+	struct lll_tx *lll_tx;
+	uint8_t idx;
+
+	if (!IS_CIS_HANDLE(handle)) {
+		/* FIXME: We only support CIS for now */
+		return -EINVAL;
+	}
+
+	cis = ll_iso_stream_connected_get(handle);
+	if (!cis) {
+		return -EINVAL;
+	}
+
+	idx = MFIFO_ENQUEUE_GET(iso_tx, (void **) &lll_tx);
+	if (!lll_tx) {
+		return -ENOBUFS;
+	}
+
+	lll_tx->handle = handle;
+	lll_tx->node = tx;
+
+
+	MFIFO_ENQUEUE(iso_tx, idx);
+
+	mfy.param = cis;
+
+	mayfly_enqueue(TICKER_USER_ID_THREAD, TICKER_USER_ID_ULL_HIGH,
+		       0, &mfy);
+
+	return 0;
+}
+#endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
+
 static int init_reset(void)
 {
 #if defined(CONFIG_BT_CTLR_SYNC_ISO) || defined(CONFIG_BT_CTLR_CONN_ISO)
@@ -781,8 +886,12 @@ static int init_reset(void)
 
 #if defined(CONFIG_BT_CTLR_ADV_ISO) || defined(CONFIG_BT_CTLR_CONN_ISO)
 	/* Initialize tx pool. */
-	mem_init(mem_iso_tx.pool, CONFIG_BT_CTLR_ISO_TX_BUFFER_SIZE,
+	mem_init(mem_iso_tx.pool, ISO_TX_BUFFER_SIZE,
 		 CONFIG_BT_CTLR_ISO_TX_BUFFERS, &mem_iso_tx.free);
+
+	/* Initialize tx link pool. */
+	mem_init(mem_link_iso_tx.pool, sizeof(memq_link_t),
+		 CONFIG_BT_CTLR_ISO_TX_BUFFERS, &mem_link_iso_tx.free);
 #endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
 
 #if BT_CTLR_ISO_STREAMS

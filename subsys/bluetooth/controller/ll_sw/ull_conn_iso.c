@@ -401,6 +401,22 @@ void ull_conn_iso_resume_ticker_start(struct lll_event *resume_event,
 		  (ret == TICKER_STATUS_BUSY));
 }
 
+void ull_conn_iso_lll_ack_enqueue(uint16_t handle, struct node_tx_iso *tx)
+{
+	/* TODO: This is an ACK of a PDU (fragment). Pass TX node to ISO-AL,
+	 * which will send the original SDU node to ULL when all fragments
+	 * have been acknowledged.
+	 * For now we test with SDU/PDU 1:1 relationship without ISO-AL.
+	 *
+	 * Remove code below when ISO-AL TX is implemented. Note that the
+	 * type-casting between struct node_tx_iso and struct node_tx is
+	 * not safe.
+	 */
+	struct node_tx *conn_tx = (void *)tx;
+	memmove(conn_tx->pdu, tx->pdu, tx->pdu[0] + 2);
+	ull_conn_lll_ack_enqueue(handle, conn_tx);
+}
+
 int ull_conn_iso_init(void)
 {
 	return init_reset();

@@ -1308,7 +1308,7 @@ static void le_read_buffer_size_v2(struct net_buf *buf, struct net_buf **evt)
 
 	rp->acl_max_len = sys_cpu_to_le16(LL_LENGTH_OCTETS_TX_MAX);
 	rp->acl_max_num = CONFIG_BT_BUF_ACL_TX_COUNT;
-	rp->iso_max_len = sys_cpu_to_le16(CONFIG_BT_CTLR_ISO_TX_BUFFER_SIZE);
+	rp->iso_max_len = sys_cpu_to_le16(ISO_TX_BUFFER_SIZE);
 	rp->iso_max_num = CONFIG_BT_CTLR_ISO_TX_BUFFERS;
 }
 #endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
@@ -4982,6 +4982,78 @@ int hci_acl_handle(struct net_buf *buf, struct net_buf **evt)
 	return 0;
 }
 #endif /* CONFIG_BT_CONN */
+
+#if defined(CONFIG_BT_CTLR_ISO)
+int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
+{
+	struct node_tx_iso *node_tx;
+	struct bt_hci_iso_hdr *iso;
+	struct pdu_data *pdu_data;
+	uint16_t handle;
+	uint8_t flags;
+	uint16_t len;
+
+	*evt = NULL;
+
+	if (buf->len < sizeof(*iso)) {
+		BT_ERR("No HCI ISO header");
+		return -EINVAL;
+	}
+
+	iso = net_buf_pull_mem(buf, sizeof(*iso));
+	len = sys_le16_to_cpu(iso->len);
+	handle = sys_le16_to_cpu(iso->handle);
+
+	if (buf->len < len) {
+		BT_ERR("Invalid HCI ISO packet length");
+		return -EINVAL;
+	}
+
+	if (len > LL_LENGTH_OCTETS_TX_MAX) {
+		BT_ERR("Invalid HCI ISO Data length");
+		return -EINVAL;
+	}
+
+	/* Assigning flags first because handle will be overwritten */
+	flags = bt_iso_flags(handle);
+	handle = bt_iso_handle(handle);
+
+	/* TODO: Rewrite the following to use ISO-AL. Assign *evt if an
+	 * immediate response is required. The temorary code below will
+	 * send SDUs 1:1 as PDUs for CIS TX testing.
+	 * ISO header is stripped and payload enqueued directly.
+	 */
+
+	node_tx = ll_iso_tx_mem_acquire();
+	if (!node_tx) {
+		BT_ERR("Tx Buffer Overflow");
+		return -ENOBUFS;
+	}
+
+	pdu_data = (void *)node_tx->pdu;
+
+	switch (bt_iso_flags_pb(flags)) {
+	case BT_ISO_START:
+	case BT_ISO_SINGLE:
+		pdu_data->ll_id = PDU_CIS_LLID_COMPLETE_END;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	pdu_data->len = len - 4;
+	memcpy(&pdu_data->lldata[0], buf->data + 4, pdu_data->len);
+
+	if (ll_iso_tx_mem_enqueue(handle, node_tx)) {
+		ll_iso_tx_mem_release(node_tx);
+		return -EINVAL;
+	}
+
+	/* TODO END */
+
+	return 0;
+}
+#endif /* CONFIG_BT_CTLR_ISO */
 
 #if CONFIG_BT_CTLR_DUP_FILTER_LEN > 0
 #if defined(CONFIG_BT_CTLR_ADV_EXT)
