@@ -207,6 +207,15 @@ static void run_test_functions(struct unit_test *test)
 	test->test();
 }
 
+/* Zephyr's probably going to cause all tests to fail if one test fails, so
+ * skip the rest of tests if one of them fails
+ */
+#ifdef CONFIG_ZTEST_FAIL_FAST
+#define FAIL_FAST 1
+#else
+#define FAIL_FAST 0
+#endif
+
 #ifndef KERNEL
 
 /* Static code analysis tool can raise a violation that the standard header
@@ -220,7 +229,6 @@ static void run_test_functions(struct unit_test *test)
 #include <string.h>
 #include <stdlib.h>
 
-#define FAIL_FAST 0
 
 static jmp_buf test_fail;
 static jmp_buf test_pass;
@@ -228,7 +236,7 @@ static jmp_buf stack_fail;
 
 void ztest_test_fail(void)
 {
-	raise(SIGABRT);
+	longjmp(test_fail, 1);
 }
 
 void ztest_test_pass(void)
@@ -243,7 +251,6 @@ static void handle_signal(int sig)
 		"unit test",
 		"teardown",
 	};
-
 	PRINT("    %s", strsignal(sig));
 	switch (phase) {
 	case TEST_PHASE_SETUP:
@@ -293,15 +300,6 @@ out:
 }
 
 #else /* KERNEL */
-
-/* Zephyr's probably going to cause all tests to fail if one test fails, so
- * skip the rest of tests if one of them fails
- */
-#ifdef CONFIG_ZTEST_FAIL_FAST
-#define FAIL_FAST 1
-#else
-#define FAIL_FAST 0
-#endif
 
 K_THREAD_STACK_DEFINE(ztest_thread_stack, CONFIG_ZTEST_STACKSIZE +
 		      CONFIG_TEST_EXTRA_STACKSIZE);
