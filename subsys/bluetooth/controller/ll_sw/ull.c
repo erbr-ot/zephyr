@@ -2333,12 +2333,15 @@ static uint8_t tx_cmplt_get(uint16_t *handle, uint8_t *first, uint8_t last)
 		p = (void *)node_tx->pdu;
 
 		if (!node_tx || (node_tx == (void *)1) ||
-		    (((uint32_t)node_tx & ~3) &&
-		     (p->ll_id == PDU_DATA_LLID_DATA_START ||
-		      p->ll_id == PDU_DATA_LLID_DATA_CONTINUE ||
+		    (((uint32_t)node_tx & ~3) && (
+#if defined(CONFIG_BT_CTLR_BROADCAST_ISO) || \
+	defined(CONFIG_BT_CTLR_CONN_ISO)
 		      p->ll_id == PDU_CIS_LLID_COMPLETE_END ||
 		      p->ll_id == PDU_CIS_LLID_START_CONTINUE ||
-		      p->ll_id == PDU_CIS_LLID_FRAMED))) {
+		      p->ll_id == PDU_CIS_LLID_FRAMED ||
+#endif /* CONFIG_BT_CTLR_BROADCAST_ISO || CONFIG_BT_CTLR_CONN_ISO */
+		      p->ll_id == PDU_DATA_LLID_DATA_START ||
+		      p->ll_id == PDU_DATA_LLID_DATA_CONTINUE))) {
 			/* data packet, hence count num cmplt */
 			tx->node = (void *)1;
 			cmplt++;
@@ -2348,7 +2351,15 @@ static uint8_t tx_cmplt_get(uint16_t *handle, uint8_t *first, uint8_t last)
 		}
 
 		if (((uint32_t)node_tx & ~3)) {
-			ll_tx_mem_release(node_tx);
+#if defined(CONFIG_BT_CTLR_BROADCAST_ISO) || \
+	defined(CONFIG_BT_CTLR_CONN_ISO)
+			if (IS_CIS_HANDLE(tx->handle)) {
+				ll_iso_tx_mem_release(node_tx);
+			} else
+#endif /* CONFIG_BT_CTLR_BROADCAST_ISO || CONFIG_BT_CTLR_CONN_ISO */
+			{
+				ll_tx_mem_release(node_tx);
+			}
 		}
 
 		tx = mfifo_dequeue_iter_get(mfifo_tx_ack.m, mfifo_tx_ack.s,
