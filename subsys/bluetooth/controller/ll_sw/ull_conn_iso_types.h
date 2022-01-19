@@ -42,6 +42,7 @@ struct ll_conn_iso_group {
 	uint32_t p_sdu_interval;
 	uint16_t iso_interval;
 	uint8_t  cig_id;
+	uint8_t  started : 1;   /* 1 if CIG started and ticker is running */
 };
 
 struct node_rx_conn_iso_req {

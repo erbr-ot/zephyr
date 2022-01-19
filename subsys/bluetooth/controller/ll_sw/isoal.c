@@ -438,6 +438,7 @@ static isoal_status_t isoal_rx_unframed_consume(struct isoal_sink *sink,
 	uint8_t next_state;
 	isoal_status_t err;
 	bool pdu_padding;
+	uint8_t length;
 	bool last_pdu;
 	bool pdu_err;
 	bool seq_err;
@@ -451,9 +452,11 @@ static isoal_status_t isoal_rx_unframed_consume(struct isoal_sink *sink,
 	err = ISOAL_STATUS_OK;
 	next_state = ISOAL_START;
 
+	/* If status is not ISOAL_PDU_STATUS_VALID, length and LLID cannot be trusted */
 	llid = pdu_meta->pdu->ll_id;
 	pdu_err = (pdu_meta->meta->status != ISOAL_PDU_STATUS_VALID);
-	pdu_padding = (pdu_meta->pdu->length == 0) && (llid == PDU_BIS_LLID_START_CONTINUE);
+	length = pdu_err ? 0 : pdu_meta->pdu->length;
+	pdu_padding = (length == 0) && (llid == PDU_BIS_LLID_START_CONTINUE) && !pdu_err;
 
 	if (sp->fsm == ISOAL_START) {
 		struct isoal_sdu_produced *sdu;
@@ -478,7 +481,7 @@ static isoal_status_t isoal_rx_unframed_consume(struct isoal_sink *sink,
 	}
 
 	last_pdu = (sp->pdu_cnt == session->pdus_per_sdu);
-	end_of_packet = (llid == PDU_BIS_LLID_COMPLETE_END) || last_pdu;
+	end_of_packet = (llid == PDU_BIS_LLID_COMPLETE_END) || last_pdu || pdu_err;
 
 	switch (sp->fsm) {
 	case ISOAL_START:
@@ -542,8 +545,7 @@ static isoal_status_t isoal_rx_unframed_consume(struct isoal_sink *sink,
 	/* Append valid PDU to SDU */
 	if (!pdu_padding) {
 		err |= isoal_rx_append_to_sdu(sink, pdu_meta, 0,
-					      pdu_meta->pdu->length,
-					      end_of_packet);
+					      length, end_of_packet);
 	}
 
 	/* Update next state */

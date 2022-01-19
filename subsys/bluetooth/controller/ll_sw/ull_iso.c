@@ -35,6 +35,7 @@
 #include "ull_conn_internal.h"
 #include "ull_sync_iso_internal.h"
 #include "ull_conn_iso_internal.h"
+#include "ull_conn_types.h"
 
 #define BT_DBG_ENABLED IS_ENABLED(CONFIG_BT_DEBUG_HCI_DRIVER)
 #define LOG_MODULE_NAME bt_ctlr_ull_iso
@@ -193,7 +194,25 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 	struct ll_conn_iso_group *cig = NULL;
 
 	if (IS_CIS_HANDLE(handle)) {
+		struct ll_conn *conn;
+
 		cis = ll_conn_iso_stream_get(handle);
+		if (!cis->group) {
+			/* CIS does not belong to a CIG */
+			return BT_HCI_ERR_UNKNOWN_CONN_ID;
+		}
+
+		conn = ll_connected_get(cis->lll.acl_handle);
+		if (conn) {
+			/* If we're still waiting for accept/response from
+			 * host, path setup is premature and we must return
+			 * disallowed status.
+			 */
+			if (conn->llcp_cis.state == LLCP_CIS_STATE_RSP_WAIT) {
+				return BT_HCI_ERR_CMD_DISALLOWED;
+			}
+		}
+
 		cig = cis->group;
 		dp_in = cis->hdr.datapath_in;
 		dp_out = cis->hdr.datapath_out;
@@ -716,7 +735,9 @@ void ll_iso_rx_mem_release(void **node_rx)
 			mem_release(rx_free, &mem_iso_rx.free);
 			break;
 		default:
-			LL_ASSERT(0);
+			/* Ignore other types as node may have been initialized due to
+			 * race with HCI reset.
+			 */
 			break;
 		}
 	}

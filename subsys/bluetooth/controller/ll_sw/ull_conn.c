@@ -1152,6 +1152,14 @@ int ull_conn_llcp(struct ll_conn *conn, uint32_t ticks_at_expire, uint16_t lazy)
 			conn->llcp_type = LLCP_CONN_UPD;
 			conn->llcp_ack -= 2U;
 
+#if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
+		} else if (conn->llcp_cis.req != conn->llcp_cis.ack) {
+			if (conn->llcp_cis.state == LLCP_CIS_STATE_RSP_WAIT) {
+				/* Handle CIS response */
+				event_send_cis_rsp(conn);
+			}
+
+#endif /* CONFIG_BT_CTLR_PERIPHERAL_ISO */
 		/* check if feature exchange procedure is requested */
 		} else if (conn->llcp_feature.ack != conn->llcp_feature.req) {
 			/* handle feature exchange state machine */
@@ -1191,27 +1199,6 @@ int ull_conn_llcp(struct ll_conn *conn, uint32_t ticks_at_expire, uint16_t lazy)
 			/* handle PHY Upd state machine */
 			event_phy_req_prep(conn);
 #endif /* CONFIG_BT_CTLR_PHY */
-
-#if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
-		} else if (conn->llcp_cis.req != conn->llcp_cis.ack) {
-			if (conn->llcp_cis.state == LLCP_CIS_STATE_RSP_WAIT) {
-				/* Handle CIS response */
-				event_send_cis_rsp(conn);
-			} else if (conn->llcp_cis.state ==
-						LLCP_CIS_STATE_INST_WAIT) {
-				struct lll_conn *lll = &conn->lll;
-				uint16_t event_counter;
-
-				/* Calculate current event counter */
-				event_counter = lll->event_counter +
-						lll->latency_prepare + lazy;
-
-				/* Start CIS peripheral */
-				event_peripheral_iso_prep(conn,
-							  event_counter,
-							  ticks_at_expire);
-			}
-#endif /* CONFIG_BT_CTLR_PERIPHERAL_ISO */
 		}
 	}
 
@@ -1385,6 +1372,24 @@ int ull_conn_llcp(struct ll_conn *conn, uint32_t ticks_at_expire, uint16_t lazy)
 			}
 		}
 	}
+
+#if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
+	/* In any state, allow processing of CIS peripheral waiting for
+	 * instant.
+	 */
+	if (conn->llcp_cis.state == LLCP_CIS_STATE_INST_WAIT) {
+		struct lll_conn *lll = &conn->lll;
+		uint16_t event_counter;
+
+		/* Calculate current event counter */
+		event_counter = lll->event_counter +
+				lll->latency_prepare + lazy;
+
+		event_peripheral_iso_prep(conn, event_counter,
+					  ticks_at_expire);
+
+	}
+#endif /* CONFIG_BT_CTLR_PERIPHERAL_ISO */
 
 	return 0;
 #else /* CONFIG_BT_LL_SW_LLCP_LEGACY */
@@ -6171,7 +6176,25 @@ void event_send_cis_rsp(struct ll_conn *conn)
 void event_peripheral_iso_prep(struct ll_conn *conn, uint16_t event_counter,
 			       uint32_t ticks_at_expire)
 {
-	if (event_counter == conn->llcp_cis.conn_event_count) {
+	struct ll_conn_iso_group *cig;
+	uint16_t start_event_count;
+
+	start_event_count = conn->llcp_cis.conn_event_count;
+
+	cig = ll_conn_iso_group_get_by_id(conn->llcp_cis.cig_id);
+	LL_ASSERT(cig);
+
+	if (!cig->started) {
+		/* Start ISO peripheral one event before the requested instant
+		 * for first CIS. This is done to be able to accept small CIS
+		 * offsets.
+		 */
+		start_event_count--;
+	}
+
+	/* Start ISO peripheral one event before the requested instant */
+	if (event_counter == start_event_count) {
+		/* Start CIS peripheral */
 		ull_peripheral_iso_start(conn, ticks_at_expire);
 
 		conn->llcp_cis.state = LLCP_CIS_STATE_REQ;
@@ -6218,7 +6241,7 @@ static uint8_t cis_req_recv(struct ll_conn *conn, memq_link_t *link,
 	conn_iso_req = node;
 	conn_iso_req->cig_id = req->cig_id;
 	conn_iso_req->cis_id = req->cis_id;
-	conn_iso_req->cis_handle = sys_le16_to_cpu(cis_handle);
+	conn_iso_req->cis_handle = cis_handle;
 
 	return 0;
 }

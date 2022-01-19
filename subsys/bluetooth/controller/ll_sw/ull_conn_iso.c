@@ -5,7 +5,6 @@
  */
 
 #include <zephyr.h>
-#include <sys/byteorder.h>
 
 #include "util/mem.h"
 #include "util/memq.h"
@@ -43,6 +42,7 @@ static void cis_disabled_cb(void *param);
 static void ticker_stop_op_cb(uint32_t status, void *param);
 static void cig_disable(void *param);
 static void cig_disabled_cb(void *param);
+static void disable(uint16_t handle);
 
 static struct ll_conn_iso_stream cis_pool[CONFIG_BT_CTLR_CONN_ISO_STREAMS];
 static void *cis_free;
@@ -124,7 +124,8 @@ struct ll_conn_iso_stream *ll_iso_stream_connected_get(uint16_t handle)
 	}
 
 	cis = ll_conn_iso_stream_get(handle);
-	if (cis->lll.handle != handle) {
+	if ((cis->group == NULL) || (cis->lll.handle != handle)) {
+		/* CIS does not belong to a group or has inconsistent handle */
 		return NULL;
 	}
 
@@ -217,7 +218,7 @@ void ull_conn_iso_cis_established(struct ll_conn_iso_stream *cis)
 
 	est = (void *)node_rx->pdu;
 	est->status = 0;
-	est->cis_handle = sys_le16_to_cpu(cis->lll.handle);
+	est->cis_handle = cis->lll.handle;
 
 	ll_rx_put(node_rx->hdr.link, node_rx);
 	ll_rx_sched();
@@ -352,6 +353,11 @@ void ull_conn_iso_resume_ticker_start(struct lll_event *resume_event,
 	cig = resume_event->prepare_param.param;
 	ticker_id = TICKER_ID_CONN_ISO_RESUME_BASE + cig->handle;
 
+	if (cig->resume_cis != LLL_HANDLE_INVALID) {
+		/* Restarting resume ticker - must be stopped first */
+		(void)ticker_stop(TICKER_INSTANCE_ID_CTLR, TICKER_USER_ID_LLL,
+				  ticker_id, NULL, NULL);
+	}
 	cig->resume_cis = cis_handle;
 
 	if (0) {
@@ -407,7 +413,14 @@ int ull_conn_iso_reset(void)
 
 static int init_reset(void)
 {
+	struct ll_conn_iso_group *cig;
+	uint16_t handle;
 	int err;
+
+	/* Disable all active CIGs (uses blocking ull_ticker_stop_with_mark) */
+	for (handle = 0U; handle < CONFIG_BT_CTLR_CONN_ISO_GROUPS; handle++) {
+		disable(handle);
+	}
 
 	/* Initialize CIS pool */
 	mem_init(cis_pool, sizeof(struct ll_conn_iso_stream),
@@ -419,8 +432,10 @@ static int init_reset(void)
 		 sizeof(cig_pool) / sizeof(struct ll_conn_iso_group),
 		 &cig_free);
 
-	for (int h = 0; h < CONFIG_BT_CTLR_CONN_ISO_GROUPS; h++) {
-		ll_conn_iso_group_get(h)->cig_id = 0xFF;
+	for (handle = 0; handle < CONFIG_BT_CTLR_CONN_ISO_GROUPS; handle++) {
+		cig = ll_conn_iso_group_get(handle);
+		cig->cig_id  = 0xFF;
+		cig->started = 0;
 	}
 
 	/* Initialize LLL */
@@ -456,6 +471,7 @@ static void ticker_resume_cb(uint32_t ticks_at_expire, uint32_t ticks_drift,
 {
 	static memq_link_t link;
 	static struct mayfly mfy = {0, 0, &link, NULL, lll_resume};
+	struct lll_conn_iso_group *cig;
 	struct lll_event *resume_event;
 	uint32_t ret;
 
@@ -470,6 +486,10 @@ static void ticker_resume_cb(uint32_t ticks_at_expire, uint32_t ticks_drift,
 	resume_event->prepare_param.lazy = 0;
 	resume_event->prepare_param.force = force;
 	mfy.param = resume_event;
+
+	/* Mark resume as done */
+	cig = resume_event->prepare_param.param;
+	cig->resume_cis = LLL_HANDLE_INVALID;
 
 	/* Kick LLL resume */
 	ret = mayfly_enqueue(TICKER_USER_ID_ULL_HIGH, TICKER_USER_ID_LLL,
@@ -513,6 +533,17 @@ static void cis_disabled_cb(void *param)
 
 			ll_rx_put(node_terminate->hdr.link, node_terminate);
 			ll_rx_sched();
+
+			if (cig->lll.resume_cis == cis->lll.handle) {
+				/* Resume pending for terminating CIS - stop ticker */
+				(void)ticker_stop(TICKER_INSTANCE_ID_CTLR,
+						  TICKER_USER_ID_ULL_HIGH,
+						  TICKER_ID_CONN_ISO_RESUME_BASE +
+						  ll_conn_iso_group_handle_get(cig),
+						  NULL, NULL);
+
+				cig->lll.resume_cis = LLL_HANDLE_INVALID;
+			}
 
 			ll_conn_iso_stream_release(cis);
 			cig->lll.num_cis--;
@@ -596,8 +627,29 @@ static void cig_disabled_cb(void *param)
 	struct ll_conn_iso_group *cig;
 
 	cig = HDR_LLL2ULL(param);
+	cig->cig_id  = 0xFF;
+	cig->started = 0;
 
 	ll_conn_iso_group_release(cig);
 
 	/* TODO: Flush pending TX in LLL */
+}
+
+static void disable(uint16_t handle)
+{
+	struct ll_conn_iso_group *cig;
+	int err;
+
+	cig = ll_conn_iso_group_get(handle);
+
+	(void)ull_ticker_stop_with_mark(TICKER_ID_CONN_ISO_RESUME_BASE + handle,
+					cig, &cig->lll);
+
+	err = ull_ticker_stop_with_mark(TICKER_ID_CONN_ISO_BASE + handle,
+					cig, &cig->lll);
+	
+	LL_ASSERT(err == 0 || err == -EALREADY);
+
+	cig->lll.handle = LLL_HANDLE_INVALID;
+	cig->lll.resume_cis = LLL_HANDLE_INVALID;
 }

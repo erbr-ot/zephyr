@@ -63,6 +63,11 @@ uint8_t ll_cis_accept(uint16_t handle)
 		return BT_HCI_ERR_CMD_DISALLOWED;
 	}
 
+	if (acl_conn->llcp_cis.state != LLCP_CIS_STATE_RSP_WAIT) {
+		BT_ERR("Not allowed in state %u", acl_conn->llcp_cis.state);
+		return BT_HCI_ERR_CMD_DISALLOWED;
+	}
+
 	acl_conn->llcp_cis.req++;
 
 	return 0;
@@ -106,8 +111,9 @@ uint8_t ull_peripheral_iso_acquire(struct ll_conn *acl,
 		memset(&cig->lll, 0, sizeof(cig->lll));
 
 		cig->cig_id = req->cig_id;
-		cig->lll.handle = 0xFFFF;
+		cig->lll.handle = LLL_HANDLE_INVALID;
 		cig->lll.role = acl->lll.role;
+		cig->lll.resume_cis = LLL_HANDLE_INVALID;
 
 		ull_hdr_init(&cig->ull);
 		lll_hdr_init(&cig->lll, cig);
@@ -125,9 +131,10 @@ uint8_t ull_peripheral_iso_acquire(struct ll_conn *acl,
 		return BT_HCI_ERR_INSUFFICIENT_RESOURCES;
 	}
 
-	cig->iso_interval   = sys_le16_to_cpu(req->iso_interval);
-	cig->c_sdu_interval = sys_get_le24(req->c_sdu_interval);
-	cig->p_sdu_interval = sys_get_le24(req->p_sdu_interval);
+	cig->iso_interval = sys_le16_to_cpu(req->iso_interval);
+	/* Read 20-bit SDU intervals (mask away RFU bits) */
+	cig->c_sdu_interval = sys_get_le24(req->c_sdu_interval) & 0x0FFFFF;
+	cig->p_sdu_interval = sys_get_le24(req->p_sdu_interval) & 0x0FFFFF;
 
 	cis->cis_id = req->cis_id;
 	cis->established = 0;
@@ -140,6 +147,7 @@ uint8_t ull_peripheral_iso_acquire(struct ll_conn *acl,
 	cis->lll.sub_interval = sys_get_le24(req->sub_interval);
 	cis->lll.num_subevents = req->nse;
 	cis->lll.next_subevent = 0;
+	cis->lll.rx_payload_number = 0;
 	cis->lll.sn = 0;
 	cis->lll.nesn = 0;
 	cis->lll.cie = 0;
@@ -262,7 +270,6 @@ void ull_peripheral_iso_start(struct ll_conn *acl, uint32_t ticks_at_expire)
 	uint32_t ticks_interval;
 	uint32_t ticker_status;
 	int32_t cig_offset_us;
-	uint16_t handle_iter;
 	uint16_t cis_handle;
 	uint8_t ticker_id;
 
@@ -272,7 +279,6 @@ void ull_peripheral_iso_start(struct ll_conn *acl, uint32_t ticks_at_expire)
 	cis = ll_conn_iso_stream_get(cis_handle);
 
 	cis_offs_to_cig_ref = cig->sync_delay - cis->sync_delay;
-	handle_iter = UINT16_MAX;
 
 	cis->lll.offset = cis_offs_to_cig_ref;
 	cis->lll.handle = cis_handle;
@@ -281,17 +287,7 @@ void ull_peripheral_iso_start(struct ll_conn *acl, uint32_t ticks_at_expire)
 	 * running. If so, we just return with updated offset and
 	 * validated handle.
 	 */
-	for (int i = 0; i < cig->lll.num_cis; i++) {
-		struct ll_conn_iso_stream *other_cis;
-
-		other_cis = ll_conn_iso_stream_get_by_group(cig, &handle_iter);
-		LL_ASSERT(other_cis);
-
-		if (other_cis == cis || other_cis->lll.handle == 0xFFFF) {
-			/* Same CIS or not valid - skip */
-			continue;
-		}
-
+	if (cig->started) {
 		/* We're done */
 		return;
 	}
@@ -312,7 +308,9 @@ void ull_peripheral_iso_start(struct ll_conn *acl, uint32_t ticks_at_expire)
 	ready_delay_us = lll_radio_rx_ready_delay_get(0, 0);
 #endif
 
+	/* Calculate initial ticker offset - we're one ACL interval early */
 	cig_offset_us  = acl_to_cig_ref_point;
+	cig_offset_us += (acl->lll.interval * CONN_INT_UNIT_US);
 	cig_offset_us -= EVENT_OVERHEAD_START_US;
 	cig_offset_us -= EVENT_TICKER_RES_MARGIN_US;
 	cig_offset_us -= EVENT_JITTER_US;
@@ -338,4 +336,6 @@ void ull_peripheral_iso_start(struct ll_conn *acl, uint32_t ticks_at_expire)
 
 	LL_ASSERT((ticker_status == TICKER_STATUS_SUCCESS) ||
 		  (ticker_status == TICKER_STATUS_BUSY));
+
+	cig->started = 1;
 }
