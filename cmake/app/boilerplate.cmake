@@ -26,7 +26,7 @@
 #
 # Under these restraints we use a second 'cmake_minimum_required'
 # invocation in every toplevel CMakeLists.txt.
-cmake_minimum_required(VERSION 3.20.0)
+cmake_minimum_required(VERSION 3.13.1)
 
 define_property(GLOBAL PROPERTY ZEPHYR_LIBS
     BRIEF_DOCS "Global list of all Zephyr CMake libs that should be linked in"
