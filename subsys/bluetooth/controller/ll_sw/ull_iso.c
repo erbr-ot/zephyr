@@ -189,14 +189,6 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 		return 0;
 	}
 
-	if (path_dir != BT_HCI_DATAPATH_DIR_CTLR_TO_HOST) {
-		/* FIXME: workaround to succeed datapath setup for ISO
-		 *        broadcaster until Tx datapath is implemented, in the
-		 *        future.
-		 */
-		return BT_HCI_ERR_SUCCESS;
-	}
-
 #if defined(CONFIG_BT_CTLR_CONN_ISO)
 	struct ll_iso_datapath *dp_in = NULL;
 	struct ll_iso_datapath *dp_out = NULL;
