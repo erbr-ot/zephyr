@@ -39,6 +39,8 @@ uint8_t ull_conn_llcp_req(void *conn);
 
 void ull_pdu_data_init(struct pdu_data *pdu);
 
+void ull_conn_timeout(void *param);
+
 #if !defined(CONFIG_BT_LL_SW_LLCP_LEGACY)
 
 uint16_t ull_conn_event_counter(struct ll_conn *conn);
