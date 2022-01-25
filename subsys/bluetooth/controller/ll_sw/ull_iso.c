@@ -89,12 +89,16 @@ static void iso_rx_demux(void *param);
 #endif /* CONFIG_BT_CTLR_SYNC_ISO) || CONFIG_BT_CTLR_CONN_ISO */
 
 #if defined(CONFIG_BT_CTLR_ADV_ISO) || defined(CONFIG_BT_CTLR_CONN_ISO)
+#define NODE_TX_BUFFER_SIZE MROUND(offsetof(struct node_tx_iso, pdu) + \
+				   offsetof(struct pdu_iso, payload) + \
+				   ISO_TX_BUFFER_SIZE)
+
 static MFIFO_DEFINE(iso_tx, sizeof(struct lll_tx),
 		    CONFIG_BT_CTLR_ISO_TX_BUFFERS);
 
 static struct {
 	void *free;
-	uint8_t pool[ISO_TX_BUFFER_SIZE * CONFIG_BT_CTLR_ISO_TX_BUFFERS];
+	uint8_t pool[NODE_TX_BUFFER_SIZE * CONFIG_BT_CTLR_ISO_TX_BUFFERS];
 } mem_iso_tx;
 
 static struct {
@@ -886,7 +890,7 @@ static int init_reset(void)
 
 #if defined(CONFIG_BT_CTLR_ADV_ISO) || defined(CONFIG_BT_CTLR_CONN_ISO)
 	/* Initialize tx pool. */
-	mem_init(mem_iso_tx.pool, ISO_TX_BUFFER_SIZE,
+	mem_init(mem_iso_tx.pool, NODE_TX_BUFFER_SIZE,
 		 CONFIG_BT_CTLR_ISO_TX_BUFFERS, &mem_iso_tx.free);
 
 	/* Initialize tx link pool. */

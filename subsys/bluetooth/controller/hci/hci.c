@@ -4988,7 +4988,7 @@ int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 {
 	struct node_tx_iso *node_tx;
 	struct bt_hci_iso_hdr *iso;
-	struct pdu_data *pdu_data;
+	struct pdu_iso *pdu;
 	uint16_t handle;
 	uint8_t flags;
 	uint16_t len;
@@ -5030,19 +5030,19 @@ int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 		return -ENOBUFS;
 	}
 
-	pdu_data = (void *)node_tx->pdu;
+	pdu = (void *)node_tx->pdu;
 
 	switch (bt_iso_flags_pb(flags)) {
 	case BT_ISO_START:
 	case BT_ISO_SINGLE:
-		pdu_data->ll_id = PDU_CIS_LLID_COMPLETE_END;
+		pdu->ll_id = PDU_CIS_LLID_COMPLETE_END;
 		break;
 	default:
 		return -EINVAL;
 	}
 
-	pdu_data->len = len - 4;
-	memcpy(&pdu_data->lldata[0], buf->data + 4, pdu_data->len);
+	pdu->length = len - 4;
+	memcpy(&pdu->payload[0], buf->data + 4, pdu->length);
 
 	if (ll_iso_tx_mem_enqueue(handle, node_tx)) {
 		ll_iso_tx_mem_release(node_tx);
