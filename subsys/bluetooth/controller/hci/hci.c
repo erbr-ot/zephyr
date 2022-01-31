@@ -57,6 +57,7 @@
 #include "ll_sw/ull_conn_types.h"
 #include "ll_sw/ull_iso_types.h"
 #include "ll_sw/ull_conn_iso_types.h"
+#include "ll_sw/ull_conn_iso_internal.h"
 #include "ll_sw/ull_df_types.h"
 
 #include "ll_sw/ull_adv_internal.h"
@@ -4986,14 +4987,17 @@ int hci_acl_handle(struct net_buf *buf, struct net_buf **evt)
 #if defined(CONFIG_BT_CTLR_ISO)
 int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 {
-	struct node_tx_iso *node_tx;
-	struct bt_hci_iso_hdr *iso;
-	struct pdu_iso *pdu;
+	struct isoal_sdu_tx      sdu_frag_tx;
+	struct ll_iso_datapath   *dp_in;
+	struct ll_iso_stream_hdr *hdr;
+	struct bt_hci_iso_hdr    *iso;
 	uint16_t handle;
 	uint8_t flags;
 	uint16_t len;
 
-	*evt = NULL;
+	*evt  = NULL;
+	hdr   = NULL;
+	dp_in = NULL;
 
 	if (buf->len < sizeof(*iso)) {
 		BT_ERR("No HCI ISO header");
@@ -5018,38 +5022,48 @@ int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 	flags = bt_iso_flags(handle);
 	handle = bt_iso_handle(handle);
 
-	/* TODO: Rewrite the following to use ISO-AL. Assign *evt if an
-	 * immediate response is required. The temorary code below will
-	 * send SDUs 1:1 as PDUs for CIS TX testing.
-	 * ISO header is stripped and payload enqueued directly.
+	/* Fill in SDU buffer fields */
+	sdu_frag_tx.dbuf = buf->data + 4;
+	sdu_frag_tx.size = len - 4;
+	/* Packet boudary flags should be bitwise identical to the SDU state
+	 * 0b00 BT_ISO_START
+	 * 0b01 BT_ISO_CONT
+	 * 0b10 BT_ISO_SINGLE
+	 * 0b11 BT_ISO_END
 	 */
+	sdu_frag_tx.sdu_state = bt_iso_flags_pb(flags);
 
-	node_tx = ll_iso_tx_mem_acquire();
-	if (!node_tx) {
-		BT_ERR("Tx Buffer Overflow");
-		return -ENOBUFS;
-	}
+	/* Extract source handle from CIS or BIS handle by way of header and
+	 * data path
+	 */
+	if (IS_CIS_HANDLE(handle)) {
+		struct ll_conn_iso_stream *cis =
+			ll_iso_stream_connected_get(handle);
+		if (!cis) {
+			return -EINVAL;
+		}
 
-	pdu = (void *)node_tx->pdu;
-
-	switch (bt_iso_flags_pb(flags)) {
-	case BT_ISO_START:
-	case BT_ISO_SINGLE:
-		pdu->ll_id = PDU_CIS_LLID_COMPLETE_END;
-		break;
-	default:
+		hdr = &(cis->hdr);
+	} else {
 		return -EINVAL;
 	}
 
-	pdu->length = len - 4;
-	memcpy(&pdu->payload[0], buf->data + 4, pdu->length);
-
-	if (ll_iso_tx_mem_enqueue(handle, node_tx)) {
-		ll_iso_tx_mem_release(node_tx);
+	/* Get controller's input data path for CIS */
+	dp_in = hdr->datapath_in;
+	if (!dp_in) {
+		BT_ERR("Input data path not set");
 		return -EINVAL;
 	}
 
-	/* TODO END */
+	/* Get input data path's source handle */
+	isoal_source_handle_t source = dp_in->source_hdl;
+
+	/* Start Fragmentation */
+	if (isoal_tx_sdu_fragment(source, &sdu_frag_tx)){
+		return -EINVAL;
+	}
+
+	/* TODO: Assign *evt if an immediate response is required.*/
 
 	return 0;
 }

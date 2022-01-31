@@ -173,13 +173,15 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 	ARG_UNUSED(codec_config_len);
 	ARG_UNUSED(codec_config);
 
+	isoal_source_handle_t source_handle;
 	isoal_sink_handle_t sink_handle;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	uint8_t flush_timeout;
 	uint16_t iso_interval;
 	uint32_t sdu_interval;
-	uint8_t  burst_number;
+	uint8_t burst_number;
+	uint8_t max_octets;
 	isoal_status_t err;
 	uint8_t role;
 
@@ -297,6 +299,7 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 	if (path_dir == BT_HCI_DATAPATH_DIR_HOST_TO_CTLR) {
 		burst_number  = cis->lll.tx.burst_number;
 		flush_timeout = cis->lll.tx.flush_timeout;
+		max_octets    = cis->lll.tx.max_octets;
 
 		if (role) {
 			/* peripheral */
@@ -308,8 +311,9 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 
 		cis->hdr.datapath_in = dp;
 	} else {
-		burst_number =  cis->lll.rx.burst_number;
+		burst_number  = cis->lll.rx.burst_number;
 		flush_timeout = cis->lll.rx.flush_timeout;
+		max_octets    = cis->lll.rx.max_octets;
 
 		if (role) {
 			/* peripheral */
@@ -321,7 +325,23 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 
 		cis->hdr.datapath_out = dp;
 	}
-#endif
+
+	if (path_dir == BT_HCI_DATAPATH_DIR_HOST_TO_CTLR) {
+		/* Create source for TX data path */
+		err = isoal_source_create(handle, role,
+					  burst_number, flush_timeout,
+					  max_octets, sdu_interval,
+					  iso_interval, stream_sync_delay,
+					  group_sync_delay, &source_handle);
+
+		if (!err) {
+			dp->source_hdl = source_handle;
+			isoal_source_enable(source_handle);
+		} else {
+			return BT_HCI_ERR_CMD_DISALLOWED;
+		}
+	}
+#endif /* CONFIG_BT_CTLR_CONN_ISO */
 
 #if defined(CONFIG_BT_CTLR_SYNC_ISO)
 	struct ll_sync_iso_set *sync_iso;
