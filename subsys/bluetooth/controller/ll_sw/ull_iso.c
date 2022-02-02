@@ -94,6 +94,7 @@ static MEMQ_DECLARE(ll_iso_rx);
 #if defined(CONFIG_BT_CTLR_ISO_VENDOR_DATA_PATH)
 static MEMQ_DECLARE(ull_iso_rx);
 static void iso_rx_demux(void *param);
+static void ull_iso_link_tx_release(memq_link_t *link);
 #endif /* CONFIG_BT_CTLR_ISO_VENDOR_DATA_PATH */
 #endif /* CONFIG_BT_CTLR_SYNC_ISO) || CONFIG_BT_CTLR_CONN_ISO */
 
@@ -112,10 +113,14 @@ static struct {
 
 static struct {
 	void *free;
-	uint8_t pool[sizeof(memq_link_t) * CONFIG_BT_CTLR_ISO_TX_BUFFERS];
+	uint8_t pool[sizeof(memq_link_t) * (CONFIG_BT_CTLR_ISO_TX_BUFFERS + \
+					    CONFIG_BT_CTLR_ISO_TX_VENDOR_BUFFERS)];
 } mem_link_iso_tx;
 
+static MFIFO_DEFINE(iso_tx_ack, sizeof(struct lll_tx),
+		    CONFIG_BT_CTLR_ISO_TX_BUFFERS);
 #endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
+
 
 /* Must be implemented by vendor */
 __weak bool ll_data_path_configured(uint8_t data_path_dir,
@@ -600,6 +605,8 @@ int ull_iso_reset(void)
 #if defined(CONFIG_BT_CTLR_ADV_ISO) || defined(CONFIG_BT_CTLR_CONN_ISO)
 	/* Re-initialize the Tx mfifo */
 	MFIFO_INIT(iso_tx);
+	/* Re-initialize the Tx Ack mfifo */
+	MFIFO_INIT(iso_tx_ack);
 #endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
 
 	err = init_reset();
@@ -639,6 +646,70 @@ void ull_iso_rx_sched(void)
 
 	/* Kick the ULL (using the mayfly, tailchain it) */
 	mayfly_enqueue(TICKER_USER_ID_LLL, TICKER_USER_ID_ULL_HIGH, 1, &mfy);
+}
+
+void *ull_iso_tx_ack_dequeue(void)
+{
+	return MFIFO_DEQUEUE(iso_tx_ack);
+}
+
+static  memq_link_t *ull_iso_ack_peek(uint16_t *handle, struct node_tx_iso **tx)
+{
+	struct lll_tx *lll_tx;
+
+	lll_tx = MFIFO_DEQUEUE_GET(iso_tx_ack);
+	if (!lll_tx) {
+		return NULL;
+	}
+
+	*handle = lll_tx->handle;
+	*tx = lll_tx->node;
+
+	return (*tx)->link;
+}
+
+void ull_iso_lll_ack_enqueue(uint16_t handle, struct node_tx_iso *tx)
+{
+	struct lll_tx *lll_tx;
+	uint8_t idx;
+
+	idx = MFIFO_ENQUEUE_GET(iso_tx_ack, (void **)&lll_tx);
+	LL_ASSERT(lll_tx);
+
+	lll_tx->handle = handle;
+	lll_tx->node = tx;
+
+	MFIFO_ENQUEUE(iso_tx_ack, idx);
+}
+
+static void iso_rx_demux_tx_ack(void)
+{
+	struct node_tx_iso *node_tx;
+	struct ll_conn_iso_stream *cis;
+	struct ll_iso_datapath *dp;
+	memq_link_t *link;
+	uint16_t handle;
+
+	link = ull_iso_ack_peek(&handle, &node_tx);
+	while (link) {
+		cis = ll_conn_iso_stream_get(handle);
+		dp  = cis->hdr.datapath_in;
+		if (dp) {
+			isoal_tx_pdu_ack(dp->source_hdl, node_tx,
+					 handle);
+		}
+
+		/* Release link mem */
+		ull_iso_link_tx_release(link);
+
+		/* Dequeue node */
+		ull_iso_tx_ack_dequeue();
+
+		link = ull_iso_ack_peek(&handle, &node_tx);
+	};
+
+	/* Trigger thread to call ll_rx_get() */
+	ll_rx_sched();
 }
 
 static void iso_rx_demux(void *param)
@@ -702,6 +773,9 @@ static void iso_rx_demux(void *param)
 				break;
 			}
 		}
+
+		/* Process TX acks */
+		iso_rx_demux_tx_ack();
 	} while (link);
 }
 #endif /* CONFIG_BT_CTLR_ISO_VENDOR_DATA_PATH */
@@ -794,6 +868,11 @@ void ull_iso_datapath_release(struct ll_iso_datapath *dp)
 }
 
 #if defined (CONFIG_BT_CTLR_ADV_ISO) || defined(CONFIG_BT_CTLR_CONN_ISO)
+static void ull_iso_link_tx_release(memq_link_t *link)
+{
+	mem_release(link, &mem_link_iso_tx.free);
+}
+
 /**
  * @brief De-multiplex a number of waiting TX nodes
  *
@@ -979,6 +1058,14 @@ static isoal_status_t ll_iso_pdu_write(struct isoal_pdu_buffer *pdu_buffer,
 static isoal_status_t ll_iso_pdu_ack(const struct isoal_pdu_buffer *pdu_buffer,
 				     const uint16_t handle)
 {
+	struct node_tx_iso *node_tx;
+
+	/* Retrieve Node handle */
+	node_tx = pdu_buffer->handle;
+
+	/* Process Tx ack to shared mfifo */
+	ll_tx_ack_put(handle, (void *)node_tx);
+
 	return ISOAL_STATUS_OK;
 }
 
@@ -1033,7 +1120,8 @@ static int init_reset(void)
 
 	/* Initialize tx link pool. */
 	mem_init(mem_link_iso_tx.pool, sizeof(memq_link_t),
-		 CONFIG_BT_CTLR_ISO_TX_BUFFERS, &mem_link_iso_tx.free);
+		 CONFIG_BT_CTLR_ISO_TX_BUFFERS + CONFIG_BT_CTLR_ISO_TX_VENDOR_BUFFERS,
+		 &mem_link_iso_tx.free);
 #endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
 
 #if BT_CTLR_ISO_STREAMS

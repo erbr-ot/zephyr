@@ -172,6 +172,7 @@ struct isoal_sdu_tx {
 
 /* Forward declaration */
 struct isoal_sink;
+struct node_tx_iso;
 
 /**
  * @brief  Callback: Request memory for a new ISO SDU buffer
@@ -413,3 +414,6 @@ void isoal_source_destroy(isoal_source_handle_t hdl);
 
 isoal_status_t isoal_tx_sdu_fragment(isoal_source_handle_t source_hdl,
 				      const struct isoal_sdu_tx *tx_sdu);
+
+void isoal_tx_pdu_ack(isoal_source_handle_t source_hdl,
+		      struct node_tx_iso *node_tx, uint16_t handle);

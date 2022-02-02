@@ -2326,19 +2326,30 @@ static uint8_t tx_cmplt_get(uint16_t *handle, uint8_t *first, uint8_t last)
 	*handle = tx->handle;
 	cmplt = 0U;
 	do {
-		struct node_tx *node_tx;
 		struct pdu_data *p;
+#if defined(CONFIG_BT_CTLR_BROADCAST_ISO) || \
+	defined(CONFIG_BT_CTLR_CONN_ISO)
+		void *node_tx;
 
 		node_tx = tx->node;
-		p = (void *)node_tx->pdu;
+		if (IS_CIS_HANDLE(tx->handle)) {
+			struct node_tx_iso *node = node_tx;
+			p = (void *)node->pdu;
+		} else {
+			struct node_tx *node = node_tx;
+			p = (void *)node->pdu;
+		}
+#else
+		struct node_tx *node_tx;
+		node_tx = tx->node;
 
+		p = (void *)node_tx->pdu;
+#endif
 		if (!node_tx || (node_tx == (void *)1) ||
 		    (((uint32_t)node_tx & ~3) && (
 #if defined(CONFIG_BT_CTLR_BROADCAST_ISO) || \
 	defined(CONFIG_BT_CTLR_CONN_ISO)
 		      p->ll_id == PDU_CIS_LLID_COMPLETE_END ||
-		      p->ll_id == PDU_CIS_LLID_START_CONTINUE ||
-		      p->ll_id == PDU_CIS_LLID_FRAMED ||
 #endif /* CONFIG_BT_CTLR_BROADCAST_ISO || CONFIG_BT_CTLR_CONN_ISO */
 		      p->ll_id == PDU_DATA_LLID_DATA_START ||
 		      p->ll_id == PDU_DATA_LLID_DATA_CONTINUE))) {

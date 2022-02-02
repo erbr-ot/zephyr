@@ -5045,8 +5045,8 @@ int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 
 	/* Get controller's input data path for CIS */
 	dp_in = hdr->datapath_in;
-	if (!dp_in) {
-		BT_ERR("Input data path not set");
+	if (!dp_in || dp_in->path_id != BT_HCI_DATAPATH_ID_HCI) {
+		BT_ERR("Input data path not set for HCI");
 		return -EINVAL;
 	}
 

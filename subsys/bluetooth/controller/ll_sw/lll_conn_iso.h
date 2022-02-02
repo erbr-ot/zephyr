@@ -72,4 +72,3 @@ void lll_conn_iso_done(struct lll_conn_iso_group *cig, uint8_t trx_cnt,
 		       uint16_t prog_to_anchor_us, uint8_t mic_state);
 void lll_conn_iso_flush(uint16_t handle, struct lll_conn_iso_stream *lll);
 
-void ull_conn_iso_lll_ack_enqueue(uint16_t handle, struct node_tx_iso *tx);

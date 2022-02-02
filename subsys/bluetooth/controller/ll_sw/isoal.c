@@ -1228,3 +1228,14 @@ isoal_status_t isoal_tx_sdu_fragment(isoal_source_handle_t source_hdl,
 
 	return err;
 }
+
+void isoal_tx_pdu_ack(isoal_source_handle_t source_hdl,
+		      struct node_tx_iso *node_tx, uint16_t handle)
+{
+	struct isoal_source *source = &isoal_global.source_state[source_hdl];
+
+	if (source && source->session.pdu_ack) {
+		struct isoal_pdu_buffer pdu_buffer = { .handle = node_tx };
+		source->session.pdu_ack(&pdu_buffer, handle);
+	}
+}
