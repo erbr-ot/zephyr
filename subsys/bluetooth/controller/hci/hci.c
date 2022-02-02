@@ -5013,11 +5013,6 @@ int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 		return -EINVAL;
 	}
 
-	if (len > LL_LENGTH_OCTETS_TX_MAX) {
-		BT_ERR("Invalid HCI ISO Data length");
-		return -EINVAL;
-	}
-
 	/* Assigning flags first because handle will be overwritten */
 	flags = bt_iso_flags(handle);
 	handle = bt_iso_handle(handle);
