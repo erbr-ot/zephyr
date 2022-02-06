@@ -256,8 +256,6 @@ static void isoal_source_deallocate(isoal_source_handle_t hdl)
 	isoal_global.source_allocated[hdl] = ISOAL_ALLOC_STATE_FREE;
 }
 
-
-
 /**
  * @brief Create a new source
  *
@@ -270,21 +268,29 @@ static void isoal_source_deallocate(isoal_source_handle_t hdl)
  * @param iso_interval[in]      ISO interval
  * @param stream_sync_delay[in] CIS sync delay
  * @param group_sync_delay[in]  CIG sync delay
+ * @param pdu_alloc[in]         Callback of PDU allocator
+ * @param pdu_write[in]         Callback of PDU byte writer
+ * @param pdu_ack[in]           Callback of PDU TX acknowledge
+ * @param pdu_release[in]       Callback of PDU deallocator
  * @param hdl[out]              Handle to new source
  *
  * @return ISOAL_STATUS_OK if we could create a new sink; otherwise ISOAL_STATUS_ERR_SOURCE_ALLOC
  */
 isoal_status_t isoal_source_create(
-	uint16_t                  handle,
-	uint8_t                   role,
-	uint8_t                   burst_number,
-	uint8_t                   flush_timeout,
-	uint8_t                   max_octets,
-	uint32_t                  sdu_interval,
-	uint16_t                  iso_interval,
-	uint32_t                  stream_sync_delay,
-	uint32_t                  group_sync_delay,
-	isoal_source_handle_t     *hdl)
+	uint16_t                    handle,
+	uint8_t                     role,
+	uint8_t                     burst_number,
+	uint8_t                     flush_timeout,
+	uint8_t                     max_octets,
+	uint32_t                    sdu_interval,
+	uint16_t                    iso_interval,
+	uint32_t                    stream_sync_delay,
+	uint32_t                    group_sync_delay,
+	isoal_source_pdu_alloc_cb   pdu_alloc,
+	isoal_source_pdu_write_cb   pdu_write,
+	isoal_source_pdu_ack_cb     pdu_ack,
+	isoal_source_pdu_release_cb pdu_release,
+	isoal_source_handle_t       *hdl)
 {
 	isoal_status_t err;
 
@@ -308,6 +314,11 @@ isoal_status_t isoal_source_create(
 	/* Set maximum PDU size */
 	session->max_pdu_size = max_octets;
 
+	/* Remember the platform-specific callbacks */
+	session->pdu_alloc   = pdu_alloc;
+	session->pdu_write   = pdu_write;
+	session->pdu_ack     = pdu_ack;
+	session->pdu_release = pdu_release;
 
 	/* TODO: Constant need to be updated */
 
@@ -933,37 +944,6 @@ isoal_status_t isoal_rx_pdu_recombine(isoal_sink_handle_t sink_hdl,
 	return err;
 }
 
-
-/**
- * Allocate a PDU from the LL and store the details in the given buffer. Allocation
- * is not expected to fail as there must always be sufficient PDU buffers. Any
- * failure will trigger the assert.
- * @param[in]  pdu_buffer Buffer to store PDU details in
- * @return     Error status of operation
- */
-static isoal_status_t isoal_tx_pdu_alloc(struct isoal_pdu_buffer *pdu_buffer)
-{
-	struct node_tx_iso *node_tx;
-
-	node_tx = ll_iso_tx_mem_acquire();
-	if (!node_tx) {
-		BT_ERR("Tx Buffer Overflow");
-		LL_ASSERT(0);
-		return ISOAL_STATUS_ERR_PDU_ALLOC;
-	}
-
-	/* node_tx handle will be required to emit the PDU later */
-	pdu_buffer->handle = (void *)node_tx;
-	pdu_buffer->pdu    = (void *)node_tx->pdu;
-	/* Use TX buffer size as the limit here. Actual size will be decided in
-	 * the ISOAL based on the minimum of the buffer size and the respective
-	 * Max_PDU_C_To_P or Max_PDU_P_To_C.
-	 */
-	pdu_buffer->size   = ISO_TX_BUFFER_SIZE;
-
-	return ISOAL_STATUS_OK;
-}
-
 /**
  * Queue the PDU in production in the relevant LL transmit queue. If the
  * attmept to release the PDU fails, the buffer linked to the PDU will be released
@@ -974,10 +954,10 @@ static isoal_status_t isoal_tx_pdu_alloc(struct isoal_pdu_buffer *pdu_buffer)
  * @param[in]  payload_size Length of the data written to the PDU
  * @return     Error status of the operation
  */
-static isoal_status_t isoal_tx_pdu_emit(const struct isoal_source       *source_ctx,
-			       const struct isoal_pdu_produced *produced_pdu,
-			       const uint8_t                   pdu_ll_id,
-			       const isoal_pdu_len_t           payload_size)
+static isoal_status_t isoal_tx_pdu_emit(const struct isoal_source *source_ctx,
+					const struct isoal_pdu_produced *produced_pdu,
+					const uint8_t pdu_ll_id,
+					const isoal_pdu_len_t payload_size)
 {
 	struct node_tx_iso *node_tx;
 	uint16_t handle;
@@ -997,39 +977,10 @@ static isoal_status_t isoal_tx_pdu_emit(const struct isoal_source       *source_
 		/* If it fails, the node will be released and no further attempt
 		 * will be possible
 		 */
-		BT_ERR("Failed to release node (%p)", node_tx);
-		ll_iso_tx_mem_release(node_tx);
+		BT_ERR("Failed to enqueue node (%p)", node_tx);
+		source_ctx->session.pdu_release(&produced_pdu->contents);
 		return ISOAL_STATUS_ERR_PDU_EMIT;
 	}
-
-	return ISOAL_STATUS_OK;
-}
-
-/**
- * Write the given SDU payload to the target PDU buffer at the given offset. *
- * @param[in,out]  pdu_buffer  Target PDU buffer
- * @param[in]      pdu_offset  Offset / current write position within PDU
- * @param[in]      sdu_payload Location of source data
- * @param[in]      consume_len Length of data to copy
- * @return         Error status of write operation
- */
-static isoal_status_t isoal_tx_pdu_write(struct isoal_pdu_buffer *pdu_buffer,
-				       const size_t  pdu_offset,
-				       const uint8_t *sdu_payload,
-				       const size_t  consume_len)
-{
-	LL_ASSERT(pdu_buffer);
-	LL_ASSERT(pdu_buffer->pdu);
-	LL_ASSERT(sdu_payload);
-
-
-	if ((pdu_offset + consume_len) > pdu_buffer->size) {
-		/* Exceeded PDU buffer */
-		return ISOAL_STATUS_ERR_UNSPECIFIED;
-	}
-
-	/* Copy source to destination at given offset */
-	memcpy(&pdu_buffer->pdu->payload[pdu_offset], sdu_payload, consume_len);
 
 	return ISOAL_STATUS_OK;
 }
@@ -1053,7 +1004,7 @@ static isoal_status_t isoal_tx_allocate_pdu(struct isoal_source *source,
 
 	if (pdu_complete) {
 		/* Allocate new PDU buffer */
-		err = isoal_tx_pdu_alloc(
+		err = session->pdu_alloc(
 			&pdu->contents  /* [out] Updated with pointer and size */
 		);
 
@@ -1186,7 +1137,7 @@ static isoal_status_t isoal_tx_unframed_produce(struct isoal_source *source,
 		);
 
 		if (consume_len > 0) {
-			err |= isoal_tx_pdu_write(&pdu->contents,
+			err |= session->pdu_write(&pdu->contents,
 						  pp->pdu_written,
 						  sdu_payload,
 						  consume_len);

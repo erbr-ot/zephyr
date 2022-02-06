@@ -56,6 +56,15 @@
 
 static int init_reset(void);
 
+static isoal_status_t ll_iso_pdu_alloc(struct isoal_pdu_buffer *pdu_buffer);
+static isoal_status_t ll_iso_pdu_write(struct isoal_pdu_buffer *pdu_buffer,
+				       const size_t   offset,
+				       const uint8_t *sdu_payload,
+				       const size_t   consume_len);
+static isoal_status_t ll_iso_pdu_ack(const struct isoal_pdu_buffer *pdu_buffer,
+				     const uint16_t handle);
+static isoal_status_t ll_iso_pdu_release(const struct isoal_pdu_buffer *pdu_buffer);
+
 /* Allocate data path pools for RX/TX directions for each stream */
 #define BT_CTLR_ISO_STREAMS ((2 * (BT_CTLR_CONN_ISO_STREAMS)) + \
 			     BT_CTLR_SYNC_ISO_STREAMS)
@@ -154,6 +163,22 @@ __weak bool ll_data_path_sink_create(struct ll_iso_datapath *datapath,
 	*sdu_alloc = NULL;
 	*sdu_emit  = NULL;
 	*sdu_write = NULL;
+
+	return false;
+}
+
+/* Could be implemented by vendor */
+__weak bool ll_data_path_source_create(struct ll_iso_datapath *datapath,
+				       isoal_source_pdu_alloc_cb *pdu_alloc,
+				       isoal_source_pdu_write_cb *pdu_write,
+				       isoal_source_pdu_ack_cb *pdu_ack,
+				       isoal_source_pdu_release_cb *pdu_release)
+{
+	ARG_UNUSED(datapath);
+	ARG_UNUSED(pdu_alloc);
+	ARG_UNUSED(pdu_write);
+	ARG_UNUSED(pdu_ack);
+	ARG_UNUSED(pdu_release);
 
 	return false;
 }
@@ -288,21 +313,8 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 	stream_sync_delay = cis->sync_delay;
 	group_sync_delay = cig->sync_delay;
 
-	if (path_dir == BT_HCI_DATAPATH_DIR_HOST_TO_CTLR) {
-		burst_number  = cis->lll.tx.burst_number;
-		flush_timeout = cis->lll.tx.flush_timeout;
-		max_octets    = cis->lll.tx.max_octets;
-
-		if (role) {
-			/* peripheral */
-			sdu_interval = cig->p_sdu_interval;
-		} else {
-			/* central */
-			sdu_interval = cig->c_sdu_interval;
-		}
-
-		cis->hdr.datapath_in = dp;
-	} else {
+	if (path_dir == BT_HCI_DATAPATH_DIR_CTLR_TO_HOST) {
+		/* Create sink for RX data path */
 		burst_number  = cis->lll.rx.burst_number;
 		flush_timeout = cis->lll.rx.flush_timeout;
 		max_octets    = cis->lll.rx.max_octets;
@@ -316,15 +328,82 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 		}
 
 		cis->hdr.datapath_out = dp;
-	}
 
-	if (path_dir == BT_HCI_DATAPATH_DIR_HOST_TO_CTLR) {
+		if (path_id == BT_HCI_DATAPATH_ID_HCI) {
+			/* Not vendor specific, thus alloc and emit functions known */
+			err = isoal_sink_create(handle, role,
+						burst_number, flush_timeout,
+						sdu_interval, iso_interval,
+						stream_sync_delay, group_sync_delay,
+						sink_sdu_alloc_hci, sink_sdu_emit_hci,
+						sink_sdu_write_hci, &sink_handle);
+		} else {
+			/* Set up vendor specific data path */
+			isoal_sink_sdu_alloc_cb sdu_alloc;
+			isoal_sink_sdu_emit_cb  sdu_emit;
+			isoal_sink_sdu_write_cb sdu_write;
+
+			/* Request vendor sink callbacks for path */
+			if (ll_data_path_sink_create(dp, &sdu_alloc, &sdu_emit, &sdu_write)) {
+				err = isoal_sink_create(handle, role,
+							burst_number, flush_timeout,
+							sdu_interval, iso_interval,
+							stream_sync_delay, group_sync_delay,
+							sdu_alloc, sdu_emit, sdu_write,
+							&sink_handle);
+			} else {
+				return BT_HCI_ERR_CMD_DISALLOWED;
+			}
+		}
+
+		if (!err) {
+			dp->sink_hdl = sink_handle;
+			isoal_sink_enable(sink_handle);
+		} else {
+			return BT_HCI_ERR_CMD_DISALLOWED;
+		}
+	} else  {
+		burst_number  = cis->lll.tx.burst_number;
+		flush_timeout = cis->lll.tx.flush_timeout;
+		max_octets    = cis->lll.tx.max_octets;
+
+		if (role) {
+			/* peripheral */
+			sdu_interval = cig->p_sdu_interval;
+		} else {
+			/* central */
+			sdu_interval = cig->c_sdu_interval;
+		}
+
+		cis->hdr.datapath_in = dp;
+
 		/* Create source for TX data path */
+		isoal_source_pdu_alloc_cb   pdu_alloc;
+		isoal_source_pdu_write_cb   pdu_write;
+		isoal_source_pdu_ack_cb     pdu_ack;
+		isoal_source_pdu_release_cb pdu_release;
+
+		/* Set default callbacks assuming not vendor specific
+		 * or that the vendor specific path is the same.
+		 */
+		pdu_alloc   = ll_iso_pdu_alloc;
+		pdu_write   = ll_iso_pdu_write;
+		pdu_ack     = ll_iso_pdu_ack;
+		pdu_release = ll_iso_pdu_release;
+
+		if (path_is_vendor_specific(path_id)) {
+			if (!ll_data_path_source_create(dp, &pdu_alloc, &pdu_write,
+							&pdu_ack, &pdu_release)) {
+				return BT_HCI_ERR_CMD_DISALLOWED;
+			}
+		}
+
 		err = isoal_source_create(handle, role,
-					  burst_number, flush_timeout,
-					  max_octets, sdu_interval,
-					  iso_interval, stream_sync_delay,
-					  group_sync_delay, &source_handle);
+					  burst_number, flush_timeout, max_octets,
+					  sdu_interval, iso_interval,
+					  stream_sync_delay, group_sync_delay,
+					  pdu_alloc, pdu_write, pdu_ack, pdu_release,
+					  &source_handle);
 
 		if (!err) {
 			dp->source_hdl = source_handle;
@@ -347,48 +426,6 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 	sdu_interval = lll_iso->sdu_interval;
 	iso_interval = lll_iso->iso_interval;
 #endif /* CONFIG_BT_CTLR_SYNC_ISO */
-
-	if (path_id == BT_HCI_DATAPATH_ID_HCI) {
-		/* Not vendor specific, thus alloc and emit functions known */
-		err = isoal_sink_create(handle, role,
-					burst_number, flush_timeout,
-					sdu_interval, iso_interval,
-					stream_sync_delay, group_sync_delay,
-					sink_sdu_alloc_hci, sink_sdu_emit_hci,
-					sink_sdu_write_hci, &sink_handle);
-	} else {
-		/* Set up vendor specific data path */
-		isoal_sink_sdu_alloc_cb sdu_alloc;
-		isoal_sink_sdu_emit_cb  sdu_emit;
-		isoal_sink_sdu_write_cb sdu_write;
-
-		/* Request vendor sink callbacks for path */
-		if (ll_data_path_sink_create(dp, &sdu_alloc, &sdu_emit, &sdu_write)) {
-			err = isoal_sink_create(handle, role,
-						burst_number, flush_timeout,
-						sdu_interval, iso_interval,
-						stream_sync_delay, group_sync_delay,
-						sdu_alloc, sdu_emit, sdu_write,
-						&sink_handle);
-		} else {
-			ull_iso_datapath_release(dp);
-
-			return BT_HCI_ERR_CMD_DISALLOWED;
-		}
-	}
-
-	if (!err) {
-#if defined(CONFIG_BT_CTLR_SYNC_ISO)
-		stream->dp = dp;
-#endif /* CONFIG_BT_CTLR_SYNC_ISO */
-
-		dp->sink_hdl = sink_handle;
-		isoal_sink_enable(sink_handle);
-	} else {
-		ull_iso_datapath_release(dp);
-
-		return BT_HCI_ERR_CMD_DISALLOWED;
-	}
 
 	return 0;
 }
@@ -873,6 +910,95 @@ int ll_iso_tx_mem_enqueue(uint16_t handle, void *tx)
 	return 0;
 }
 #endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
+
+#if defined(CONFIG_BT_CTLR_ISO)
+/**
+ * Allocate a PDU from the LL and store the details in the given buffer. Allocation
+ * is not expected to fail as there must always be sufficient PDU buffers. Any
+ * failure will trigger the assert.
+ * @param[in]  pdu_buffer Buffer to store PDU details in
+ * @return     Error status of operation
+ */
+static isoal_status_t ll_iso_pdu_alloc(struct isoal_pdu_buffer *pdu_buffer)
+{
+	struct node_tx_iso *node_tx;
+
+	node_tx = ll_iso_tx_mem_acquire();
+	if (!node_tx) {
+		BT_ERR("Tx Buffer Overflow");
+		LL_ASSERT(0);
+		return ISOAL_STATUS_ERR_PDU_ALLOC;
+	}
+
+	/* node_tx handle will be required to emit the PDU later */
+	pdu_buffer->handle = (void *)node_tx;
+	pdu_buffer->pdu    = (void *)node_tx->pdu;
+
+	/* Use TX buffer size as the limit here. Actual size will be decided in
+	 * the ISOAL based on the minimum of the buffer size and the respective
+	 * Max_PDU_C_To_P or Max_PDU_P_To_C.
+	 */
+	pdu_buffer->size = ISO_TX_BUFFER_SIZE;
+
+	return ISOAL_STATUS_OK;
+}
+
+/**
+ * Write the given SDU payload to the target PDU buffer at the given offset.
+ * @param[in,out]  pdu_buffer  Target PDU buffer
+ * @param[in]      pdu_offset  Offset / current write position within PDU
+ * @param[in]      sdu_payload Location of source data
+ * @param[in]      consume_len Length of data to copy
+ * @return         Error status of write operation
+ */
+static isoal_status_t ll_iso_pdu_write(struct isoal_pdu_buffer *pdu_buffer,
+				       const size_t  pdu_offset,
+				       const uint8_t *sdu_payload,
+				       const size_t  consume_len)
+{
+	LL_ASSERT(pdu_buffer);
+	LL_ASSERT(pdu_buffer->pdu);
+	LL_ASSERT(sdu_payload);
+
+	if ((pdu_offset + consume_len) > pdu_buffer->size) {
+		/* Exceeded PDU buffer */
+		return ISOAL_STATUS_ERR_UNSPECIFIED;
+	}
+
+	/* Copy source to destination at given offset */
+	memcpy(&pdu_buffer->pdu->payload[pdu_offset], sdu_payload, consume_len);
+
+	return ISOAL_STATUS_OK;
+}
+
+/**
+ * Acknowldge TX of the given payload.
+ * @param pdu_buffer  PDU to acknowledge
+ * @return            Error status of write operation
+ */
+static isoal_status_t ll_iso_pdu_ack(const struct isoal_pdu_buffer *pdu_buffer,
+				     const uint16_t handle)
+{
+	return ISOAL_STATUS_OK;
+}
+
+/**
+ * Release the given payload back to the memory pool.
+ * @param pdu_buffer  PDU to release allocated memory from
+ * @return            Error status of write operation
+ */
+static isoal_status_t ll_iso_pdu_release(const struct isoal_pdu_buffer *pdu_buffer)
+{
+	struct node_tx_iso *node_tx;
+
+	/* Retrieve Node handle */
+	node_tx = pdu_buffer->handle;
+
+	ll_iso_tx_mem_release(node_tx);
+
+	return ISOAL_STATUS_OK;
+}
+#endif /* CONFIG_BT_CTLR_ISO */
 
 static int init_reset(void)
 {

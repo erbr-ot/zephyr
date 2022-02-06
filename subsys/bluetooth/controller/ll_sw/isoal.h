@@ -264,12 +264,64 @@ struct isoal_sink {
 /* Forward declaration */
 struct isoal_source;
 
+/**
+ * @brief  Callback: Request memory for a new ISO PDU buffer
+ *
+ * Proprietary ISO sub systems may have
+ * specific requirements or opinions on where to locate ISO PDUs; some
+ * memories may be faster, may be dynamically mapped in, etc.
+ *
+ * @return ISOAL_STATUS_ERR_ALLOC if size_request could not be fulfilled, otherwise
+ *         ISOAL_STATUS_OK.
+ */
+typedef isoal_status_t (*isoal_source_pdu_alloc_cb)(
+	/*!< [out] Struct is modified. Must not be NULL */
+	struct isoal_pdu_buffer *pdu_buffer
+);
+
+/**
+ * @brief  Callback: Release an ISO PDU
+ */
+typedef isoal_status_t (*isoal_source_pdu_release_cb)(
+	/*!< [in]  PDU to be released */
+	const struct isoal_pdu_buffer *pdu_buffer
+);
+
+/**
+ * @brief  Callback: Acknowledge TX of an ISO PDU
+ */
+typedef isoal_status_t (*isoal_source_pdu_ack_cb)(
+	/*!< [in]  PDU to acknowledge */
+	const struct isoal_pdu_buffer *pdu_buffer,
+	/*!< [in]  Handle of PDU to acknowledge */
+	const uint16_t handle
+);
+
+/**
+ * @brief  Callback: Write a number of bytes to PDU buffer
+ */
+typedef isoal_status_t (*isoal_source_pdu_write_cb)(
+	/*!< [out]  PDU under production */
+	struct isoal_pdu_buffer *pdu_buffer,
+	/*!< [in]  Offset within PDU buffer */
+	const size_t offset,
+	/*!< [in]  Source data */
+	const uint8_t *sdu_payload,
+	/*!< [in]  Number of bytes to be copied */
+	const size_t consume_len
+);
+
 struct isoal_source_config {
 	enum isoal_mode mode;
 	/* TODO add SDU and PDU max length etc. */
 };
 
 struct isoal_source_session {
+	isoal_source_pdu_alloc_cb   pdu_alloc;
+	isoal_source_pdu_write_cb   pdu_write;
+	isoal_source_pdu_ack_cb     pdu_ack;
+	isoal_source_pdu_release_cb pdu_release;
+
 	struct isoal_source_config param;
 	isoal_sdu_cnt_t            seqn;
 	uint16_t                   handle;
@@ -297,8 +349,6 @@ struct isoal_source {
 	/* State for PDU production */
 	struct isoal_pdu_production pdu_production;
 };
-
-
 
 isoal_status_t isoal_init(void);
 
@@ -347,6 +397,10 @@ isoal_status_t isoal_source_create(uint16_t handle,
 				   uint16_t iso_interval,
 				   uint32_t stream_sync_delay,
 				   uint32_t group_sync_delay,
+				   isoal_source_pdu_alloc_cb pdu_alloc,
+				   isoal_source_pdu_write_cb pdu_write,
+				   isoal_source_pdu_ack_cb pdu_ack,
+				   isoal_source_pdu_release_cb pdu_release,
 				   isoal_source_handle_t *hdl);
 
 struct isoal_source_config *isoal_get_source_param_ref(isoal_source_handle_t hdl);
