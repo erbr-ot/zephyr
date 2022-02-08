@@ -183,7 +183,7 @@
 #define FEAT_ISO_MASTER 0x00
 #endif
 
-#if defined(CONFIG_MISSING)
+#if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
 #define FEAT_ISO_SLAVE 0x20000000
 #else
 #define FEAT_ISO_SLAVE 0x00

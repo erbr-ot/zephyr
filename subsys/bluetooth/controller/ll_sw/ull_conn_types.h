@@ -447,6 +447,9 @@ struct llcp_struct {
 	} cte_rsp;
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_RSP */
 
+	struct {
+		uint8_t terminate_ack;
+	} cis;
 #if (CONFIG_BT_CTLR_LLCP_PER_CONN_TX_CTRL_BUF_NUM > 0) &&\
 	(CONFIG_BT_CTLR_LLCP_PER_CONN_TX_CTRL_BUF_NUM <\
 	CONFIG_BT_CTLR_LLCP_TX_PER_CONN_TX_CTRL_BUF_NUM_MAX)
@@ -454,7 +457,6 @@ struct llcp_struct {
 	uint8_t tx_buffer_alloc;
 #endif /* (CONFIG_BT_CTLR_LLCP_PER_CONN_TX_CTRL_BUF_NUM > 0) */
 	uint8_t tx_q_pause_data_mask;
-
 }; /* struct llcp_struct */
 
 struct ll_conn {
