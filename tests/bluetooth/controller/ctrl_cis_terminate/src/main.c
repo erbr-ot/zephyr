@@ -34,7 +34,6 @@
 #include "isoal.h"
 #include "ull_iso_types.h"
 #include "ull_conn_iso_types.h"
-
 #include "ull_conn_types.h"
 #include "ull_llcp.h"
 #include "ull_conn_internal.h"
@@ -50,9 +49,11 @@ static void setup(void)
 	test_setup(&conn);
 }
 
-static void test_terminate_rem(uint8_t role)
+static void test_cis_terminate_rem(uint8_t role)
 {
-	struct pdu_data_llctrl_terminate_ind remote_terminate_ind = {
+	struct pdu_data_llctrl_cis_terminate_ind remote_cis_terminate_ind = {
+		.cig_id = 0x01,
+		.cis_id = 0x02,
 		.error_code = 0x05,
 	};
 
@@ -66,7 +67,7 @@ static void test_terminate_rem(uint8_t role)
 	event_prepare(&conn);
 
 	/* Rx */
-	lt_tx(LL_TERMINATE_IND, &conn, &remote_terminate_ind);
+	lt_tx(LL_CIS_TERMINATE_IND, &conn, &remote_cis_terminate_ind);
 
 	/* Done */
 	event_done(&conn);
@@ -78,22 +79,26 @@ static void test_terminate_rem(uint8_t role)
 		      "Free CTX buffers %d", ctx_buffers_free());
 }
 
-void test_terminate_mas_rem(void)
+void test_cis_terminate_mas_rem(void)
 {
-	test_terminate_rem(BT_HCI_ROLE_CENTRAL);
+	test_cis_terminate_rem(BT_HCI_ROLE_CENTRAL);
 }
 
-void test_terminate_sla_rem(void)
+void test_cis_terminate_sla_rem(void)
 {
-	test_terminate_rem(BT_HCI_ROLE_PERIPHERAL);
+	test_cis_terminate_rem(BT_HCI_ROLE_PERIPHERAL);
 }
 
-void test_terminate_loc(uint8_t role)
+void test_cis_terminate_loc(uint8_t role)
 {
 	uint8_t err;
 	struct node_tx *tx;
+	struct ll_conn_iso_stream cis = { 0 };
+	struct ll_conn_iso_group group = { 0 };
 
-	struct pdu_data_llctrl_terminate_ind local_terminate_ind = {
+	struct pdu_data_llctrl_cis_terminate_ind local_cis_terminate_ind = {
+		.cig_id = 0x03,
+		.cis_id = 0x04,
 		.error_code = 0x06,
 	};
 
@@ -103,15 +108,21 @@ void test_terminate_loc(uint8_t role)
 	/* Connect */
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
 
+	/* Mock CIS/ACL */
+	cis.lll.acl_handle = conn.lll.handle;
+	group.cig_id = 0x03;
+	cis.cis_id = 0x04;
+	cis.group = &group;
+
 	/* Initiate an LE Ping Procedure */
-	err = ull_cp_terminate(&conn, 0x06);
+	err = ull_cp_cis_terminate(&conn, &cis, 0x06);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS, NULL);
 
 	/* Prepare */
 	event_prepare(&conn);
 
 	/* Tx Queue should have one LL Control PDU */
-	lt_rx(LL_TERMINATE_IND, &conn, &tx, &local_terminate_ind);
+	lt_rx(LL_CIS_TERMINATE_IND, &conn, &tx, &local_cis_terminate_ind);
 	lt_rx_q_is_empty(&conn);
 
 	/* RX Ack */
@@ -130,24 +141,24 @@ void test_terminate_loc(uint8_t role)
 		      "Free CTX buffers %d", ctx_buffers_free());
 }
 
-void test_terminate_mas_loc(void)
+void test_cis_terminate_mas_loc(void)
 {
-	test_terminate_loc(BT_HCI_ROLE_CENTRAL);
+	test_cis_terminate_loc(BT_HCI_ROLE_CENTRAL);
 }
 
-void test_terminate_sla_loc(void)
+void test_cis_terminate_sla_loc(void)
 {
-	test_terminate_loc(BT_HCI_ROLE_PERIPHERAL);
+	test_cis_terminate_loc(BT_HCI_ROLE_PERIPHERAL);
 }
 
 void test_main(void)
 {
 	ztest_test_suite(
-		term,
-		ztest_unit_test_setup_teardown(test_terminate_mas_rem, setup, unit_test_noop),
-		ztest_unit_test_setup_teardown(test_terminate_sla_rem, setup, unit_test_noop),
-		ztest_unit_test_setup_teardown(test_terminate_mas_loc, setup, unit_test_noop),
-		ztest_unit_test_setup_teardown(test_terminate_sla_loc, setup, unit_test_noop));
+		cis_term,
+		ztest_unit_test_setup_teardown(test_cis_terminate_mas_rem, setup, unit_test_noop),
+		ztest_unit_test_setup_teardown(test_cis_terminate_sla_rem, setup, unit_test_noop),
+		ztest_unit_test_setup_teardown(test_cis_terminate_mas_loc, setup, unit_test_noop),
+		ztest_unit_test_setup_teardown(test_cis_terminate_sla_loc, setup, unit_test_noop));
 
-	ztest_run_test_suite(term);
+	ztest_run_test_suite(cis_term);
 }

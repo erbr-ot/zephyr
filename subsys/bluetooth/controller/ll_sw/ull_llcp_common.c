@@ -26,8 +26,14 @@
 #include "ll_feat.h"
 #include "lll/lll_df_types.h"
 #include "lll_conn.h"
+#include "lll_conn_iso.h"
 
 #include "ull_tx_queue.h"
+
+#include "isoal.h"
+#include "ull_iso_types.h"
+#include "ull_conn_iso_types.h"
+#include "ull_conn_iso_internal.h"
 
 #include "ull_conn_types.h"
 #include "ull_chan_internal.h"
@@ -133,6 +139,11 @@ static void lp_comm_tx(struct ll_conn *conn, struct proc_ctx *ctx)
 		break;
 	case PROC_TERMINATE:
 		llcp_pdu_encode_terminate_ind(ctx, pdu);
+		ctx->tx_ack = tx;
+		ctx->rx_opcode = PDU_DATA_LLCTRL_TYPE_UNUSED;
+		break;
+	case PROC_CIS_TERMINATE:
+		llcp_pdu_encode_cis_terminate_ind(ctx, pdu);
 		ctx->tx_ack = tx;
 		ctx->rx_opcode = PDU_DATA_LLCTRL_TYPE_UNUSED;
 		break;
@@ -331,6 +342,14 @@ static void lp_comm_complete(struct ll_conn *conn, struct proc_ctx *ctx, uint8_t
 		/* Mark the connection for termination */
 		conn->llcp_terminate.reason_final = BT_HCI_ERR_LOCALHOST_TERM_CONN;
 		break;
+	case PROC_CIS_TERMINATE:
+		/* No notification */
+		llcp_lr_complete(conn);
+		ctx->state = LP_COMMON_STATE_IDLE;
+
+		/* Handle CIS termination */
+		/* TODO: Do termination */
+		break;
 #if defined(CONFIG_BT_CTLR_DATA_LENGTH)
 	case PROC_DATA_LENGTH_UPDATE:
 		if (ctx->response_opcode != PDU_DATA_LLCTRL_TYPE_UNKNOWN_RSP) {
@@ -464,6 +483,14 @@ static void lp_comm_send_req(struct ll_conn *conn, struct proc_ctx *ctx, uint8_t
 			ctx->state = LP_COMMON_STATE_WAIT_TX_ACK;
 		}
 		break;
+	case PROC_CIS_TERMINATE:
+		if (ctx->pause || !llcp_tx_alloc_peek(conn, ctx)) {
+			ctx->state = LP_COMMON_STATE_WAIT_TX;
+		} else {
+			lp_comm_tx(conn, ctx);
+			ctx->state = LP_COMMON_STATE_WAIT_TX_ACK;
+		}
+		break;
 #if defined(CONFIG_BT_CTLR_DATA_LENGTH)
 	case PROC_DATA_LENGTH_UPDATE:
 		if (!ull_cp_remote_dle_pending(conn)) {
@@ -564,6 +591,10 @@ static void lp_comm_st_wait_tx_ack(struct ll_conn *conn, struct proc_ctx *ctx, u
 			break;
 #endif /* CONFIG_BT_CTLR_MIN_USED_CHAN && CONFIG_BT_PERIPHERAL */
 		case PROC_TERMINATE:
+			ctx->tx_ack = NULL;
+			lp_comm_complete(conn, ctx, evt, param);
+			break;
+		case PROC_CIS_TERMINATE:
 			ctx->tx_ack = NULL;
 			lp_comm_complete(conn, ctx, evt, param);
 			break;
@@ -751,6 +782,9 @@ static void rp_comm_rx_decode(struct ll_conn *conn, struct proc_ctx *ctx, struct
 		break;
 	case PDU_DATA_LLCTRL_TYPE_TERMINATE_IND:
 		llcp_pdu_decode_terminate_ind(ctx, pdu);
+		break;
+	case PDU_DATA_LLCTRL_TYPE_CIS_TERMINATE_IND:
+		llcp_pdu_decode_cis_terminate_ind(ctx, pdu);
 		break;
 #if defined(CONFIG_BT_CTLR_DATA_LENGTH)
 	case PDU_DATA_LLCTRL_TYPE_LENGTH_REQ:
@@ -981,6 +1015,14 @@ static void rp_comm_send_rsp(struct ll_conn *conn, struct proc_ctx *ctx, uint8_t
 
 		/* Mark the connection for termination */
 		conn->llcp_terminate.reason_final = ctx->data.term.error_code;
+		break;
+	case PROC_CIS_TERMINATE:
+		/* No response */
+		llcp_rr_complete(conn);
+		ctx->state = RP_COMMON_STATE_IDLE;
+
+		/* Handle CIS termination */
+		/* TODO: terminate CIS */
 		break;
 #if defined(CONFIG_BT_CTLR_DATA_LENGTH)
 	case PROC_DATA_LENGTH_UPDATE:

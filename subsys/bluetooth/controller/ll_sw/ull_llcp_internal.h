@@ -20,9 +20,11 @@ enum llcp_proc {
 	PROC_CHAN_MAP_UPDATE,
 	PROC_DATA_LENGTH_UPDATE,
 	PROC_CTE_REQ,
+	PROC_CIS_TERMINATE,
 	/* A helper enum entry, to use in pause prcedure context */
 	PROC_NONE = 0x0,
 };
+
 #if ((CONFIG_BT_CTLR_LLCP_COMMON_TX_CTRL_BUF_NUM <\
 			(CONFIG_BT_CTLR_LLCP_TX_PER_CONN_TX_CTRL_BUF_NUM_MAX *\
 			CONFIG_BT_CTLR_LLCP_CONN)) &&\
@@ -228,7 +230,6 @@ struct proc_ctx {
 			uint8_t has_cte;
 		} cte_remote_rsp;
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_REQ */
-
 #if defined(CONFIG_BT_CTLR_DF_CONN_CTE_RSP)
 		/* Use by CTE Response Procedure */
 		struct llcp_df_cte_remote_req {
@@ -236,7 +237,11 @@ struct proc_ctx {
 			uint8_t min_cte_len;
 		} cte_remote_req;
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_RSP */
-
+		struct {
+			uint8_t  cig_id;
+			uint8_t  cis_id;
+			uint8_t error_code;
+		} cis_term;
 	} data;
 
 	struct {
@@ -611,6 +616,9 @@ void llcp_ntf_encode_cte_req(struct pdu_data *pdu);
 void llcp_pdu_decode_cte_req(struct proc_ctx *ctx, struct pdu_data *pdu);
 void llcp_pdu_encode_cte_rsp(const struct proc_ctx *ctx, struct pdu_data *pdu);
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_RSP */
+
+void llcp_pdu_encode_cis_terminate_ind(struct proc_ctx *ctx, struct pdu_data *pdu);
+void llcp_pdu_decode_cis_terminate_ind(struct proc_ctx *ctx, struct pdu_data *pdu);
 
 #ifdef ZTEST_UNITTEST
 bool lr_is_disconnected(struct ll_conn *conn);
