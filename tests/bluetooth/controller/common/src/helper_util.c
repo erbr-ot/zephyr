@@ -86,6 +86,9 @@ helper_pdu_encode_func_t *const helper_pdu_encode[] = {
 	[LL_LENGTH_RSP] = helper_pdu_encode_length_rsp,
 	[LL_CTE_REQ] = helper_pdu_encode_cte_req,
 	[LL_CTE_RSP] = helper_pdu_encode_cte_rsp,
+	[LL_CIS_REQ] = helper_pdu_encode_cis_req,
+	[LL_CIS_RSP] = helper_pdu_encode_cis_rsp,
+	[LL_CIS_IND] = helper_pdu_encode_cis_ind,
 	[LL_CIS_TERMINATE_IND] = helper_pdu_encode_cis_terminate_ind,
 };
 
@@ -118,6 +121,9 @@ helper_pdu_verify_func_t *const helper_pdu_verify[] = {
 	[LL_LENGTH_RSP] = helper_pdu_verify_length_rsp,
 	[LL_CTE_REQ] = helper_pdu_verify_cte_req,
 	[LL_CTE_RSP] = helper_pdu_verify_cte_rsp,
+	[LL_CIS_REQ] = helper_pdu_verify_cis_req,
+	[LL_CIS_RSP] = helper_pdu_verify_cis_rsp,
+	[LL_CIS_IND] = helper_pdu_verify_cis_ind,
 	[LL_CIS_TERMINATE_IND] = helper_pdu_verify_cis_terminate_ind,
 };
 
@@ -149,6 +155,9 @@ helper_pdu_ntf_verify_func_t *const helper_pdu_ntf_verify[] = {
 	[LL_CTE_REQ] = NULL,
 	/* TODO (ppryga): Add verification for RSP notification */
 	[LL_CTE_RSP] = NULL,
+	[LL_CIS_REQ] = NULL,
+	[LL_CIS_RSP] = NULL,
+	[LL_CIS_IND] = NULL,
 	[LL_CIS_TERMINATE_IND] = NULL,
 };
 
@@ -177,6 +186,9 @@ helper_node_encode_func_t *const helper_node_encode[] = {
 	[LL_CHAN_MAP_UPDATE_IND] = NULL,
 	[LL_CTE_REQ] = NULL,
 	[LL_CTE_RSP] = helper_node_encode_cte_rsp,
+	[LL_CIS_REQ] = NULL,
+	[LL_CIS_RSP] = NULL,
+	[LL_CIS_IND] = NULL,
 	[LL_CIS_TERMINATE_IND] = NULL,
 };
 
@@ -185,6 +197,8 @@ helper_node_verify_func_t *const helper_node_verify[] = {
 	[NODE_CONN_UPDATE] = helper_node_verify_conn_update,
 	[NODE_ENC_REFRESH] = helper_node_verify_enc_refresh,
 	[NODE_CTE_RSP] = helper_node_verify_cte_rsp,
+	[NODE_CIS_REQUEST] = helper_node_verify_cis_request,
+	[NODE_CIS_ESTABLISHED] = helper_node_verify_cis_established,
 };
 
 /*

@@ -803,7 +803,6 @@ void llcp_lp_comm_run(struct ll_conn *conn, struct proc_ctx *ctx, void *param)
 
 static void rp_comm_stop_cis(struct ll_conn *conn, struct proc_ctx *ctx)
 {
-
 	llcp_cis_stop_by_id(ctx->data.cis_term.cig_id, ctx->data.cis_term.cis_id,
 			    ctx->data.cis_term.error_code);
 }
