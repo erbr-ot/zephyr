@@ -378,7 +378,7 @@ static void lp_comm_complete(struct ll_conn *conn, struct proc_ctx *ctx, uint8_t
 			/* Resume data, but only if there is no remote procedure pending RSP
 			 * in which case, the RSP tx-ACK will resume data
 			 */
-			llcp_tx_resume_data(conn);
+			llcp_tx_resume_data(conn, LLCP_TX_QUEUE_PAUSE_DATA_DATA_LENGTH);
 		}
 		break;
 #endif /* CONFIG_BT_CTLR_DATA_LENGTH */
@@ -483,14 +483,16 @@ static void lp_comm_send_req(struct ll_conn *conn, struct proc_ctx *ctx, uint8_t
 			ctx->state = LP_COMMON_STATE_WAIT_TX_ACK;
 		}
 		break;
+#if defined(CONFIG_BT_CTLR_CENTRAL_ISO) || defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
 	case PROC_CIS_TERMINATE:
-		if (ctx->pause || !llcp_tx_alloc_peek(conn, ctx)) {
+		if (!lp_cis_terminated(conn, ctx) || ctx->pause || !llcp_tx_alloc_peek(conn, ctx)) {
 			ctx->state = LP_COMMON_STATE_WAIT_TX;
 		} else {
 			lp_comm_tx(conn, ctx);
 			ctx->state = LP_COMMON_STATE_WAIT_TX_ACK;
 		}
 		break;
+#endif /* defined(CONFIG_BT_CTLR_CENTRAL_ISO) || defined(CONFIG_BT_CTLR_PERIPHERAL_ISO) */
 #if defined(CONFIG_BT_CTLR_DATA_LENGTH)
 	case PROC_DATA_LENGTH_UPDATE:
 		if (!ull_cp_remote_dle_pending(conn)) {
@@ -501,7 +503,7 @@ static void lp_comm_send_req(struct ll_conn *conn, struct proc_ctx *ctx, uint8_t
 				 * update DLE without conflicting with out-going LL Data PDUs
 				 * See BT Core 5.2 Vol6: B-4.5.10 & B-5.1.9
 				 */
-				llcp_tx_pause_data(conn);
+				llcp_tx_pause_data(conn, LLCP_TX_QUEUE_PAUSE_DATA_DATA_LENGTH);
 				lp_comm_tx(conn, ctx);
 				ctx->state = LP_COMMON_STATE_WAIT_RX;
 			}
@@ -794,7 +796,7 @@ static void rp_comm_rx_decode(struct ll_conn *conn, struct proc_ctx *ctx, struct
 		 * conflicting with out-going LL Data PDUs
 		 * See BT Core 5.2 Vol6: B-4.5.10 & B-5.1.9
 		 */
-		llcp_tx_pause_data(conn);
+		llcp_tx_pause_data(conn, LLCP_TX_QUEUE_PAUSE_DATA_DATA_LENGTH);
 		break;
 #endif /* CONFIG_BT_CTLR_DATA_LENGTH */
 #if defined(CONFIG_BT_CTLR_DF_CONN_CTE_RSP)
@@ -979,7 +981,6 @@ static void rp_comm_send_rsp(struct ll_conn *conn, struct proc_ctx *ctx, uint8_t
 			}
 		} else {
 			/* Protocol Error.
-			 *
 			 * A procedure already sent a LL_VERSION_IND and received a LL_VERSION_IND.
 			 */
 			/* TODO */
@@ -1091,7 +1092,7 @@ static void rp_comm_st_wait_tx_ack(struct ll_conn *conn, struct proc_ctx *ctx, u
 			/* Apply changes in data lengths/times */
 			uint8_t dle_changed = ull_dle_update_eff(conn);
 
-			llcp_tx_resume_data(conn);
+			llcp_tx_resume_data(conn, LLCP_TX_QUEUE_PAUSE_DATA_DATA_LENGTH);
 
 			if (dle_changed && !llcp_ntf_alloc_is_available()) {
 				ctx->state = RP_COMMON_STATE_WAIT_NTF;
