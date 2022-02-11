@@ -270,7 +270,6 @@ static void isoal_source_deallocate(isoal_source_handle_t hdl)
  * @param group_sync_delay[in]  CIG sync delay
  * @param pdu_alloc[in]         Callback of PDU allocator
  * @param pdu_write[in]         Callback of PDU byte writer
- * @param pdu_ack[in]           Callback of PDU TX acknowledge
  * @param pdu_release[in]       Callback of PDU deallocator
  * @param hdl[out]              Handle to new source
  *
@@ -288,7 +287,6 @@ isoal_status_t isoal_source_create(
 	uint32_t                    group_sync_delay,
 	isoal_source_pdu_alloc_cb   pdu_alloc,
 	isoal_source_pdu_write_cb   pdu_write,
-	isoal_source_pdu_ack_cb     pdu_ack,
 	isoal_source_pdu_release_cb pdu_release,
 	isoal_source_handle_t       *hdl)
 {
@@ -317,7 +315,6 @@ isoal_status_t isoal_source_create(
 	/* Remember the platform-specific callbacks */
 	session->pdu_alloc   = pdu_alloc;
 	session->pdu_write   = pdu_write;
-	session->pdu_ack     = pdu_ack;
 	session->pdu_release = pdu_release;
 
 	/* TODO: Constant need to be updated */
@@ -992,7 +989,10 @@ static isoal_status_t isoal_tx_pdu_emit(const struct isoal_source *source_ctx,
 					const isoal_pdu_len_t payload_size)
 {
 	struct node_tx_iso *node_tx;
+	isoal_status_t status;
 	uint16_t handle;
+
+	status = ISOAL_STATUS_OK;
 
 	/* Retreive CIS / BIS handle */
 	handle = bt_iso_handle(source_ctx->session.handle);
@@ -1010,11 +1010,11 @@ static isoal_status_t isoal_tx_pdu_emit(const struct isoal_source *source_ctx,
 		 * will be possible
 		 */
 		BT_ERR("Failed to enqueue node (%p)", node_tx);
-		source_ctx->session.pdu_release(&produced_pdu->contents);
-		return ISOAL_STATUS_ERR_PDU_EMIT;
+		status = ISOAL_STATUS_ERR_PDU_EMIT;
+		source_ctx->session.pdu_release(node_tx, handle, status);
 	}
 
-	return ISOAL_STATUS_OK;
+	return status;
 }
 
 /* Allocates a new PDU only if the previous PDU was emitted */
@@ -1261,13 +1261,13 @@ isoal_status_t isoal_tx_sdu_fragment(isoal_source_handle_t source_hdl,
 	return err;
 }
 
-void isoal_tx_pdu_ack(isoal_source_handle_t source_hdl,
-		      struct node_tx_iso *node_tx, uint16_t handle)
+void isoal_tx_pdu_release(isoal_source_handle_t source_hdl,
+			  struct node_tx_iso *node_tx)
 {
 	struct isoal_source *source = &isoal_global.source_state[source_hdl];
 
-	if (source && source->session.pdu_ack) {
-		struct isoal_pdu_buffer pdu_buffer = { .handle = node_tx };
-		source->session.pdu_ack(&pdu_buffer, handle);
+	if (source && source->session.pdu_release) {
+		source->session.pdu_release(node_tx, source->session.handle,
+					    ISOAL_STATUS_OK);
 	}
 }

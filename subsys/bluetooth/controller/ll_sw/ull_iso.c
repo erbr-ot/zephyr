@@ -61,9 +61,9 @@ static isoal_status_t ll_iso_pdu_write(struct isoal_pdu_buffer *pdu_buffer,
 				       const size_t   offset,
 				       const uint8_t *sdu_payload,
 				       const size_t   consume_len);
-static isoal_status_t ll_iso_pdu_ack(const struct isoal_pdu_buffer *pdu_buffer,
-				     const uint16_t handle);
-static isoal_status_t ll_iso_pdu_release(const struct isoal_pdu_buffer *pdu_buffer);
+static isoal_status_t ll_iso_pdu_release(struct node_tx_iso *node_tx,
+					 const uint16_t handle,
+					 const isoal_status_t status);
 
 /* Allocate data path pools for RX/TX directions for each stream */
 #define BT_CTLR_ISO_STREAMS ((2 * (BT_CTLR_CONN_ISO_STREAMS)) + \
@@ -176,13 +176,11 @@ __weak bool ll_data_path_sink_create(struct ll_iso_datapath *datapath,
 __weak bool ll_data_path_source_create(struct ll_iso_datapath *datapath,
 				       isoal_source_pdu_alloc_cb *pdu_alloc,
 				       isoal_source_pdu_write_cb *pdu_write,
-				       isoal_source_pdu_ack_cb *pdu_ack,
 				       isoal_source_pdu_release_cb *pdu_release)
 {
 	ARG_UNUSED(datapath);
 	ARG_UNUSED(pdu_alloc);
 	ARG_UNUSED(pdu_write);
-	ARG_UNUSED(pdu_ack);
 	ARG_UNUSED(pdu_release);
 
 	return false;
@@ -385,7 +383,6 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 		/* Create source for TX data path */
 		isoal_source_pdu_alloc_cb   pdu_alloc;
 		isoal_source_pdu_write_cb   pdu_write;
-		isoal_source_pdu_ack_cb     pdu_ack;
 		isoal_source_pdu_release_cb pdu_release;
 
 		/* Set default callbacks assuming not vendor specific
@@ -393,12 +390,11 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 		 */
 		pdu_alloc   = ll_iso_pdu_alloc;
 		pdu_write   = ll_iso_pdu_write;
-		pdu_ack     = ll_iso_pdu_ack;
 		pdu_release = ll_iso_pdu_release;
 
 		if (path_is_vendor_specific(path_id)) {
 			if (!ll_data_path_source_create(dp, &pdu_alloc, &pdu_write,
-							&pdu_ack, &pdu_release)) {
+							&pdu_release)) {
 				return BT_HCI_ERR_CMD_DISALLOWED;
 			}
 		}
@@ -407,7 +403,7 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 					  burst_number, flush_timeout, max_octets,
 					  sdu_interval, iso_interval,
 					  stream_sync_delay, group_sync_delay,
-					  pdu_alloc, pdu_write, pdu_ack, pdu_release,
+					  pdu_alloc, pdu_write, pdu_release,
 					  &source_handle);
 
 		if (!err) {
@@ -695,8 +691,7 @@ static void iso_rx_demux_tx_ack(void)
 		cis = ll_conn_iso_stream_get(handle);
 		dp  = cis->hdr.datapath_in;
 		if (dp) {
-			isoal_tx_pdu_ack(dp->source_hdl, node_tx,
-					 handle);
+			isoal_tx_pdu_release(dp->source_hdl, node_tx);
 		}
 
 		/* Release link mem */
@@ -1051,37 +1046,23 @@ static isoal_status_t ll_iso_pdu_write(struct isoal_pdu_buffer *pdu_buffer,
 }
 
 /**
- * Acknowldge TX of the given payload.
- * @param pdu_buffer  PDU to acknowledge
- * @return            Error status of write operation
- */
-static isoal_status_t ll_iso_pdu_ack(const struct isoal_pdu_buffer *pdu_buffer,
-				     const uint16_t handle)
-{
-	struct node_tx_iso *node_tx;
-
-	/* Retrieve Node handle */
-	node_tx = pdu_buffer->handle;
-
-	/* Process Tx ack to shared mfifo */
-	ll_tx_ack_put(handle, (void *)node_tx);
-
-	return ISOAL_STATUS_OK;
-}
-
-/**
  * Release the given payload back to the memory pool.
- * @param pdu_buffer  PDU to release allocated memory from
- * @return            Error status of write operation
+ * @param node_tx TX node to release or forward
+ * @param handle  CIS/BIS handle
+ * @param status  Reason for release
+ * @return        Error status of write operation
  */
-static isoal_status_t ll_iso_pdu_release(const struct isoal_pdu_buffer *pdu_buffer)
+static isoal_status_t ll_iso_pdu_release(struct node_tx_iso *node_tx,
+					 const uint16_t handle,
+					 const isoal_status_t status)
 {
-	struct node_tx_iso *node_tx;
-
-	/* Retrieve Node handle */
-	node_tx = pdu_buffer->handle;
-
-	ll_iso_tx_mem_release(node_tx);
+	if (status == ISOAL_STATUS_OK) {
+		/* Process as TX ack */
+		ll_tx_ack_put(handle, (void *)node_tx);
+	} else {
+		/* Release back to memory pool */
+		ll_iso_tx_mem_release(node_tx);
+	}
 
 	return ISOAL_STATUS_OK;
 }

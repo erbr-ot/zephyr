@@ -290,17 +290,17 @@ typedef isoal_status_t (*isoal_source_pdu_alloc_cb)(
  */
 typedef isoal_status_t (*isoal_source_pdu_release_cb)(
 	/*!< [in]  PDU to be released */
-	const struct isoal_pdu_buffer *pdu_buffer
-);
-
-/**
- * @brief  Callback: Acknowledge TX of an ISO PDU
- */
-typedef isoal_status_t (*isoal_source_pdu_ack_cb)(
-	/*!< [in]  PDU to acknowledge */
-	const struct isoal_pdu_buffer *pdu_buffer,
-	/*!< [in]  Handle of PDU to acknowledge */
-	const uint16_t handle
+	struct node_tx_iso *node_tx,
+	/*!< [in]  CIS/BIS handle */
+	const uint16_t handle,
+	/*!< [in]  Cause of release. ISOAL_STATUS_OK means PDU was enqueued towards 
+	 *         LLL and sent or flushed, and may need further handling before
+	 *         memory is released, e.g. forwarded to HCI thread for complete-
+	 *         counting. Any other status indicates cause of error during SDU
+	 *         fragmentation/segmentation, in which case the PDU will not be
+	 *         produced.
+	 */
+	const isoal_status_t status 
 );
 
 /**
@@ -325,7 +325,6 @@ struct isoal_source_config {
 struct isoal_source_session {
 	isoal_source_pdu_alloc_cb   pdu_alloc;
 	isoal_source_pdu_write_cb   pdu_write;
-	isoal_source_pdu_ack_cb     pdu_ack;
 	isoal_source_pdu_release_cb pdu_release;
 
 	struct isoal_source_config param;
@@ -405,7 +404,6 @@ isoal_status_t isoal_source_create(uint16_t handle,
 				   uint32_t group_sync_delay,
 				   isoal_source_pdu_alloc_cb pdu_alloc,
 				   isoal_source_pdu_write_cb pdu_write,
-				   isoal_source_pdu_ack_cb pdu_ack,
 				   isoal_source_pdu_release_cb pdu_release,
 				   isoal_source_handle_t *hdl);
 
@@ -420,5 +418,5 @@ void isoal_source_destroy(isoal_source_handle_t hdl);
 isoal_status_t isoal_tx_sdu_fragment(isoal_source_handle_t source_hdl,
 				      const struct isoal_sdu_tx *tx_sdu);
 
-void isoal_tx_pdu_ack(isoal_source_handle_t source_hdl,
-		      struct node_tx_iso *node_tx, uint16_t handle);
+void isoal_tx_pdu_release(isoal_source_handle_t source_hdl,
+			  struct node_tx_iso *node_tx);
