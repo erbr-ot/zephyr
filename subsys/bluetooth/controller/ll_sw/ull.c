@@ -2327,30 +2327,29 @@ static uint8_t tx_cmplt_get(uint16_t *handle, uint8_t *first, uint8_t last)
 	cmplt = 0U;
 	do {
 		struct pdu_data *p;
+		struct node_tx *node_tx;
+
 #if defined(CONFIG_BT_CTLR_BROADCAST_ISO) || \
 	defined(CONFIG_BT_CTLR_CONN_ISO)
-		void *node_tx;
-
-		node_tx = tx->node;
 		if (IS_CIS_HANDLE(tx->handle)) {
-			struct node_tx_iso *node = node_tx;
-			p = (void *)node->pdu;
-		} else {
-			struct node_tx *node = node_tx;
-			p = (void *)node->pdu;
-		}
-#else
-		struct node_tx *node_tx;
-		node_tx = tx->node;
+			struct node_tx_iso *node_tx_iso;
 
+			node_tx_iso = tx->node;
+			p = (void *)node_tx_iso->pdu;
+			/* TODO: We may need something more advanced for framed */
+			if (p->ll_id == PDU_CIS_LLID_COMPLETE_END) {
+				cmplt++;
+			}
+			ll_iso_link_tx_release(node_tx_iso->link);
+			ll_iso_tx_mem_release (node_tx_iso);
+			goto next_ack;
+		}
+#endif /* CONFIG_BT_CTLR_BROADCAST_ISO || CONFIG_BT_CTLR_CONN_ISO */
+
+		node_tx = tx->node;
 		p = (void *)node_tx->pdu;
-#endif
 		if (!node_tx || (node_tx == (void *)1) ||
 		    (((uint32_t)node_tx & ~3) && (
-#if defined(CONFIG_BT_CTLR_BROADCAST_ISO) || \
-	defined(CONFIG_BT_CTLR_CONN_ISO)
-		      p->ll_id == PDU_CIS_LLID_COMPLETE_END ||
-#endif /* CONFIG_BT_CTLR_BROADCAST_ISO || CONFIG_BT_CTLR_CONN_ISO */
 		      p->ll_id == PDU_DATA_LLID_DATA_START ||
 		      p->ll_id == PDU_DATA_LLID_DATA_CONTINUE))) {
 			/* data packet, hence count num cmplt */
@@ -2362,17 +2361,10 @@ static uint8_t tx_cmplt_get(uint16_t *handle, uint8_t *first, uint8_t last)
 		}
 
 		if (((uint32_t)node_tx & ~3)) {
-#if defined(CONFIG_BT_CTLR_BROADCAST_ISO) || \
-	defined(CONFIG_BT_CTLR_CONN_ISO)
-			if (IS_CIS_HANDLE(tx->handle)) {
-				ll_iso_tx_mem_release(node_tx);
-			} else
-#endif /* CONFIG_BT_CTLR_BROADCAST_ISO || CONFIG_BT_CTLR_CONN_ISO */
-			{
-				ll_tx_mem_release(node_tx);
-			}
+			ll_tx_mem_release(node_tx);
 		}
 
+next_ack:
 		tx = mfifo_dequeue_iter_get(mfifo_tx_ack.m, mfifo_tx_ack.s,
 					    mfifo_tx_ack.n, mfifo_tx_ack.f,
 					    last, first);

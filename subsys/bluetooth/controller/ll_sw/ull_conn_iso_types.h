@@ -13,8 +13,6 @@ struct ll_conn_iso_stream {
 	struct ll_iso_stream_hdr hdr;
 	struct ll_conn_iso_group *group;
 	struct lll_conn_iso_stream lll;
-	struct node_tx *tx_head;
-	struct node_tx *tx_tail;
 	uint32_t sync_delay;
 	uint8_t  cis_id;
 	uint8_t  terminate_reason;
