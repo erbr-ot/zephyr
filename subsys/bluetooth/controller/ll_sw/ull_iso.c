@@ -712,7 +712,6 @@ static void iso_rx_demux(void *param)
 	struct ll_conn_iso_stream *cis;
 	struct ll_iso_datapath *dp;
 	struct node_rx_pdu *rx_pdu;
-	isoal_sink_handle_t sink;
 	struct node_rx_hdr *rx;
 	memq_link_t *link;
 
@@ -737,10 +736,9 @@ static void iso_rx_demux(void *param)
 #if defined(CONFIG_BT_CTLR_CONN_ISO)
 				rx_pdu = (struct node_rx_pdu *)rx;
 				cis = ll_conn_iso_stream_get(rx_pdu->hdr.handle);
-				dp = cis->hdr.datapath_out;
-				sink = dp->sink_hdl;
+				dp  = cis->hdr.datapath_out;
 
-				if (dp->path_id != BT_HCI_DATAPATH_ID_HCI) {
+				if (dp && dp->path_id != BT_HCI_DATAPATH_ID_HCI) {
 					/* If vendor specific datapath pass to ISO AL here,
 					 * in case of HCI destination it will be passed in
 					 * HCI context.
@@ -752,7 +750,7 @@ static void iso_rx_demux(void *param)
 
 					/* Pass the ISO PDU through ISO-AL */
 					const isoal_status_t err =
-						isoal_rx_pdu_recombine(sink, &pckt_meta);
+						isoal_rx_pdu_recombine(dp->sink_hdl, &pckt_meta);
 
 					LL_ASSERT(err == ISOAL_STATUS_OK); /* TODO handle err */
 				}
