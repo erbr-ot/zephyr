@@ -317,6 +317,16 @@ typedef isoal_status_t (*isoal_source_pdu_write_cb)(
 	const size_t consume_len
 );
 
+/**
+ * @brief  Callback: Enqueue an ISO PDU
+ */
+typedef isoal_status_t (*isoal_source_pdu_emit_cb)(
+	/*!< [in]  PDU to be enqueued */
+	struct node_tx_iso *node_tx,
+	/*!< [in]  CIS/BIS handle */
+	const uint16_t handle
+);
+
 struct isoal_source_config {
 	enum isoal_mode mode;
 	/* TODO add SDU and PDU max length etc. */
@@ -325,6 +335,7 @@ struct isoal_source_config {
 struct isoal_source_session {
 	isoal_source_pdu_alloc_cb   pdu_alloc;
 	isoal_source_pdu_write_cb   pdu_write;
+	isoal_source_pdu_emit_cb    pdu_emit;
 	isoal_source_pdu_release_cb pdu_release;
 
 	struct isoal_source_config param;
@@ -404,6 +415,7 @@ isoal_status_t isoal_source_create(uint16_t handle,
 				   uint32_t group_sync_delay,
 				   isoal_source_pdu_alloc_cb pdu_alloc,
 				   isoal_source_pdu_write_cb pdu_write,
+				   isoal_source_pdu_emit_cb pdu_emit,
 				   isoal_source_pdu_release_cb pdu_release,
 				   isoal_source_handle_t *hdl);
 

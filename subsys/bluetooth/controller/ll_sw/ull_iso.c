@@ -61,6 +61,8 @@ static isoal_status_t ll_iso_pdu_write(struct isoal_pdu_buffer *pdu_buffer,
 				       const size_t   offset,
 				       const uint8_t *sdu_payload,
 				       const size_t   consume_len);
+static isoal_status_t ll_iso_pdu_emit(struct node_tx_iso *node_tx,
+				      const uint16_t handle);
 static isoal_status_t ll_iso_pdu_release(struct node_tx_iso *node_tx,
 					 const uint16_t handle,
 					 const isoal_status_t status);
@@ -109,8 +111,7 @@ static struct {
 
 static struct {
 	void *free;
-	uint8_t pool[sizeof(memq_link_t) * (CONFIG_BT_CTLR_ISO_TX_BUFFERS + \
-					    CONFIG_BT_CTLR_ISO_TX_VENDOR_BUFFERS)];
+	uint8_t pool[sizeof(memq_link_t) * CONFIG_BT_CTLR_ISO_TX_BUFFERS];
 } mem_link_iso_tx;
 
 
@@ -171,6 +172,7 @@ __weak bool ll_data_path_sink_create(struct ll_iso_datapath *datapath,
 __weak bool ll_data_path_source_create(struct ll_iso_datapath *datapath,
 				       isoal_source_pdu_alloc_cb *pdu_alloc,
 				       isoal_source_pdu_write_cb *pdu_write,
+				       isoal_source_pdu_emit_cb *pdu_emit,
 				       isoal_source_pdu_release_cb *pdu_release)
 {
 	ARG_UNUSED(datapath);
@@ -378,6 +380,7 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 		/* Create source for TX data path */
 		isoal_source_pdu_alloc_cb   pdu_alloc;
 		isoal_source_pdu_write_cb   pdu_write;
+		isoal_source_pdu_emit_cb    pdu_emit;
 		isoal_source_pdu_release_cb pdu_release;
 
 		/* Set default callbacks assuming not vendor specific
@@ -385,11 +388,12 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 		 */
 		pdu_alloc   = ll_iso_pdu_alloc;
 		pdu_write   = ll_iso_pdu_write;
+		pdu_emit    = ll_iso_pdu_emit;
 		pdu_release = ll_iso_pdu_release;
 
 		if (path_is_vendor_specific(path_id)) {
 			if (!ll_data_path_source_create(dp, &pdu_alloc, &pdu_write,
-							&pdu_release)) {
+							&pdu_emit, &pdu_release)) {
 				return BT_HCI_ERR_CMD_DISALLOWED;
 			}
 		}
@@ -398,8 +402,8 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 					  burst_number, flush_timeout, max_octets,
 					  sdu_interval, iso_interval,
 					  stream_sync_delay, group_sync_delay,
-					  pdu_alloc, pdu_write, pdu_release,
-					  &source_handle);
+					  pdu_alloc, pdu_write, pdu_emit,
+					  pdu_release, &source_handle);
 
 		if (!err) {
 			dp->source_hdl = source_handle;
@@ -810,10 +814,9 @@ void ll_iso_link_tx_release(memq_link_t *link)
 	mem_release(link, &mem_link_iso_tx.free);
 }
 
-int ll_iso_tx_mem_enqueue(uint16_t handle, void *node_tx)
+int ll_iso_tx_mem_enqueue(uint16_t handle, void *node_tx, memq_link_t *link)
 {
 	struct ll_conn_iso_stream *cis;
-	memq_link_t *link;
 
 	if (IS_CIS_HANDLE(handle)) {
 		cis = ll_conn_iso_stream_get(handle);
@@ -821,9 +824,6 @@ int ll_iso_tx_mem_enqueue(uint16_t handle, void *node_tx)
 		/*TODO: We only support CIS for now */
 		return -EINVAL;
 	}
-
-	link = mem_acquire(&mem_link_iso_tx.free);
-	LL_ASSERT(link);
 
 	memq_enqueue(link, node_tx, &cis->lll.memq_tx.tail);
 
@@ -895,11 +895,32 @@ static isoal_status_t ll_iso_pdu_write(struct isoal_pdu_buffer *pdu_buffer,
 }
 
 /**
+ * Emit the encoded node to the transmission queue
+ * @param node_tx TX node to enqueue
+ * @param handle  CIS/BIS handle
+ * @return        Error status of enqueue operation
+ */
+static isoal_status_t ll_iso_pdu_emit(struct node_tx_iso *node_tx,
+				      const uint16_t handle)
+{
+	memq_link_t *link;
+
+	link = mem_acquire(&mem_link_iso_tx.free);
+	LL_ASSERT(link);
+
+	if (ll_iso_tx_mem_enqueue(handle, node_tx, link)) {
+		return ISOAL_STATUS_ERR_PDU_EMIT;
+	}
+
+	return ISOAL_STATUS_OK;
+}
+
+/**
  * Release the given payload back to the memory pool.
  * @param node_tx TX node to release or forward
  * @param handle  CIS/BIS handle
  * @param status  Reason for release
- * @return        Error status of write operation
+ * @return        Error status of release operation
  */
 static isoal_status_t ll_iso_pdu_release(struct node_tx_iso *node_tx,
 					 const uint16_t handle,
@@ -951,7 +972,7 @@ static int init_reset(void)
 
 	/* Initialize tx link pool. */
 	mem_init(mem_link_iso_tx.pool, sizeof(memq_link_t),
-		 CONFIG_BT_CTLR_ISO_TX_BUFFERS + CONFIG_BT_CTLR_ISO_TX_VENDOR_BUFFERS,
+		 CONFIG_BT_CTLR_ISO_TX_BUFFERS,
 		 &mem_link_iso_tx.free);
 #endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
 

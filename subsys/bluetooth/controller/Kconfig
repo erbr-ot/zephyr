@@ -225,15 +225,6 @@ config BT_CTLR_ISO_VENDOR_DATA_PATH
 	bool "Enable vendor-specific ISO data path"
 	depends on BT_CTLR_SYNC_ISO || BT_CTLR_CONN_ISO
 
-config BT_CTLR_ISO_TX_VENDOR_BUFFERS
-	int "Number of Isochronous vendor Tx buffers"
-	depends on BT_CTLR_ISO_VENDOR_DATA_PATH
-	default 0
-	help
-	  Set the number of Isochronous Tx buffers required by vendor
-	  TX data path. This defines number of additional buffer links
-	  to allocate for shared part of the TX data path.
-
 choice BT_CTLR_TX_PWR
 	prompt "Tx Power"
 	default BT_CTLR_TX_PWR_0

@@ -336,7 +336,7 @@ void ll_iso_rx_mem_release(void **node_rx);
 /* Downstream - ISO Data */
 void *ll_iso_tx_mem_acquire(void);
 void ll_iso_tx_mem_release(void *tx);
-int ll_iso_tx_mem_enqueue(uint16_t handle, void *tx);
+int ll_iso_tx_mem_enqueue(uint16_t handle, void *tx, memq_link_t *link);
 void ll_iso_link_tx_release(memq_link_t *link);
 
 /* External co-operation */

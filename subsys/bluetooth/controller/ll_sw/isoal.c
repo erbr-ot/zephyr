@@ -270,6 +270,7 @@ static void isoal_source_deallocate(isoal_source_handle_t hdl)
  * @param group_sync_delay[in]  CIG sync delay
  * @param pdu_alloc[in]         Callback of PDU allocator
  * @param pdu_write[in]         Callback of PDU byte writer
+ * @param pdu_emit[in]          Callback of PDU emitter
  * @param pdu_release[in]       Callback of PDU deallocator
  * @param hdl[out]              Handle to new source
  *
@@ -287,6 +288,7 @@ isoal_status_t isoal_source_create(
 	uint32_t                    group_sync_delay,
 	isoal_source_pdu_alloc_cb   pdu_alloc,
 	isoal_source_pdu_write_cb   pdu_write,
+	isoal_source_pdu_emit_cb    pdu_emit,
 	isoal_source_pdu_release_cb pdu_release,
 	isoal_source_handle_t       *hdl)
 {
@@ -315,6 +317,7 @@ isoal_status_t isoal_source_create(
 	/* Remember the platform-specific callbacks */
 	session->pdu_alloc   = pdu_alloc;
 	session->pdu_write   = pdu_write;
+	session->pdu_emit    = pdu_emit;
 	session->pdu_release = pdu_release;
 
 	/* TODO: Constant need to be updated */
@@ -992,8 +995,6 @@ static isoal_status_t isoal_tx_pdu_emit(const struct isoal_source *source_ctx,
 	isoal_status_t status;
 	uint16_t handle;
 
-	status = ISOAL_STATUS_OK;
-
 	/* Retreive CIS / BIS handle */
 	handle = bt_iso_handle(source_ctx->session.handle);
 
@@ -1005,12 +1006,13 @@ static isoal_status_t isoal_tx_pdu_emit(const struct isoal_source *source_ctx,
 	produced_pdu->contents.pdu->length = (uint8_t)payload_size;
 
 	/* Attempt to enqueue the node towards the LL */
-	if (ll_iso_tx_mem_enqueue(handle, node_tx)) {
+	status = source_ctx->session.pdu_emit(node_tx, handle);
+
+	if (status != ISOAL_STATUS_OK) {
 		/* If it fails, the node will be released and no further attempt
 		 * will be possible
 		 */
 		BT_ERR("Failed to enqueue node (%p)", node_tx);
-		status = ISOAL_STATUS_ERR_PDU_EMIT;
 		source_ctx->session.pdu_release(node_tx, handle, status);
 	}
 
