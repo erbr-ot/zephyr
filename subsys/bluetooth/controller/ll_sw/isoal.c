@@ -159,7 +159,8 @@ isoal_status_t isoal_sink_create(
 	 */
 
 	/* Note: sdu_interval unit is uS, iso_interval is a multiple of 1.25mS */
-	session->pdus_per_sdu = burst_number * (sdu_interval / (iso_interval * 1250));
+	session->pdus_per_sdu = (burst_number * sdu_interval) /
+		((uint32_t)iso_interval * 1250);
 
 	/* Computation of transport latency (constant part)
 	 *
