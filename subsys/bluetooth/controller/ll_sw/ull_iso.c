@@ -995,5 +995,8 @@ static int init_reset(void)
 		 sizeof(datapath_pool) / sizeof(struct ll_iso_datapath), &datapath_free);
 #endif
 
+	/* Initialize ISO Adaptation Layer */
+	isoal_init();
+
 	return 0;
 }
