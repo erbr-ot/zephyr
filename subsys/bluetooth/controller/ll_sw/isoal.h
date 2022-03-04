@@ -171,6 +171,14 @@ struct isoal_sdu_tx {
 	 *  can be directly assigned to the SDU state
 	 */
 	uint8_t sdu_state;
+	/** Packet sequence number from HCI ISO Data Header (ISO Data Load
+	 *  Field)
+	 */
+	uint16_t packet_sn;
+	/** ISO SDU length from HCI ISO Data Header (ISO Data Load Field) */
+	uint16_t iso_sdu_length;
+	/** Time stamp from HCI or vendor specific path */
+	uint32_t time_stamp;
 };
 
 

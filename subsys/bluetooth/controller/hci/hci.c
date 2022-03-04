@@ -4987,11 +4987,15 @@ int hci_acl_handle(struct net_buf *buf, struct net_buf **evt)
 #if defined(CONFIG_BT_CTLR_ISO)
 int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 {
-	struct isoal_sdu_tx      sdu_frag_tx;
-	struct ll_iso_datapath   *dp_in;
+	struct bt_hci_iso_data_hdr *data_hdr;
+	struct isoal_sdu_tx sdu_frag_tx;
+	struct ll_iso_datapath *dp_in;
 	struct ll_iso_stream_hdr *hdr;
-	struct bt_hci_iso_hdr    *iso;
+	struct bt_hci_iso_hdr *iso;
+	uint32_t *time_stamp;
 	uint16_t handle;
+	uint8_t pb_flag;
+	uint8_t ts_flag;
 	uint8_t flags;
 	uint16_t len;
 
@@ -5015,18 +5019,38 @@ int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 
 	/* Assigning flags first because handle will be overwritten */
 	flags = bt_iso_flags(handle);
+	pb_flag = bt_iso_flags_pb(flags);
+	ts_flag = bt_iso_flags_ts(flags);
 	handle = bt_iso_handle(handle);
 
-	/* Fill in SDU buffer fields */
-	sdu_frag_tx.dbuf = buf->data + 4;
-	sdu_frag_tx.size = len - 4;
+	/* Extract time stamp */
+	sdu_frag_tx.time_stamp = 0;
+	if (ts_flag) {
+		time_stamp = net_buf_pull_mem(buf, sizeof(*time_stamp));
+		len -= sizeof(*time_stamp);
+		sdu_frag_tx.time_stamp = *time_stamp;
+	}
+
+	/* Extract ISO data header if included (PB_Flag 0b00 or 0b10) */
+	sdu_frag_tx.packet_sn = 0;
+	sdu_frag_tx.iso_sdu_length = 0;
+	if ((pb_flag & 0x01) == 0) {
+		data_hdr = net_buf_pull_mem(buf, sizeof(*data_hdr));
+		len -= sizeof(*data_hdr);
+		sdu_frag_tx.packet_sn = data_hdr->sn;
+		sdu_frag_tx.iso_sdu_length = data_hdr->slen;
+	}
+
 	/* Packet boudary flags should be bitwise identical to the SDU state
 	 * 0b00 BT_ISO_START
 	 * 0b01 BT_ISO_CONT
 	 * 0b10 BT_ISO_SINGLE
 	 * 0b11 BT_ISO_END
 	 */
-	sdu_frag_tx.sdu_state = bt_iso_flags_pb(flags);
+	sdu_frag_tx.sdu_state = pb_flag;
+	/* Fill in SDU buffer fields */
+	sdu_frag_tx.dbuf = buf->data;
+	sdu_frag_tx.size = len;
 
 	/* Extract source handle from CIS or BIS handle by way of header and
 	 * data path
