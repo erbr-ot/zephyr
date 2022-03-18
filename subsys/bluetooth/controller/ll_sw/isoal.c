@@ -304,6 +304,7 @@ isoal_status_t isoal_source_create(
 	struct isoal_source_session *session = &isoal_global.source_state[*hdl].session;
 
 	session->handle = handle;
+	session->burst_number = burst_number;
 
 	/* Todo: Next section computing various constants, should potentially be a
 	 * function in itself as a number of the dependencies could be changed while
@@ -981,15 +982,17 @@ isoal_status_t isoal_rx_pdu_recombine(isoal_sink_handle_t sink_hdl,
  * Queue the PDU in production in the relevant LL transmit queue. If the
  * attmept to release the PDU fails, the buffer linked to the PDU will be released
  * and it will not be possible to retry the emit operation on the same PDU.
- * @param[in]  source_ctx   ISO-AL source reference for this CIS / BIS
- * @param[in]  produced_pdu PDU in production
- * @param[in]  pdu_ll_id    LLID to be set indicating the type of fragment
- * @param[in]  payload_size Length of the data written to the PDU
+ * @param[in]  source_ctx        ISO-AL source reference for this CIS / BIS
+ * @param[in]  produced_pdu      PDU in production
+ * @param[in]  pdu_ll_id         LLID to be set indicating the type of fragment
+ * @param[in]  payload_number    CIS / BIS payload number
+ * @param[in]  payload_size      Length of the data written to the PDU
  * @return     Error status of the operation
  */
 static isoal_status_t isoal_tx_pdu_emit(const struct isoal_source *source_ctx,
 					const struct isoal_pdu_produced *produced_pdu,
 					const uint8_t pdu_ll_id,
+					const uint64_t payload_number,
 					const isoal_pdu_len_t payload_size)
 {
 	struct node_tx_iso *node_tx;
@@ -1001,6 +1004,8 @@ static isoal_status_t isoal_tx_pdu_emit(const struct isoal_source *source_ctx,
 
 	/* Retrieve Node handle */
 	node_tx = produced_pdu->contents.handle;
+	/* Set payload number */
+	node_tx->payload_number = payload_number & 0x7fffffffff;
 	/* Set PDU LLID */
 	produced_pdu->contents.pdu->ll_id = pdu_ll_id;
 	/* Set PDU length */
@@ -1091,7 +1096,11 @@ static isoal_status_t isoal_tx_try_emit_pdu(struct isoal_source *source, bool en
 	}
 
 	if (pdu_complete) {
-		err = isoal_tx_pdu_emit(source, pdu, pdu_ll_id, pp->pdu_written);
+		/* Emit PDU and increment the payload number */
+		err = isoal_tx_pdu_emit(source, pdu, pdu_ll_id,
+					pp->payload_number,
+					pp->pdu_written);
+		pp->payload_number++;
 	}
 
 	return err;
@@ -1146,6 +1155,17 @@ static isoal_status_t isoal_tx_unframed_produce(struct isoal_source *source,
 		 * in the ISOAL once the Datapath is configured and the link is established.
 		 */
 		session->seqn++;
+
+		/* Update payload counter in case time has passed since last
+		 * SDU. This should mean that event count * burst number should
+		 * be greater than the current payload number. In the event of
+		 * an SDU interval smaller than the ISO interval, multiple SDUs
+		 * will be sent in the same event. As such the current payload
+		 * number should be retained. Payload numbers are indexed at 0
+		 * and valid until the PDU is emitted.
+		 */
+		pp->payload_number = MAX(pp->payload_number,
+			(tx_sdu->target_event * session->burst_number));
 
 		/* Reset PDU fragmentation count for this SDU */
 		pp->pdu_cnt = 0;
@@ -1237,10 +1257,14 @@ static isoal_status_t isoal_tx_unframed_produce(struct isoal_source *source,
  * @return Status
  */
 isoal_status_t isoal_tx_sdu_fragment(isoal_source_handle_t source_hdl,
-				      const struct isoal_sdu_tx *tx_sdu)
+				     struct isoal_sdu_tx *tx_sdu)
 {
-	struct isoal_source *source = &isoal_global.source_state[source_hdl];
-	isoal_status_t err = ISOAL_STATUS_ERR_PDU_ALLOC;
+	struct isoal_source_session *session;
+	struct isoal_source *source;
+	isoal_status_t err;
+
+	source = &isoal_global.source_state[source_hdl];
+	err = ISOAL_STATUS_ERR_PDU_ALLOC;
 
 	if (source->pdu_production.mode != ISOAL_PRODUCTION_MODE_DISABLED) {
 		/* TODO: consider how to separate framed and unframed production

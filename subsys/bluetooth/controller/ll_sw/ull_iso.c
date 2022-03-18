@@ -174,12 +174,14 @@ __weak bool ll_data_path_sink_create(struct ll_iso_datapath *datapath,
 }
 
 /* Could be implemented by vendor */
-__weak bool ll_data_path_source_create(struct ll_iso_datapath *datapath,
+__weak bool ll_data_path_source_create(uint16_t handle,
+				       struct ll_iso_datapath *datapath,
 				       isoal_source_pdu_alloc_cb *pdu_alloc,
 				       isoal_source_pdu_write_cb *pdu_write,
 				       isoal_source_pdu_emit_cb *pdu_emit,
 				       isoal_source_pdu_release_cb *pdu_release)
 {
+	ARG_UNUSED(handle);
 	ARG_UNUSED(datapath);
 	ARG_UNUSED(pdu_alloc);
 	ARG_UNUSED(pdu_write);
@@ -405,7 +407,8 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 		pdu_release = ll_iso_pdu_release;
 
 		if (path_is_vendor_specific(path_id)) {
-			if (!ll_data_path_source_create(dp, &pdu_alloc, &pdu_write,
+			if (!ll_data_path_source_create(handle, dp,
+							&pdu_alloc, &pdu_write,
 							&pdu_emit, &pdu_release)) {
 				return BT_HCI_ERR_CMD_DISALLOWED;
 			}

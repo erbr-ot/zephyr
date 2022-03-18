@@ -148,6 +148,7 @@ struct isoal_sdu_produced {
 struct isoal_pdu_produced {
 	/** Contents information provided at PDU allocation */
 	struct isoal_pdu_buffer contents;
+	uint64_t payload_number;
 };
 
 
@@ -179,6 +180,8 @@ struct isoal_sdu_tx {
 	uint16_t iso_sdu_length;
 	/** Time stamp from HCI or vendor specific path */
 	uint32_t time_stamp;
+	/** Target Event of SDU */
+	uint64_t target_event:39;
 };
 
 
@@ -301,14 +304,14 @@ typedef isoal_status_t (*isoal_source_pdu_release_cb)(
 	struct node_tx_iso *node_tx,
 	/*!< [in]  CIS/BIS handle */
 	const uint16_t handle,
-	/*!< [in]  Cause of release. ISOAL_STATUS_OK means PDU was enqueued towards 
+	/*!< [in]  Cause of release. ISOAL_STATUS_OK means PDU was enqueued towards
 	 *         LLL and sent or flushed, and may need further handling before
 	 *         memory is released, e.g. forwarded to HCI thread for complete-
 	 *         counting. Any other status indicates cause of error during SDU
 	 *         fragmentation/segmentation, in which case the PDU will not be
 	 *         produced.
 	 */
-	const isoal_status_t status 
+	const isoal_status_t status
 );
 
 /**
@@ -349,6 +352,7 @@ struct isoal_source_session {
 	struct isoal_source_config param;
 	isoal_sdu_cnt_t            seqn;
 	uint16_t                   handle;
+	uint8_t                    burst_number;
 	uint8_t                    pdus_per_sdu;
 	uint8_t                    max_pdu_size;
 	uint32_t                   latency_unframed;
@@ -362,6 +366,7 @@ struct isoal_pdu_production {
 	struct isoal_pdu_produced pdu;
 	/* PDUs produced for current SDU */
 	uint8_t                   pdu_cnt;
+	uint64_t                  payload_number:39;
 	isoal_pdu_len_t           pdu_written;
 	isoal_pdu_len_t           pdu_available;
 };
@@ -436,7 +441,7 @@ void isoal_source_disable(isoal_source_handle_t hdl);
 void isoal_source_destroy(isoal_source_handle_t hdl);
 
 isoal_status_t isoal_tx_sdu_fragment(isoal_source_handle_t source_hdl,
-				      const struct isoal_sdu_tx *tx_sdu);
+				     struct isoal_sdu_tx *tx_sdu);
 
 void isoal_tx_pdu_release(isoal_source_handle_t source_hdl,
 			  struct node_tx_iso *node_tx);
