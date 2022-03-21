@@ -5072,7 +5072,7 @@ int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 
 		hdr = &(cis->hdr);
 
-		/* Set target event as the next event. This might cause some
+		/* Set target event as the current event. This might cause some
 		 * misalignment between SDU interval and ISO interval in the
 		 * case of a burst from the application or late release. However
 		 * according to the specifications:
@@ -5081,7 +5081,7 @@ int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 		 * This burst is associated with the corresponding CIS event but
 		 * the payloads may be transmitted in later events as well.
 		 */
-		sdu_frag_tx.target_event = cis->lll.event_count + 1;
+		sdu_frag_tx.target_event = cis->lll.event_count;
 	} else {
 		return -EINVAL;
 	}

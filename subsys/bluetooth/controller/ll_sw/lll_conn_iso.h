@@ -38,6 +38,7 @@ struct lll_conn_iso_stream {
 	/* Event and payload counters */
 	uint64_t event_count : 39;       /* cisEventCount */
 	uint64_t rx_payload_number : 39; /* cisPayloadNumber */
+	uint64_t tx_payload_number : 39; /* cisPayloadNumber */
 
 	/* Acknowledgment and flow control */
 	uint8_t sn:1;               /* Sequence number */
