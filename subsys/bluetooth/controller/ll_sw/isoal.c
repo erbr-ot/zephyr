@@ -1259,7 +1259,6 @@ static isoal_status_t isoal_tx_unframed_produce(struct isoal_source *source,
 isoal_status_t isoal_tx_sdu_fragment(isoal_source_handle_t source_hdl,
 				     struct isoal_sdu_tx *tx_sdu)
 {
-	struct isoal_source_session *session;
 	struct isoal_source *source;
 	isoal_status_t err;
 
