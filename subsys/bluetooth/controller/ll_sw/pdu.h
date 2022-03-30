@@ -687,25 +687,19 @@ struct pdu_data_llctrl_cte_rsp {
 } __packed;
 
 struct pdu_data_llctrl_cis_req {
-	uint8_t cig_id;
-	uint8_t cis_id;
-	uint8_t c_phy;
-	uint8_t p_phy;
-#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-	uint16_t c_max_sdu:12;
-	uint16_t rfu0:3;
-	uint16_t framed:1;
-	uint16_t p_max_sdu:12;
-	uint16_t rfu1:4;
-#elif __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-	uint16_t framed:1;
-	uint16_t rfu0:3;
-	uint16_t c_max_sdu:12;
-	uint16_t rfu1:4;
-	uint16_t p_max_sdu:12;
-#else
-#error "Unsupported endianness"
-#endif
+	uint8_t  cig_id;
+	uint8_t  cis_id;
+	uint8_t  c_phy;
+	uint8_t  p_phy;
+	/* c_max_sdu:12
+	 * rfu:3
+	 * framed:1
+	 */
+	uint8_t  c_max_sdu_packed[2];
+	/* p_max_sdu:12
+	 * rfu:4
+	 */
+	uint8_t  p_max_sdu[2];
 	uint8_t  c_sdu_interval[3];
 	uint8_t  p_sdu_interval[3];
 	uint16_t c_max_pdu;

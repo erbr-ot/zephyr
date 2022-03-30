@@ -215,6 +215,7 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 	uint8_t burst_number;
 	uint8_t max_octets;
 	isoal_status_t err;
+	uint8_t framed;
 	uint8_t role;
 
 	if (path_id == BT_HCI_DATAPATH_ID_DISABLED) {
@@ -333,6 +334,7 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 		burst_number  = cis->lll.rx.burst_number;
 		flush_timeout = cis->lll.rx.flush_timeout;
 		max_octets    = cis->lll.rx.max_octets;
+		framed        = cis->framed;
 
 		if (role) {
 			/* peripheral */
@@ -346,7 +348,7 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 
 		if (path_id == BT_HCI_DATAPATH_ID_HCI) {
 			/* Not vendor specific, thus alloc and emit functions known */
-			err = isoal_sink_create(handle, role,
+			err = isoal_sink_create(handle, role, framed,
 						burst_number, flush_timeout,
 						sdu_interval, iso_interval,
 						stream_sync_delay, group_sync_delay,
@@ -360,7 +362,7 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 
 			/* Request vendor sink callbacks for path */
 			if (ll_data_path_sink_create(dp, &sdu_alloc, &sdu_emit, &sdu_write)) {
-				err = isoal_sink_create(handle, role,
+				err = isoal_sink_create(handle, role, framed,
 							burst_number, flush_timeout,
 							sdu_interval, iso_interval,
 							stream_sync_delay, group_sync_delay,

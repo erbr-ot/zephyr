@@ -114,6 +114,7 @@ static void isoal_sink_deallocate(isoal_sink_handle_t hdl)
  *
  * @param handle[in]            Connection handle
  * @param role[in]              Peripheral, Central or Broadcast
+ * @param framed[in]            Framed case
  * @param burst_number[in]      Burst Number
  * @param flush_timeout[in]     Flush timeout
  * @param sdu_interval[in]      SDU interval
@@ -130,6 +131,7 @@ static void isoal_sink_deallocate(isoal_sink_handle_t hdl)
 isoal_status_t isoal_sink_create(
 	uint16_t                 handle,
 	uint8_t                  role,
+	uint8_t                  framed,
 	uint8_t                  burst_number,
 	uint8_t                  flush_timeout,
 	uint32_t                 sdu_interval,
@@ -152,6 +154,7 @@ isoal_status_t isoal_sink_create(
 	struct isoal_sink_session *session = &isoal_global.sink_state[*hdl].session;
 
 	session->handle = handle;
+	session->framed = framed;
 
 	/* Todo: Next section computing various constants, should potentially be a
 	 * function in itself as a number of the dependencies could be changed while
@@ -965,10 +968,8 @@ isoal_status_t isoal_rx_pdu_recombine(isoal_sink_handle_t sink_hdl,
 	struct isoal_sink *sink = &isoal_global.sink_state[sink_hdl];
 	isoal_status_t err = ISOAL_STATUS_ERR_SDU_ALLOC;
 
-	if (sink->sdu_production.mode != ISOAL_PRODUCTION_MODE_DISABLED) {
-		bool pdu_framed = (pdu_meta->pdu->ll_id == PDU_BIS_LLID_FRAMED);
-
-		if (pdu_framed) {
+	if (sink && sink->sdu_production.mode != ISOAL_PRODUCTION_MODE_DISABLED) {
+		if (sink->session.framed) {
 			err = isoal_rx_framed_consume(sink, pdu_meta);
 		} else {
 			err = isoal_rx_unframed_consume(sink, pdu_meta);

@@ -6255,13 +6255,12 @@ static uint8_t cis_req_recv(struct ll_conn *conn, memq_link_t *link,
 	void *node;
 
 	conn->llcp_cis.cig_id = req->cig_id;
-	conn->llcp_cis.framed = req->framed;
-	conn->llcp_cis.c_max_sdu = sys_le16_to_cpu(req->c_max_sdu);
-	conn->llcp_cis.p_max_sdu = sys_le16_to_cpu(req->p_max_sdu);
+	conn->llcp_cis.c_max_sdu = (uint16_t)(req->c_max_sdu_packed[1] & 0x0F) << 8 |
+					      req->c_max_sdu_packed[0];
+	conn->llcp_cis.p_max_sdu = (uint16_t)(req->p_max_sdu[1] & 0x0F) << 8 | req->p_max_sdu[0];
 	conn->llcp_cis.cis_offset_min = sys_get_le24(req->cis_offset_min);
 	conn->llcp_cis.cis_offset_max = sys_get_le24(req->cis_offset_max);
-	conn->llcp_cis.conn_event_count =
-		sys_le16_to_cpu(req->conn_event_count);
+	conn->llcp_cis.conn_event_count = sys_le16_to_cpu(req->conn_event_count);
 
 	/* Acquire resources for new CIS */
 	err = ull_peripheral_iso_acquire(conn, &pdu->llctrl.cis_req, &cis_handle);

@@ -18,6 +18,7 @@ struct ll_conn_iso_stream {
 	uint8_t  terminate_reason;
 	uint32_t offset;          /* Offset of CIS from ACL event in us */
 	ll_iso_stream_released_cb_t released_cb; /* CIS release callback */
+	uint8_t  framed : 1;
 	uint8_t  established : 1; /* 0 if CIS has not yet been established.
 				   * 1 if CIS has been established and host
 				   * notified.

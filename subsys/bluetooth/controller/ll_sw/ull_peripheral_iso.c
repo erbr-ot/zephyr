@@ -180,6 +180,7 @@ uint8_t ull_peripheral_iso_acquire(struct ll_conn *acl,
 	cig->p_sdu_interval = sys_get_le24(req->p_sdu_interval) & 0x0FFFFF;
 
 	cis->cis_id = req->cis_id;
+	cis->framed = (req->c_max_sdu_packed[1] & BIT(7)) >> 7;
 	cis->established = 0;
 	cis->group = cig;
 	cis->teardown = 0;
@@ -190,7 +191,6 @@ uint8_t ull_peripheral_iso_acquire(struct ll_conn *acl,
 	cis->lll.sub_interval = sys_get_le24(req->sub_interval);
 	cis->lll.num_subevents = req->nse;
 	cis->lll.next_subevent = 0;
-	cis->lll.rx_payload_number = 0;
 	cis->lll.sn = 0;
 	cis->lll.nesn = 0;
 	cis->lll.cie = 0;
@@ -200,11 +200,13 @@ uint8_t ull_peripheral_iso_acquire(struct ll_conn *acl,
 	cis->lll.rx.burst_number = req->c_bn;
 	cis->lll.rx.flush_timeout = req->c_ft;
 	cis->lll.rx.max_octets = sys_le16_to_cpu(req->c_max_pdu);
+	cis->lll.rx.payload_number = 0;
 
 	cis->lll.tx.phy = req->p_phy;
 	cis->lll.tx.burst_number = req->p_bn;
 	cis->lll.tx.flush_timeout = req->p_ft;
 	cis->lll.tx.max_octets = sys_le16_to_cpu(req->p_max_pdu);
+	cis->lll.tx.payload_number = 0;
 
 	if (!cis->lll.link_tx_free) {
 		cis->lll.link_tx_free = &cis->lll.link_tx;

@@ -263,7 +263,6 @@ struct proc_ctx {
 			uint8_t  p_phy;
 			uint16_t c_max_sdu;
 			uint16_t p_max_sdu;
-			uint8_t  framed;
 			uint32_t c_sdu_interval;
 			uint32_t p_sdu_interval;
 			uint8_t  nse;
