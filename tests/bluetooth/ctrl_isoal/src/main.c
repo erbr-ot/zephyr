@@ -231,6 +231,7 @@ uint8_t sdu_buf[SDU_BUF_MAX_LEN];
 isoal_sdu_len_t sdu_buf_len = SDU_BUF_MAX_LEN;
 uint16_t sdu_buf_idx;
 bool sdu_emit_expected = true;
+uint8_t framed = 0;
 
 /**
  * @brief   Reset SDU buffer
@@ -301,7 +302,7 @@ void test_setup(void)
 	zassert_equal(err, ISOAL_STATUS_OK, "err=0x%02x", err);
 
 	/* Create a sink based on global parameters */
-	err = isoal_sink_create(handle, role,
+	err = isoal_sink_create(handle, role, framed,
 				burst_number, flush_timeout,
 				sdu_interval, iso_interval,
 				stream_sync_delay, group_sync_delay,
@@ -529,7 +530,7 @@ void test_sink_create_destroy(void)
 
 	for (int i = 0; i < ISOAL_SINKS_MAX; i++) {
 		/* Create a sink based on global parameters */
-		err = isoal_sink_create(handle, dummy_role,
+		err = isoal_sink_create(handle, dummy_role, framed,
 					burst_number, flush_timeout,
 					sdu_interval, iso_interval,
 					stream_sync_delay, group_sync_delay,
@@ -567,7 +568,7 @@ void test_sink_create_err(void)
 
 	for (int i = 0; i < ISOAL_SINKS_MAX; i++) {
 		/* Create a sink based on global parameters */
-		err = isoal_sink_create(handle, role,
+		err = isoal_sink_create(handle, role, framed,
 					burst_number, flush_timeout,
 					sdu_interval, iso_interval,
 					stream_sync_delay, group_sync_delay,
@@ -579,7 +580,7 @@ void test_sink_create_err(void)
 	}
 
 	/* Should be out of sinks, allocation should generate an error */
-	err = isoal_sink_create(handle, role,
+	err = isoal_sink_create(handle, role, framed,
 				burst_number, flush_timeout,
 				sdu_interval, iso_interval,
 				stream_sync_delay, group_sync_delay,
@@ -1003,7 +1004,7 @@ void test_trig_assert_isoal_sink_create(void)
 
 	ztest_set_assert_valid(true);
 	/* Create a sink based on global parameters */
-	err = isoal_sink_create(handle, 99 /* Faulty role param to trigger assert */,
+	err = isoal_sink_create(handle, 99 /* Faulty role param to trigger assert */, framed,
 				burst_number, flush_timeout,
 				sdu_interval, iso_interval,
 				stream_sync_delay, group_sync_delay,
@@ -1501,6 +1502,7 @@ void test_main(void)
 	/* FRAMED TEST CASES */
 	sdu_buf_len = SDU_BUF_MAX_LEN;
 	sdu_interval = (4 * 1250); /* 4 PDUs per SDU interval */
+	framed = 1;
 	ztest_test_suite(test_framed,
 		ztest_unit_test(test_setup),
 		ztest_unit_test(test_framed_single_pdu),
