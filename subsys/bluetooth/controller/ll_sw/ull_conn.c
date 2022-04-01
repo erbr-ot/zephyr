@@ -6252,7 +6252,42 @@ static uint8_t cis_req_recv(struct ll_conn *conn, memq_link_t *link,
 	struct node_rx_conn_iso_req *conn_iso_req;
 	uint16_t cis_handle;
 	uint8_t err;
+	uint8_t phy;
 	void *node;
+
+	phy = req->c_phy;
+
+	/* Check reqested PHYs. Returning BT_HCI_ERR_INVALID_LL_PARAM shall invoke
+	 * sending of LL_REJECT_EXT_IND.
+	 */
+	for (uint8_t i = 0; i < 2; i++) {
+		/* Fail on multiple PHY specified */
+		if (util_ones_count_get(&phy, sizeof(phy)) > 1U) {
+			return BT_HCI_ERR_INVALID_LL_PARAM;
+		}
+
+		/* Fail on no PHY specified */
+		if (util_ones_count_get(&phy, sizeof(phy)) == 0U) {
+			return BT_HCI_ERR_INVALID_LL_PARAM;
+		}
+
+		/* Fail on unsupported PHY specified */
+		if (((phy & PHY_2M) &&
+		     !(conn->llcp_feature.features_conn & BIT64(BT_LE_FEAT_BIT_PHY_2M))) ||
+		    ((phy & PHY_CODED) &&
+		     !(conn->llcp_feature.features_conn & BIT64(BT_LE_FEAT_BIT_PHY_CODED)))) {
+			return BT_HCI_ERR_INVALID_LL_PARAM;
+		}
+
+		phy &= ~(PHY_1M|PHY_2M|PHY_CODED);
+
+		/* Fail on RFU bits specified */
+		if (util_ones_count_get(&phy, sizeof(phy))) {
+			return BT_HCI_ERR_INVALID_LL_PARAM;
+		}
+		
+		phy = req->p_phy;
+	}
 
 	conn->llcp_cis.cig_id = req->cig_id;
 	conn->llcp_cis.c_max_sdu = (uint16_t)(req->c_max_sdu_packed[1] & 0x0F) << 8 |
@@ -6265,6 +6300,7 @@ static uint8_t cis_req_recv(struct ll_conn *conn, memq_link_t *link,
 	/* Acquire resources for new CIS */
 	err = ull_peripheral_iso_acquire(conn, &pdu->llctrl.cis_req, &cis_handle);
 	if (err) {
+		(*rx)->hdr.type = NODE_RX_TYPE_RELEASE;
 		return err;
 	}
 
@@ -7633,7 +7669,13 @@ static inline int ctrl_rx(memq_link_t *link, struct node_rx_pdu **rx,
 
 		err = cis_req_recv(conn, link, rx, pdu_rx);
 		if (err) {
-			conn->llcp_terminate.reason_final = err;
+			if (err == BT_HCI_ERR_INVALID_LL_PARAM) {
+				nack = reject_ext_ind_send(conn, *rx,
+						PDU_DATA_LLCTRL_TYPE_CIS_REQ,
+						BT_HCI_ERR_UNSUPP_LL_PARAM_VAL);
+			} else {
+				conn->llcp_terminate.reason_final = err;
+			}
 		}
 		break;
 	}
