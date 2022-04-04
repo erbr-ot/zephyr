@@ -11,6 +11,7 @@ struct node_tx_iso {
 	};
 
 	uint64_t payload_number : 39; /* cisPayloadNumber */
+	uint64_t sdu_fragments : 8;
 	uint8_t  pdu[];
 };
 

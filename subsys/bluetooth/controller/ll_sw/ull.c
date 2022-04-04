@@ -2338,7 +2338,8 @@ static uint8_t tx_cmplt_get(uint16_t *handle, uint8_t *first, uint8_t last)
 			p = (void *)node_tx_iso->pdu;
 			/* TODO: We may need something more advanced for framed */
 			if (p->ll_id == PDU_CIS_LLID_COMPLETE_END) {
-				cmplt++;
+				/* We must count each SDU fragment */
+				cmplt += node_tx_iso->sdu_fragments;
 			}
 			ll_iso_link_tx_release(node_tx_iso->link);
 			ll_iso_tx_mem_release (node_tx_iso);

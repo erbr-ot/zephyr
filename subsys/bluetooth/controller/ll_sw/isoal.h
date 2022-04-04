@@ -367,7 +367,7 @@ struct isoal_source_session {
 struct isoal_pdu_production {
 	/* Permit atomic enable/disable of PDU production */
 	volatile isoal_production_mode_t  mode;
-	/* We are constructing an PDU from {<1 or =1 or >1} SDUs */
+	/* We are constructing a PDU from {<1 or =1 or >1} SDUs */
 	struct isoal_pdu_produced pdu;
 	uint8_t                   pdu_state;
 	/* PDUs produced for current SDU */
@@ -375,6 +375,7 @@ struct isoal_pdu_production {
 	uint64_t                  payload_number:39;
 	uint64_t                  seg_hdr_sc:1;
 	uint64_t                  seg_hdr_length:8;
+	uint64_t                  sdu_fragments:8;
 	isoal_pdu_len_t           pdu_written;
 	isoal_pdu_len_t           pdu_available;
 	/* Location (byte index) of last segmentatio header */

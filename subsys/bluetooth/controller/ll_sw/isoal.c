@@ -739,6 +739,20 @@ static isoal_status_t isoal_rx_unframed_consume(struct isoal_sink *sink,
 		sp->sdu_status |= ISOAL_SDU_STATUS_LOST_DATA;
 	}
 
+	/* BT Core V5.3 : Vol 4 HCI I/F : Part G HCI Func. Spec.:
+	 * 5.4.5 HCI ISO Data packets
+	 * If Packet_Status_Flag equals 0b10 then PB_Flag shall equal 0b10.
+	 * When Packet_Status_Flag is set to 0b10 in packets from the Controller to the
+	 * Host, there is no data and ISO_SDU_Length shall be set to zero.
+	 *
+	 * TODO: Move to hci_driver to allow vendow path to have dedicated handling.
+	 */
+	if (sp->sdu_status == ISOAL_SDU_STATUS_LOST_DATA) {
+		sp->sdu_written = 0;
+		end_of_packet = 1;
+		length = 0;
+	}
+
 	/* Append valid PDU to SDU */
 	if (!pdu_padding) {
 		err |= isoal_rx_append_to_sdu(sink, pdu_meta, 0,
@@ -1019,6 +1033,7 @@ isoal_status_t isoal_rx_pdu_recombine(isoal_sink_handle_t sink_hdl,
 static isoal_status_t isoal_tx_pdu_emit(const struct isoal_source *source_ctx,
 					const struct isoal_pdu_produced *produced_pdu,
 					const uint8_t pdu_ll_id,
+					const uint8_t sdu_fragments,
 					const uint64_t payload_number,
 					const isoal_pdu_len_t payload_size)
 {
@@ -1033,6 +1048,7 @@ static isoal_status_t isoal_tx_pdu_emit(const struct isoal_source *source_ctx,
 	node_tx = produced_pdu->contents.handle;
 	/* Set payload number */
 	node_tx->payload_number = payload_number & 0x7fffffffff;
+	node_tx->sdu_fragments = sdu_fragments;
 	/* Set PDU LLID */
 	produced_pdu->contents.pdu->ll_id = pdu_ll_id;
 	/* Set PDU length */
@@ -1125,6 +1141,7 @@ static isoal_status_t isoal_tx_try_emit_pdu(struct isoal_source *source, bool fo
 	if (pdu_complete) {
 		/* Emit PDU and increment the payload number */
 		err = isoal_tx_pdu_emit(source, pdu, pdu_ll_id,
+					pp->sdu_fragments,
 					pp->payload_number,
 					pp->pdu_written);
 		pp->payload_number++;
@@ -1196,7 +1213,11 @@ static isoal_status_t isoal_tx_unframed_produce(struct isoal_source *source,
 
 		/* Reset PDU fragmentation count for this SDU */
 		pp->pdu_cnt = 0;
+
+		pp->sdu_fragments = 0;
 	}
+
+	pp->sdu_fragments++;
 
 	/* PDUs should be created until the SDU fragment has been fragmented or if
 	 * this is the last fragment of the SDU, until the required padding PDU(s)
@@ -1482,7 +1503,11 @@ static isoal_status_t isoal_tx_framed_produce(struct isoal_source *source,
 
 		/* Reset PDU fragmentation count for this SDU */
 		pp->pdu_cnt = 0;
+
+		pp->sdu_fragments = 0;
 	}
+
+	pp->sdu_fragments++;
 
 	/* PDUs should be created until the SDU fragment has been fragmented or if
 	 * this is the last fragment of the SDU, until the required padding PDU(s)
