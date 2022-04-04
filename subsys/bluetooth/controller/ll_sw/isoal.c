@@ -31,6 +31,18 @@
 #define ISOAL_SINKS_MAX   (4)
 #define ISOAL_SOURCES_MAX (4)
 
+/* Minimum number of bytes that would make inserting a new segment into a PDU
+ * worthwhile.
+ */
+#define ISOAL_SEGMENT_MIN_PAYLOAD         (1)
+/* Given the minimum payload, this defines the minimum remaining in a PDU that
+ * would make inserting a new segment worthwhile.
+ * [Payload (min) + Segmentation Header + Time Offset]
+ */
+#define ISOAL_SEGMENT_MIN_SIZE            (ISOAL_SEGMENT_MIN_PAYLOAD +         \
+					   PDU_ISO_SEG_HDR_SIZE +              \
+					   PDU_ISO_SEG_TIMEOFFSET_SIZE)
+
 /** Allocation state */
 typedef uint8_t isoal_alloc_state_t;
 #define ISOAL_ALLOC_STATE_FREE            ((isoal_alloc_state_t) 0x00)
@@ -193,6 +205,11 @@ isoal_status_t isoal_sink_create(
 	 *   BIG reference anchor point +
 	 *   BIG_Sync_Delay + SDU_interval + ISO_Interval - Time_Offset.
 	 */
+	/* TODO: This needs to be rechecked.
+	 * Latency should be in us but flush_timeout and iso_interval are
+	 * integers.
+	 * (i.e. Correct calculation should require iso_interval x 1250us)
+	 */
 	if (role == BT_CONN_ROLE_PERIPHERAL) {
 		isoal_global.sink_state[*hdl].session.latency_unframed =
 			stream_sync_delay + ((flush_timeout - 1) * iso_interval);
@@ -265,6 +282,7 @@ static void isoal_source_deallocate(isoal_source_handle_t hdl)
  *
  * @param handle[in]            Connection handle
  * @param role[in]              Peripheral, Central or Broadcast
+ * @param framed[in]            Framed case
  * @param burst_number[in]      Burst Number
  * @param flush_timeout[in]     Flush timeout
  * @param max_octets[in]        Maximum PDU size (Max_PDU_C_To_P / Max_PDU_P_To_C)
@@ -283,6 +301,7 @@ static void isoal_source_deallocate(isoal_source_handle_t hdl)
 isoal_status_t isoal_source_create(
 	uint16_t                    handle,
 	uint8_t                     role,
+	uint8_t                     framed,
 	uint8_t                     burst_number,
 	uint8_t                     flush_timeout,
 	uint8_t                     max_octets,
@@ -307,7 +326,9 @@ isoal_status_t isoal_source_create(
 	struct isoal_source_session *session = &isoal_global.source_state[*hdl].session;
 
 	session->handle = handle;
+	session->framed = framed;
 	session->burst_number = burst_number;
+	session->iso_interval = iso_interval;
 
 	/* Todo: Next section computing various constants, should potentially be a
 	 * function in itself as a number of the dependencies could be changed while
@@ -831,6 +852,11 @@ static isoal_status_t isoal_rx_framed_consume(struct isoal_sink *sink,
 			timeoffset = seg_hdr->timeoffset;
 			anchorpoint = meta->timestamp;
 			latency = session->latency_framed;
+			/* TODO: This needs to be rechecked.
+			 * timeoffset seems to be in us
+			 * latency seems to be in us
+			 * anchorpoint seems to be in ticks (16 = 1us)
+			 */
 			timestamp = anchorpoint + latency - timeoffset;
 
 			if (!sc && !cmplt) {
@@ -1074,12 +1100,12 @@ static isoal_status_t isoal_tx_allocate_pdu(struct isoal_source *source,
 
 /**
  * Attempt to emit the PDU in production if it is complete.
- * @param[in]  source     ISO-AL source reference
- * @param[in]  end_of_sdu SDU end has been reached
- * @param[in]  pdu_ll_id  LLID / PDU fragment type as Start, Cont, End, Single (Unframed) or Framed
+ * @param[in]  source      ISO-AL source reference
+ * @param[in]  force_emit  Request PDU emit
+ * @param[in]  pdu_ll_id   LLID / PDU fragment type as Start, Cont, End, Single (Unframed) or Framed
  * @return     Error status of operation
  */
-static isoal_status_t isoal_tx_try_emit_pdu(struct isoal_source *source, bool end_of_sdu, uint8_t pdu_ll_id)
+static isoal_status_t isoal_tx_try_emit_pdu(struct isoal_source *source, bool force_emit, uint8_t pdu_ll_id)
 {
 	struct isoal_pdu_production *pp;
 	struct isoal_pdu_produced   *pdu;
@@ -1090,9 +1116,9 @@ static isoal_status_t isoal_tx_try_emit_pdu(struct isoal_source *source, bool en
 	pdu = &pp->pdu;
 
 	/* Emit a PDU */
-	const bool pdu_complete = (pp->pdu_available == 0) || end_of_sdu;
+	const bool pdu_complete = (pp->pdu_available == 0) || force_emit;
 
-	if (end_of_sdu) {
+	if (force_emit) {
 		pp->pdu_available = 0;
 	}
 
@@ -1248,6 +1274,310 @@ static isoal_status_t isoal_tx_unframed_produce(struct isoal_source *source,
 	return err;
 }
 
+/**
+ * @brief  Inserts a segmentation header at the current wirte point in the PDU
+ *         under production.
+ * @param  source              source handle
+ * @param  sc                  start / continuation bit value to be written
+ * @param  cmplt               complete bit value to be written
+ * @param  time_offset         value of time offset to be written
+ * @return                     status
+ */
+static isoal_status_t isoal_insert_seg_header_timeoffset(struct isoal_source *source,
+							 const bool sc,
+							 const bool cmplt,
+							 const uint32_t time_offset)
+{
+	struct isoal_source_session *session;
+	struct isoal_pdu_production *pp;
+	struct isoal_pdu_produced *pdu;
+	struct pdu_iso_sdu_sh seg_hdr;
+	isoal_status_t err;
+	uint8_t write_size;
+
+	session    = &source->session;
+	pp         = &source->pdu_production;
+	pdu        = &pp->pdu;
+	write_size = PDU_ISO_SEG_HDR_SIZE + (sc ? 0 : PDU_ISO_SEG_TIMEOFFSET_SIZE);
+
+	memset(&seg_hdr, 0, sizeof(seg_hdr));
+
+	/* Check if there is enough space left in the PDU. This should not fail
+	 * as the calling should also check before requesting insertion of a
+	 * new header.
+	 */
+	if (pp->pdu_available < write_size) {
+
+		return ISOAL_STATUS_ERR_UNSPECIFIED;
+	}
+
+	seg_hdr.sc = sc;
+	seg_hdr.cmplt = cmplt;
+	seg_hdr.length = sc ? 0 : PDU_ISO_SEG_TIMEOFFSET_SIZE;
+
+	if (!sc) {
+		seg_hdr.timeoffset = time_offset;
+	}
+
+	/* Store header */
+	pp->seg_hdr_sc = seg_hdr.sc;
+	pp->seg_hdr_length = seg_hdr.length;
+
+	/* Save location of last segmentation header so that it can be updated
+	 * as data is written.
+	 */
+	pp->last_seg_hdr_loc = pp->pdu_written;
+	/* Write to PDU */
+	err = session->pdu_write(&pdu->contents,
+				  pp->pdu_written,
+				  (uint8_t*) &seg_hdr,
+				  write_size);
+	pp->pdu_written   += write_size;
+	pp->pdu_available -= write_size;
+
+	return err;
+}
+
+/**
+ * @breif  Updates the cmplt flag and length in the last segmentation header written
+ * @param  source     source handle
+ * @param  cmplt      ew value for complete flag
+ * param   add_length length to add
+ * @return            status
+ */
+static isoal_status_t isoal_update_seg_header_cmplt_length(struct isoal_source *source,
+							   const bool cmplt,
+							   const uint8_t add_length)
+{
+	struct isoal_source_session *session;
+	struct isoal_pdu_production *pp;
+	struct isoal_pdu_produced *pdu;
+	struct pdu_iso_sdu_sh seg_hdr;
+
+	session    = &source->session;
+	pp         = &source->pdu_production;
+	pdu        = &pp->pdu;
+	memset(&seg_hdr, 0, sizeof(seg_hdr));
+
+	seg_hdr.sc = pp->seg_hdr_sc;
+
+	/* Update the complete flag and length */
+	seg_hdr.cmplt = cmplt;
+	pp->seg_hdr_length += add_length;
+	seg_hdr.length = pp->seg_hdr_length;
+
+
+	/* Re-write the segmentation header at the same location */
+	return session->pdu_write(&pdu->contents,
+				  pp->last_seg_hdr_loc,
+				  (uint8_t*) &seg_hdr,
+				  PDU_ISO_SEG_HDR_SIZE);
+}
+
+/**
+ * @brief Fragment received SDU and produce framed PDUs
+ * @details Destination source may have an already partially built PDU
+ *
+ * @param source[in,out] Destination source with bookkeeping state
+ * @param tx_sdu[in]     SDU with packet boundary information
+ *
+ * @return Status
+ */
+static isoal_status_t isoal_tx_framed_produce(struct isoal_source *source,
+						const struct isoal_sdu_tx *tx_sdu)
+{
+	struct isoal_source_session *session;
+	struct isoal_pdu_production *pp;
+	isoal_sdu_len_t packet_available;
+	const uint8_t *sdu_payload;
+	uint32_t time_offset;
+	bool zero_length_sdu;
+	isoal_status_t err;
+	bool padding_pdu;
+	uint8_t ll_id;
+
+	session     = &source->session;
+	pp          = &source->pdu_production;
+	padding_pdu = false;
+	err         = ISOAL_STATUS_OK;
+
+	packet_available = tx_sdu->size;
+	sdu_payload      = tx_sdu->dbuf;
+	LL_ASSERT(sdu_payload);
+
+	zero_length_sdu = (packet_available == 0 &&
+		tx_sdu->sdu_state == BT_ISO_SINGLE);
+
+	if (tx_sdu->sdu_state == BT_ISO_START ||
+		tx_sdu->sdu_state == BT_ISO_SINGLE) {
+		/* Start of a new SDU */
+
+		/* Initialize to info provided in SDU */
+		uint32_t actual_cig_ref_point = tx_sdu->cig_ref_point;
+		uint64_t actual_event = tx_sdu->target_event;
+
+		/* Update sequence number for received SDU
+		 *
+		 * BT Core V5.3 : Vol 6 Low Energy Controller : Part G IS0-AL:
+		 * 2 ISOAL Features :
+		 * SDUs received by the ISOAL from the upper layer shall be
+		 * given a sequence number which is initialized to 0 when the
+		 * CIS or BIS is created.
+		 *
+		 * NOTE: The upper layer may synchronize its sequence number
+		 * with the sequence number in the ISOAL once the Datapath is
+		 * configured and the link is established.
+		 */
+		session->seqn++;
+
+		/* Reset PDU production state */
+		pp->pdu_state = BT_ISO_START;
+
+		/* Update payload counter in case time has passed since the last
+		 * SDU. This should mean that event count * burst number should
+		 * be greater than the current payload number. In the event of
+		 * an SDU interval smaller than the ISO interval, multiple SDUs
+		 * will be sent in the same event. As such the current payload
+		 * number should be retained. Payload numbers are indexed at 0
+		 * and valid until the PDU is emitted.
+		 */
+		pp->payload_number = MAX(pp->payload_number,
+			(tx_sdu->target_event * session->burst_number));
+
+		/* Get actual event for this payload number */
+		actual_event = pp->payload_number / session->burst_number;
+
+		/* Get cig reference point for this PDU based on the actual
+		 * event being set. This might introduce some errors as the cig
+		 * refernce point for future events could drift. However as the
+		 * time offset calculation requires an absolute value, this
+		 * seems to be the best candidate.
+		 */
+		if (actual_event > tx_sdu->target_event) {
+			actual_cig_ref_point = tx_sdu->cig_ref_point +
+				((actual_event - tx_sdu->target_event) * session->iso_interval *
+					CONN_INT_UNIT_US);
+		}
+
+		/* Check if time stamp on packet is later than the CIG reference
+		 * point and adjust targets. This could happen if the SDU has
+		 * been time-stampped at the controller when received via HCI.
+		 *
+		 * BT Core V5.3 : Vol 6 Low Energy Controller : Part G IS0-AL:
+		 * 3.1 Time_Offset in framed PDUs :
+		 * The Time_Offset shall be a positive value.
+		 */
+		if (actual_cig_ref_point <= tx_sdu->time_stamp) {
+			/* Advance target to next event */
+			actual_event++;
+			actual_cig_ref_point += session->iso_interval * CONN_INT_UNIT_US;
+
+			/* Set payload number */
+			pp->payload_number = actual_event * session->burst_number;
+		}
+
+		/* Calculate the time offset */
+		LL_ASSERT(actual_cig_ref_point > tx_sdu->time_stamp);
+		time_offset = actual_cig_ref_point - tx_sdu->time_stamp;
+
+		/* Reset PDU fragmentation count for this SDU */
+		pp->pdu_cnt = 0;
+	}
+
+	/* PDUs should be created until the SDU fragment has been fragmented or if
+	 * this is the last fragment of the SDU, until the required padding PDU(s)
+	 * are sent.
+	 */
+	while ((err == ISOAL_STATUS_OK) &&
+		((packet_available > 0) || padding_pdu || zero_length_sdu)) {
+		const isoal_status_t err_alloc = isoal_tx_allocate_pdu(source, tx_sdu);
+		struct isoal_pdu_produced  *pdu = &pp->pdu;
+		err |= err_alloc;
+
+		if (pp->pdu_state == BT_ISO_START) {
+			/* Start of a new SDU. Segmentation header and time-offset
+			 * should be inserted.
+			 */
+			err |= isoal_insert_seg_header_timeoffset(source,
+								false, false,
+								time_offset);
+			pp->pdu_state = BT_ISO_CONT;
+		} else if (!padding_pdu && pp->pdu_state == BT_ISO_CONT && pp->pdu_written == 0) {
+			/* Continuing an SDU in a new PDU. Segmentation header
+			 * alone should be inserted.
+			 */
+			err |= isoal_insert_seg_header_timeoffset(source,
+								true, false,
+								0);
+		}
+
+		/*
+		 * For this PDU we can only consume of packet, bounded by:
+		 *   - What can fit in the destination PDU.
+		 *   - What remains of the packet.
+		 */
+		const size_t consume_len = MIN(
+			packet_available,
+			pp->pdu_available
+		);
+
+		if (consume_len > 0) {
+			err |= session->pdu_write(&pdu->contents,
+						  pp->pdu_written,
+						  sdu_payload,
+						  consume_len);
+			sdu_payload       += consume_len;
+			pp->pdu_written   += consume_len;
+			pp->pdu_available -= consume_len;
+			packet_available  -= consume_len;
+		}
+
+		/* End of the SDU is reached at the end of the last SDU fragment
+		 * or if this is a single fragment SDU
+		 */
+		bool end_of_sdu = (packet_available == 0) &&
+				((tx_sdu->sdu_state == BT_ISO_SINGLE) ||
+					(tx_sdu->sdu_state == BT_ISO_END));
+		/* Update complete flag in last segmentation header */
+		err |= isoal_update_seg_header_cmplt_length(source, end_of_sdu, consume_len);
+
+		/* LLID is fixed for framed PDUs */
+		ll_id = PDU_BIS_LLID_FRAMED;
+
+		/* NOTE: Ideally even if the end of the SDU is reached, the PDU
+		 * should not be emitted as long as there is space left. If the
+		 * PDU is not released, it might require a flush timeout to
+		 * trigger the release as receiving an SDU per SDU interval is
+		 * not guarenteed. As there is no trigger for this in the
+		 * ISO-AL, the PDU is released. This does mean that the
+		 * bandwidth of this implementation will be less that the ideal
+		 * supported by framed PDUs. Ideally ISOAL_SEGMENT_MIN_SIZE
+		 * should be used to assess if there is sufficient usable space
+		 * left in the PDU.
+		 */
+		bool release_pdu = end_of_sdu;
+		const isoal_status_t err_emit = isoal_tx_try_emit_pdu(source, release_pdu, ll_id);
+
+		err |= err_emit;
+
+		/* TODO: Send padding PDU(s) if required
+		 *
+		 * BT Core V5.3 : Vol 6 Low Energy Controller : Part G IS0-AL:
+		 * 2 ISOAL Features :
+		 * Padding is required when the data does not add up to the
+		 * configured number of PDUs that are specified in the BN
+		 * parameter per CIS or BIS event.
+		 *
+		 * When padding PDUs as opposed to null PDUs are required for
+		 * framed production is not clear.
+		 */
+		padding_pdu = false;
+		zero_length_sdu = false;
+	}
+
+	return err;
+}
+
 
 /**
  * @brief Deep copy a SDU, fragment into PDU(s)
@@ -1267,19 +1597,18 @@ isoal_status_t isoal_tx_sdu_fragment(isoal_source_handle_t source_hdl,
 	err = ISOAL_STATUS_ERR_PDU_ALLOC;
 
 	if (source->pdu_production.mode != ISOAL_PRODUCTION_MODE_DISABLED) {
-		/* TODO: consider how to separate framed and unframed production
-		 * BT Core V5.3 : Vol 6 Low Energy Controller : Part G IS0-AL:
+		/* BT Core V5.3 : Vol 6 Low Energy Controller : Part G IS0-AL:
 		 * 2 ISOAL Features :
 		 * (1) Unframed PDUs shall only be used when the ISO_Interval is equal to or an
 		 * integer multiple of the SDU_Interval and a constant time offset alignment is
 		 * maintained between the SDU generation and the timing in the isochronous
-		 * transport.
+		 * transport. (TODO)
 		 * (2) When the Host requests the use of framed PDUs, the Controller shall use framed PDUs.
 		 */
-		bool pdu_framed = false;
+		bool pdu_framed = source->session.framed;
 
 		if (pdu_framed) {
-			/* TODO: add framed handling */
+			err = isoal_tx_framed_produce(source, tx_sdu);
 		} else {
 			err = isoal_tx_unframed_produce(source, tx_sdu);
 		}

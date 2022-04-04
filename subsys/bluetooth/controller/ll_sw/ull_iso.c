@@ -17,6 +17,7 @@
 #include "util/mayfly.h"
 
 #include "pdu.h"
+#include "hal/ticker.h"
 
 #include "lll.h"
 #include "lll_sync.h"
@@ -328,13 +329,13 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 	iso_interval = cig->iso_interval;
 	stream_sync_delay = cis->sync_delay;
 	group_sync_delay = cig->sync_delay;
+	framed = cis->framed;
 
 	if (path_dir == BT_HCI_DATAPATH_DIR_CTLR_TO_HOST) {
 		/* Create sink for RX data path */
 		burst_number  = cis->lll.rx.burst_number;
 		flush_timeout = cis->lll.rx.flush_timeout;
 		max_octets    = cis->lll.rx.max_octets;
-		framed        = cis->framed;
 
 		if (role) {
 			/* peripheral */
@@ -416,7 +417,7 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 			}
 		}
 
-		err = isoal_source_create(handle, role,
+		err = isoal_source_create(handle, role, framed,
 					  burst_number, flush_timeout, max_octets,
 					  sdu_interval, iso_interval,
 					  stream_sync_delay, group_sync_delay,
@@ -676,9 +677,48 @@ void ull_iso_lll_ack_enqueue(uint16_t handle, struct node_tx_iso *node_tx)
 	}
 }
 
+#if defined(CONFIG_BT_CTLR_CONN_ISO)
+static void iso_rx_cig_ref_point_update(struct ll_conn_iso_group *cig,
+					const struct ll_conn_iso_stream *cis,
+					const struct node_rx_iso_meta  *meta)
+{
+	uint32_t cig_sync_delay;
+	uint32_t cis_sync_delay;
+	uint64_t event_count;
+	uint8_t burst_number;
+	uint8_t role;
+
+	role = cig->lll.role;
+	cig_sync_delay = cig->sync_delay;
+	cis_sync_delay = cis->sync_delay;
+	burst_number = cis->lll.rx.burst_number;
+	event_count = cis->lll.event_count;
+
+	if (role) {
+		/* Peripheral */
+
+		/* Check if this is the first payload received for this cis in
+		 * this event
+		 */
+		if (meta->payload_number == (burst_number * event_count)) {
+			/* Update the CIG reference point based on the CIS
+			 * anchor point
+			 */
+			/* TODO: It is not clear that the timestamp is in ticks.
+			 * Upstream expectations might be different and this
+			 * might have to be updated.
+			 */
+			cig->cig_ref_point = HAL_TICKER_TICKS_TO_US(meta->timestamp) +
+						cis_sync_delay - cig_sync_delay;
+		}
+	}
+}
+#endif /* CONFIG_BT_CTLR_CONN_ISO */
+
 static void iso_rx_demux(void *param)
 {
 	struct ll_conn_iso_stream *cis;
+	struct ll_conn_iso_group *cig;
 	struct ll_iso_datapath *dp;
 	struct node_rx_pdu *rx_pdu;
 	struct node_rx_hdr *rx;
@@ -705,7 +745,10 @@ static void iso_rx_demux(void *param)
 #if defined(CONFIG_BT_CTLR_CONN_ISO)
 				rx_pdu = (struct node_rx_pdu *)rx;
 				cis = ll_conn_iso_stream_get(rx_pdu->hdr.handle);
+				cig = cis->group;
 				dp  = cis->hdr.datapath_out;
+
+				iso_rx_cig_ref_point_update(cig, cis, &rx_pdu->hdr.rx_iso_meta);
 
 				if (dp && dp->path_id != BT_HCI_DATAPATH_ID_HCI) {
 					/* If vendor specific datapath pass to ISO AL here,

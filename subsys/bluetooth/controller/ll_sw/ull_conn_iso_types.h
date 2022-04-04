@@ -41,6 +41,9 @@ struct ll_conn_iso_group {
 				 */
 	uint32_t c_sdu_interval;
 	uint32_t p_sdu_interval;
+	uint32_t cig_ref_point;	/* CIG reference point timestamp (us) based on
+				 * controller's clock
+				 */
 	uint16_t iso_interval;
 	uint8_t  cig_id;
 	uint8_t  started : 1;   /* 1 if CIG started and ticker is running */

@@ -260,11 +260,13 @@ static void ticker_cb(uint32_t ticks_at_expire, uint32_t ticks_drift,
 	static struct lll_prepare_param p;
 	struct ll_conn_iso_group *cig;
 	struct ll_conn_iso_stream *cis;
+	uint64_t leading_event_count;
 	uint16_t handle_iter;
 	uint32_t err;
 	uint8_t ref;
 
 	cig = param;
+	leading_event_count = 0;
 
 	/* Check if stopping ticker (on disconnection, race with ticker expiry)
 	 */
@@ -287,7 +289,22 @@ static void ticker_cb(uint32_t ticks_at_expire, uint32_t ticks_drift,
 		 */
 		if (cis->lll.handle != 0xFFFF) {
 			cis->lll.event_count++;
+
+
+			leading_event_count = MAX(leading_event_count,
+						cis->lll.event_count);
 		}
+	}
+
+	/* Update the CIG reference point for this event. Event 0 for the
+	 * leading CIS in the CIG would have had it's reference point set in
+	 * ull_peripheral_iso_start(). The reference point should only be
+	 * updated from event 1 onwards. Although the cig reference point set
+	 * this way is not accurate, it is the best possible until the anchor
+	 * point for the leading CIS is available for this event.
+	 */
+	if (leading_event_count > 0) {
+		cig->cig_ref_point += (cig->iso_interval * CONN_INT_UNIT_US);
 	}
 
 	/* Increment prepare reference count */
@@ -372,6 +389,14 @@ void ull_peripheral_iso_start(struct ll_conn *acl, uint32_t ticks_at_expire,
 	 * by skipping <n> interval(s) and incrementing event_count.
 	 */
 	LL_ASSERT(cig_offset_us > 0);
+
+	/* Calculate the CIG reference point of first CIG event. This
+	 * calculation is inaccurate. However it is the best estimate available
+	 * until the first anchor point for the leading CIS is available.
+	 */
+	cig->cig_ref_point = HAL_TICKER_TICKS_TO_US(ticks_at_expire);
+	cig->cig_ref_point += acl_to_cig_ref_point;
+	cig->cig_ref_point += (acl->lll.interval * CONN_INT_UNIT_US);
 
 	/* Start CIS peripheral CIG ticker */
 	ticker_status = ticker_start(TICKER_INSTANCE_ID_CTLR,

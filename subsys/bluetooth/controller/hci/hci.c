@@ -31,6 +31,9 @@
 
 #include "hal/ecb.h"
 #include "hal/ccm.h"
+#include "hal/ticker.h"
+
+#include "ticker/ticker.h"
 
 #include "ll_sw/pdu.h"
 
@@ -5038,8 +5041,20 @@ int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 	handle = bt_iso_handle(handle);
 
 	/* Extract time stamp */
-	sdu_frag_tx.time_stamp = 0;
+	/* Set default to current time
+	 * BT Core V5.3 : Vol 6 Low Energy Controller : Part G IS0-AL:
+	 * 3.1 Time_Offset in framed PDUs :
+	 * The Controller transmitting a SDU may use any of the following
+	 * methods to determine the value of the SDU reference time:
+	 * -- A captured time stamp of the SDU
+	 * -- A time stamp provided by the higher layer
+	 * -- A computed time stamp based on a sequence counter provided by the
+	 *    higher layer (Not implemented)
+	 * -- Any other method of determining Time_Offset (Not implemented)
+	 */
+	sdu_frag_tx.time_stamp = HAL_TICKER_TICKS_TO_US(ticker_ticks_now_get());
 	if (ts_flag) {
+		/* Overwrite time stamp with HCI provided time stamp */
 		time_stamp = net_buf_pull_mem(buf, sizeof(*time_stamp));
 		len -= sizeof(*time_stamp);
 		sdu_frag_tx.time_stamp = *time_stamp;
@@ -5076,6 +5091,8 @@ int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 			return -EINVAL;
 		}
 
+		struct ll_conn_iso_group *cig = cis->group;
+
 		hdr = &(cis->hdr);
 
 		/* Set target event as the current event. This might cause some
@@ -5088,6 +5105,7 @@ int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 		 * the payloads may be transmitted in later events as well.
 		 */
 		sdu_frag_tx.target_event = cis->lll.event_count;
+		sdu_frag_tx.cig_ref_point = cig->cig_ref_point;
 	} else {
 		return -EINVAL;
 	}
