@@ -654,6 +654,29 @@ static isoal_status_t isoal_rx_unframed_consume(struct isoal_sink *sink,
 	 */
 	pdu_padding = (length == 0) && (llid == PDU_BIS_LLID_START_CONTINUE) &&
 		      (!pdu_err || sp->fsm == ISOAL_ERR_SPOOL);
+	seq_err = (meta->payload_number != (sp->prev_pdu_id+1));
+
+	/* If there are no buffers available, the PDUs received by the ISO-AL
+	 * may not be in sequence even though this is expected for unframed rx.
+	 * It would be necessary to exit the ISOAL_ERR_SPOOL state as the PDU
+	 * count and as a result the last_pdu detection is no longer reliable.
+	 */
+	if (sp->fsm == ISOAL_ERR_SPOOL && !pdu_err && !seq_err &&
+		/* Previous sequence error should have move to the
+		 * ISOAL_ERR_SPOOL state and emitted the SDU in production. No
+		 * PDU error so LLID and length are reliable and no sequence
+		 * error so this PDU is the next in order.
+		 */
+		((sp->prev_pdu_is_end || sp->prev_pdu_is_padding) &&
+			((llid == PDU_BIS_LLID_START_CONTINUE && length > 0) ||
+				(llid == PDU_BIS_LLID_COMPLETE_END && length == 0)))) {
+		/* Detected a start of a new SDU as the last PDU was an end
+		 * fragment or padding and the current is the start of a new SDU
+		 * (either filled or zero length). Move to ISOAL_START
+		 * immediately.
+		 */
+		sp->fsm = ISOAL_START;
+	}
 
 	if (sp->fsm == ISOAL_START) {
 		struct isoal_sdu_produced *sdu;
@@ -674,7 +697,6 @@ static isoal_status_t isoal_rx_unframed_consume(struct isoal_sink *sink,
 		sdu->timestamp = anchorpoint + latency;
 	} else {
 		sp->pdu_cnt++;
-		seq_err = (meta->payload_number != (sp->prev_pdu_id+1));
 	}
 
 	last_pdu = (sp->pdu_cnt == session->pdus_per_sdu);
@@ -762,6 +784,8 @@ static isoal_status_t isoal_rx_unframed_consume(struct isoal_sink *sink,
 	/* Update next state */
 	sp->fsm = next_state;
 	sp->prev_pdu_id = meta->payload_number;
+	sp->prev_pdu_is_end = !pdu_err && llid == PDU_BIS_LLID_COMPLETE_END;
+	sp->prev_pdu_is_padding = !pdu_err && pdu_padding;
 
 	return err;
 }

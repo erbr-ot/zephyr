@@ -261,6 +261,9 @@ struct isoal_sdu_production {
 	struct isoal_sdu_produced  sdu;
 	/* Bookkeeping */
 	isoal_pdu_cnt_t  prev_pdu_id : 39;
+	/* Assumes that isoal_pdu_cnt_t is a uint64_t bit field */
+	uint64_t prev_pdu_is_end:1;
+	uint64_t prev_pdu_is_padding:1;
 	enum {
 		ISOAL_START,
 		ISOAL_CONTINUE,
