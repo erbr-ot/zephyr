@@ -657,9 +657,16 @@ void test_unframed_seq_err(void)
 	/* Test recombine, should now trigger emit since this is last PDU in SDU */
 	pdu_ref = &testdata[0];
 	err = isoal_rx_pdu_recombine(sink_hdl, &pdu_meta);
-	/* Expectig data to be written but with error status */
+	/* Expecting length set to 0, with error status.
+	 *
+	 * BT Core V5.3 : Vol 4 HCI I/F : Part G HCI Func. Spec.:
+	 * 5.4.5 HCI ISO Data packets
+	 * If Packet_Status_Flag equals 0b10 then PB_Flag shall equal 0b10.
+	 * When Packet_Status_Flag is set to 0b10 in packets from the Controller to the
+	 * Host, there is no data and ISO_SDU_Length shall be set to zero.
+	 */
 	zassert_equal(err, ISOAL_STATUS_OK, "err=0x%02x", err);
-	zassert_equal(sink->sdu_production.sdu_written, 3+7, "written=%u",
+	zassert_equal(sink->sdu_production.sdu_written, 0, "written=%u",
 		      sink->sdu_production.sdu_written);
 	zassert_equal(sink->sdu_production.sdu_status, ISOAL_SDU_STATUS_LOST_DATA,
 		      "sdu_status=0x%x", sink->sdu_production.sdu_status);
