@@ -195,6 +195,7 @@ uint8_t ull_peripheral_iso_acquire(struct ll_conn *acl,
 	cis->lll.nesn = 0;
 	cis->lll.cie = 0;
 	cis->lll.flushed = 0;
+	cis->lll.datapath_ready_rx = 0;
 
 	cis->lll.rx.phy = req->c_phy;
 	cis->lll.rx.burst_number = req->c_bn;
@@ -294,6 +295,9 @@ static void ticker_cb(uint32_t ticks_at_expire, uint32_t ticks_drift,
 			leading_event_count = MAX(leading_event_count,
 						cis->lll.event_count);
 		}
+
+		/* Latch datapath validity entering event */
+		cis->lll.datapath_ready_rx = cis->hdr.datapath_out != NULL;
 	}
 
 	/* Update the CIG reference point for this event. Event 0 for the
