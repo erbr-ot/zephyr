@@ -140,6 +140,7 @@ uint8_t ull_peripheral_iso_acquire(struct ll_conn *acl,
 {
 	struct ll_conn_iso_group *cig;
 	struct ll_conn_iso_stream *cis;
+	uint16_t handle;
 
 	/* Get CIG by id */
 	cig = ll_conn_iso_group_get_by_id(req->cig_id);
@@ -165,6 +166,14 @@ uint8_t ull_peripheral_iso_acquire(struct ll_conn *acl,
 	if (cig->lll.num_cis == CONFIG_BT_CTLR_CONN_ISO_STREAMS_PER_GROUP) {
 		/* No space in CIG for new CIS */
 		return BT_HCI_ERR_INSUFFICIENT_RESOURCES;
+	}
+
+	for (handle = LL_CIS_HANDLE_BASE; handle <= LAST_VALID_CIS_HANDLE; handle++) {
+		cis = ll_conn_iso_stream_get(handle);
+		if (cis->group && cis->cis_id == req->cis_id) {
+			/* CIS ID already in use */
+			return BT_HCI_ERR_INVALID_LL_PARAM;
+		}
 	}
 
 	/* Acquire new CIS */

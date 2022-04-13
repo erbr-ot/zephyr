@@ -1030,7 +1030,7 @@ isoal_status_t isoal_rx_pdu_recombine(isoal_sink_handle_t sink_hdl,
 				      const struct isoal_pdu_rx *pdu_meta)
 {
 	struct isoal_sink *sink = &isoal_global.sink_state[sink_hdl];
-	isoal_status_t err = ISOAL_STATUS_ERR_SDU_ALLOC;
+	isoal_status_t err = ISOAL_STATUS_OK;
 
 	if (sink && sink->sdu_production.mode != ISOAL_PRODUCTION_MODE_DISABLED) {
 		if (sink->session.framed) {

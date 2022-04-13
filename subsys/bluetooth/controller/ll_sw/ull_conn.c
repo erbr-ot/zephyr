@@ -154,7 +154,8 @@ static inline void event_phy_upd_ind_prep(struct ll_conn *conn,
 #endif /* CONFIG_BT_CTLR_PHY */
 
 #if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
-static inline void event_send_cis_rsp(struct ll_conn *conn);
+static inline void event_send_cis_rsp(struct ll_conn *conn,
+				      uint16_t event_counter);
 static inline void event_peripheral_iso_prep(struct ll_conn *conn,
 					     uint16_t event_counter,
 					     uint32_t ticks_at_expire);
@@ -1184,8 +1185,15 @@ int ull_conn_llcp(struct ll_conn *conn, uint32_t ticks_at_expire, uint16_t lazy)
 #if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
 		} else if (conn->llcp_cis.req != conn->llcp_cis.ack) {
 			if (conn->llcp_cis.state == LLCP_CIS_STATE_RSP_WAIT) {
+				struct lll_conn *lll = &conn->lll;
+				uint16_t event_counter;
+
+				/* Calculate current event counter */
+				event_counter = lll->event_counter +
+						lll->latency_prepare + lazy;
+
 				/* Handle CIS response */
-				event_send_cis_rsp(conn);
+				event_send_cis_rsp(conn, event_counter);
 			}
 
 #endif /* CONFIG_BT_CTLR_PERIPHERAL_ISO */
@@ -6182,30 +6190,56 @@ static inline uint8_t phy_upd_ind_recv(struct ll_conn *conn, memq_link_t *link,
 #endif /* CONFIG_BT_CTLR_PHY */
 
 #if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
-void event_send_cis_rsp(struct ll_conn *conn)
+void event_send_cis_rsp(struct ll_conn *conn, uint16_t event_counter)
 {
 	struct node_tx *tx;
 
 	/* If waiting for accept/reject from host, do nothing */
-	if (((conn->llcp_cis.req - conn->llcp_cis.ack) & 0xFF) == CIS_REQUEST_AWAIT_HOST) {
+	if (((conn->llcp_cis.req - conn->llcp_cis.ack) & 0xFF) ==
+		CIS_REQUEST_AWAIT_HOST) {
 		return;
 	}
 
 	tx = mem_acquire(&mem_conn_tx_ctrl.free);
 	if (tx) {
 		struct pdu_data *pdu = (void *)tx->pdu;
+		uint16_t conn_event_count;
 
 		ull_pdu_data_init(pdu);
 
 		pdu->ll_id = PDU_DATA_LLID_CTRL;
 		pdu->llctrl.opcode = PDU_DATA_LLCTRL_TYPE_CIS_RSP;
 
+		/* Try to request extra time to setup the CIS. If central's
+		 * CIS_IND is delayed, or it decides to do differently, this
+		 * still might not be possible. Only applies if instance is
+		 * less than two events in the future.
+		 *
+		 * In the example below it is shown how the CIS_IND is adjusted
+		 * by peripheral increasing the event_counter in the CIS_RSP.
+		 * This improves the peripheral's chances of setting up the CIS
+		 * in due time. Current event counter is left most column.
+		 *
+		 * Without correction (LATE)     With correction (OK)
+		 * --------------------------------------------------------
+		 * 10 ==> CIS_REQ E=15           10 ==> CIS_REQ E=15
+		 * 14 <== CIS_RSP E=15           14 <== CIS_RSP E=16 (14+2)
+		 * 15 ==> CIS_IND E=16           15 ==> CIS_IND E=17
+		 * 16 ==> (+ offset) First PDU   16     Peripheral setup
+		 * 16     Peripheral setup       17 ==> (+ offset) First PDU
+		 * 17     Peripheral ready
+		 *
+		 * TODO: Port to new LLCP procedures
+		 */
+		conn_event_count = MAX(conn->llcp_cis.conn_event_count,
+				       event_counter + 2);
+
 		sys_put_le24(conn->llcp_cis.cis_offset_min,
 			     pdu->llctrl.cis_rsp.cis_offset_min);
 		sys_put_le24(conn->llcp_cis.cis_offset_max,
 			     pdu->llctrl.cis_rsp.cis_offset_max);
 		pdu->llctrl.cis_rsp.conn_event_count =
-			sys_cpu_to_le16(conn->llcp_cis.conn_event_count);
+			sys_cpu_to_le16(conn_event_count);
 
 		pdu->len = offsetof(struct pdu_data_llctrl, cis_rsp) +
 				    sizeof(struct pdu_data_llctrl_cis_rsp);
