@@ -440,6 +440,7 @@ int ull_conn_iso_reset(void)
 
 static int init_reset(void)
 {
+	struct ll_conn_iso_stream *cis;
 	struct ll_conn_iso_group *cig;
 	uint16_t handle;
 	int err;
@@ -463,6 +464,12 @@ static int init_reset(void)
 		cig = ll_conn_iso_group_get(handle);
 		cig->cig_id  = 0xFF;
 		cig->started = 0;
+	}
+
+	for (handle = LL_CIS_HANDLE_BASE; handle <= LAST_VALID_CIS_HANDLE; handle++) {
+		cis = ll_conn_iso_stream_get(handle);
+		cis->cis_id = 0;
+		cis->group  = NULL;
 	}
 
 	/* Initialize LLL */

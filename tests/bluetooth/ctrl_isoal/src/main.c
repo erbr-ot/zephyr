@@ -1097,7 +1097,7 @@ void test_unframed_disabled_sink(void)
 
 	/* Test recombine */
 	err = isoal_rx_pdu_recombine(sink_hdl, &pdu_meta);
-	zassert_equal(err, ISOAL_STATUS_ERR_SDU_ALLOC, "");
+	zassert_equal(err, ISOAL_STATUS_OK, "");
 	zassert_equal(sink->sdu_production.sdu_written, 0, "written=%u",
 		      sink->sdu_production.sdu_written);
 }
