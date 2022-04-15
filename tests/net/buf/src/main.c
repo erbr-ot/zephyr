@@ -67,9 +67,9 @@ static void buf_destroy(struct net_buf *buf);
 static void fixed_destroy(struct net_buf *buf);
 static void var_destroy(struct net_buf *buf);
 
-NET_BUF_POOL_HEAP_DEFINE(bufs_pool, 10, 0, buf_destroy);
-NET_BUF_POOL_FIXED_DEFINE(fixed_pool, 10, 128, fixed_destroy);
-NET_BUF_POOL_VAR_DEFINE(var_pool, 10, 1024, 0, var_destroy);
+NET_BUF_POOL_HEAP_DEFINE(bufs_pool, 10, USER_DATA_HEAP, buf_destroy);
+NET_BUF_POOL_FIXED_DEFINE(fixed_pool, 10, 128, USER_DATA_FIXED, fixed_destroy);
+NET_BUF_POOL_VAR_DEFINE(var_pool, 10, 1024, USER_DATA_VAR, var_destroy);
 
 static void buf_destroy(struct net_buf *buf)
 {
