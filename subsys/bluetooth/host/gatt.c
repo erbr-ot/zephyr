@@ -64,6 +64,18 @@ struct gatt_sub {
 	sys_slist_t list;
 };
 
+#if defined(CONFIG_BT_SETTINGS)
+/* Struct used to store both the public and the random address of
+ * a device when replacing random addresses in the ccc attribute's
+ * cfg array with the device's public address after
+ * pairing complete.
+ */
+struct device_addresses {
+	const bt_addr_le_t *private_addr;
+	const bt_addr_le_t *public_addr;
+};
+#endif /* CONFIG_BT_SETTINGS */
+
 #if defined(CONFIG_BT_GATT_CLIENT)
 #define SUB_MAX (CONFIG_BT_MAX_PAIRED + CONFIG_BT_MAX_CONN)
 #else
@@ -5334,6 +5346,66 @@ static uint8_t ccc_save(const struct bt_gatt_attr *attr, uint16_t handle,
 	save->count++;
 
 	return BT_GATT_ITER_CONTINUE;
+}
+
+uint8_t convert_to_public_on_match(const struct bt_gatt_attr *attr,
+				   uint16_t handle, 
+				   void *user_data)
+{
+	struct _bt_gatt_ccc *ccc;
+	struct device_addresses *device_addresses = user_data;
+
+	ARG_UNUSED(handle);
+
+	/* Check if attribute is a CCC */
+	if (attr->write != bt_gatt_attr_write_ccc) {
+		return BT_GATT_ITER_CONTINUE;
+	}
+
+	ccc = attr->user_data;
+
+	/* Copy the device's public address to the config's address if the
+	 * config's address is the same as the device's private address
+	 */
+	for (size_t i = 0; i < ARRAY_SIZE(ccc->cfg); i++) {
+		if (bt_addr_le_cmp((const bt_addr_le_t *)&ccc->cfg[i].peer,
+		device_addresses->private_addr) == 0) {
+			bt_addr_le_copy(&ccc->cfg[i].peer,
+			device_addresses->public_addr);
+#if !defined(CONFIG_BT_CTLR_ALLOW_SAME_PEER_CONN)
+		break;
+#endif
+		}
+	}
+	return BT_GATT_ITER_STOP;
+}
+
+void bt_gatt_update_ccc_cfg_addr(const bt_addr_le_t *private_addr,
+				 const bt_addr_le_t *public_addr)
+{
+	struct device_addresses user_data = {
+		.private_addr = private_addr,
+		.public_addr = public_addr};
+
+	bt_gatt_foreach_attr(
+		0x0001, 0xffff,
+		convert_to_public_on_match,
+		&user_data);
+}
+
+int bt_gatt_store_ccc_and_cf(struct bt_conn *conn)
+{
+	int err = 0;
+
+	err = bt_gatt_store_ccc(conn->id, &(conn->le.dst));
+
+	if (err != 0) {
+		return err;
+	}
+
+	err = bt_gatt_store_cf(conn);
+
+	return err;
 }
 
 int bt_gatt_store_ccc(uint8_t id, const bt_addr_le_t *addr)

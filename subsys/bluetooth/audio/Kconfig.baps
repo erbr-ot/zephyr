@@ -7,7 +7,7 @@
 #
 
 config BT_AUDIO_UNICAST
-	bool
+	bool "Bluetooth Unicast"
 	depends on BT_CONN
 	select BT_SMP
 	select BT_ISO_UNICAST

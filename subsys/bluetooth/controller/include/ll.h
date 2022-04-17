@@ -238,7 +238,8 @@ uint8_t ll_create_connection(uint16_t scan_interval, uint16_t scan_window,
 #endif /* !CONFIG_BT_CTLR_ADV_EXT */
 uint8_t ll_connect_disable(void **rx);
 uint8_t ll_conn_update(uint16_t handle, uint8_t cmd, uint8_t status, uint16_t interval_min,
-		    uint16_t interval_max, uint16_t latency, uint16_t timeout);
+		    uint16_t interval_max, uint16_t latency, uint16_t timeout,
+		    uint16_t* offset);
 uint8_t ll_chm_update(uint8_t const *const chm);
 uint8_t ll_chm_get(uint16_t handle, uint8_t *const chm);
 uint8_t ll_enc_req_send(uint16_t handle, uint8_t const *const rand_num, uint8_t const *const ediv,
@@ -321,7 +322,8 @@ void ll_iso_rx_mem_release(void **node_rx);
 /* Downstream - ISO Data */
 void *ll_iso_tx_mem_acquire(void);
 void ll_iso_tx_mem_release(void *tx);
-int ll_iso_tx_mem_enqueue(uint16_t handle, void *tx);
+int ll_iso_tx_mem_enqueue(uint16_t handle, void *tx, memq_link_t *link);
+void ll_iso_link_tx_release(memq_link_t *link);
 
 /* External co-operation */
 void ll_timeslice_ticker_id_get(uint8_t * const instance_index,

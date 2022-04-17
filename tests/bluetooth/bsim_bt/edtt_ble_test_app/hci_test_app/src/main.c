@@ -199,7 +199,7 @@ NET_BUF_POOL_FIXED_DEFINE(data_pool, CONFIG_BT_CTLR_RX_BUFFERS + 14,
 static K_FIFO_DEFINE(data_queue);
 #if defined(CONFIG_BT_ISO)
 NET_BUF_POOL_FIXED_DEFINE(iso_data_pool, CONFIG_BT_ISO_RX_BUF_COUNT + 14,
-			  CONFIG_BT_ISO_RX_MTU + 4, NULL);
+			  CONFIG_BT_ISO_RX_MTU + 8, 8, NULL);
 static K_FIFO_DEFINE(iso_data_queue);
 #endif /* CONFIG_BT_ISO */
 

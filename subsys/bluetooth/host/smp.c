@@ -24,6 +24,7 @@
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/conn.h>
 #include <bluetooth/buf.h>
+#include <bluetooth/gatt.h>
 
 #include <tinycrypt/constants.h>
 #include <tinycrypt/aes.h>
@@ -204,6 +205,10 @@ struct bt_smp {
 
 	/* Delayed work for timeout handling */
 	struct k_work_delayable		work;
+
+	/* A work item for persisting ccc and cf data in the system workqueue.
+	 */
+	struct k_work			work_settings_ccc_and_cf_save;
 };
 
 static unsigned int fixed_passkey = BT_PASSKEY_INVALID;
@@ -1947,6 +1952,17 @@ static void smp_timeout(struct k_work *work)
 	 */
 	atomic_set_bit(smp->flags, SMP_FLAG_TIMEOUT);
 }
+
+#if defined(CONFIG_BT_SETTINGS) && defined(CONFIG_BT_GATT_CLIENT)
+static void bt_smp_save_ccc_and_cf_on_pairing_complete(struct k_work *work)
+{
+	struct bt_smp *smp = CONTAINER_OF(work, struct bt_smp, work_settings_ccc_and_cf_save);
+
+	bt_gatt_update_ccc_cfg_addr(&(smp->chan.chan.conn->le.init_addr),
+		&(smp->chan.chan.conn->le.dst));
+	bt_gatt_store_ccc_and_cf(smp->chan.chan.conn);
+}
+#endif /* CONFIG_BT_SETTINGS && CONFIG_BT_GATT_CLIENT */
 
 static void smp_send(struct bt_smp *smp, struct net_buf *buf,
 		     bt_conn_tx_cb_t cb, void *user_data)
@@ -4590,6 +4606,11 @@ static void bt_smp_connected(struct bt_l2cap_chan *chan)
 	       CONTAINER_OF(chan, struct bt_l2cap_le_chan, chan)->tx.cid);
 
 	k_work_init_delayable(&smp->work, smp_timeout);
+
+#if defined(CONFIG_BT_SETTINGS) && defined(CONFIG_BT_GATT_CLIENT)
+	k_work_init(&smp->work_settings_ccc_and_cf_save,
+		    bt_smp_save_ccc_and_cf_on_pairing_complete);
+#endif /* CONFIG_BT_SETTINGS && CONFIG_BT_GATT_CLIENT */
 	smp_reset(smp);
 }
 

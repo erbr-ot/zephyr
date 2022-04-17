@@ -455,25 +455,28 @@ static void bt_iso_chan_disconnected(struct bt_iso_chan *chan, uint8_t reason)
 			bt_iso_remove_data_path(chan->iso);
 
 #if defined(CONFIG_BT_ISO_UNICAST)
-			bool is_chan_connected;
-			struct bt_iso_cig *cig;
-			struct bt_iso_chan *cis_chan;
+			if (chan->iso) {
+				bool is_chan_connected;
+				struct bt_iso_cig *cig;
+				struct bt_iso_chan *cis_chan;
 
-			/* Update CIG state */
-			cig = get_cig(chan);
-			__ASSERT(cig != NULL, "CIG was NULL");
+				/* Update CIG state */
+				cig = get_cig(chan);
+				__ASSERT(cig != NULL, "CIG was NULL");
 
-			is_chan_connected = false;
-			SYS_SLIST_FOR_EACH_CONTAINER(&cig->cis_channels, cis_chan, node) {
-				if (cis_chan->state == BT_ISO_STATE_CONNECTED ||
-				    cis_chan->state == BT_ISO_STATE_CONNECTING) {
-					is_chan_connected = true;
-					break;
+				is_chan_connected = false;
+				SYS_SLIST_FOR_EACH_CONTAINER(&cig->cis_channels,
+							     cis_chan, node) {
+					if (cis_chan->state == BT_ISO_STATE_CONNECTED ||
+					    cis_chan->state == BT_ISO_STATE_CONNECTING) {
+						is_chan_connected = true;
+						break;
+					}
 				}
-			}
 
-			if (!is_chan_connected) {
-				cig->state = BT_ISO_CIG_STATE_INACTIVE;
+				if (!is_chan_connected) {
+					cig->state = BT_ISO_CIG_STATE_INACTIVE;
+				}
 			}
 #endif /* CONFIG_BT_ISO_UNICAST */
 		}
@@ -1012,6 +1015,7 @@ void hci_le_cis_req(struct net_buf *buf)
 		return;
 	}
 
+	iso->iso.type = BT_ISO_CHAN_TYPE_CONNECTED;
 	iso->iso.cig_id = evt->cig_id;
 	iso->iso.cis_id = evt->cis_id;
 

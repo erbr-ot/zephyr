@@ -26,6 +26,10 @@
 #define CONN_INT_UNIT_US     1250U
 #define PERIODIC_INT_UNIT_US 1250U
 
+/* Timeout for Host to accept/reject cis create request */
+/* See BTCore5.3, 4.E.6.7 - Default value 0x1f40 * 625us */
+#define DEFAULT_CONNECTION_ACCEPT_TIMEOUT_US (5000000)
+
 /* Intervals after which connection or sync establishment is considered lost */
 #define CONN_ESTAB_COUNTDOWN 6U
 
@@ -377,8 +381,8 @@ struct node_rx_ftr {
 /* Meta-information for isochronous PDUs in node_rx_hdr */
 struct node_rx_iso_meta {
 	uint64_t payload_number : 39; /* cisPayloadNumber */
+	uint64_t status : 8;          /* Status of reception (OK/not OK) */
 	uint32_t timestamp;           /* Time of reception */
-	uint8_t  status;              /* Status of reception (OK/not OK) */
 };
 
 /* Define invalid/unassigned Controller state/role instance handle */
@@ -532,6 +536,8 @@ static inline void lll_hdr_init(void *lll, void *parent)
 #define iso_rx_sched() ll_rx_sched()
 #endif /* CONFIG_BT_CTLR_ISO_VENDOR_DATA_PATH */
 
+struct node_tx_iso;
+
 void lll_done_score(void *param, uint8_t result);
 
 int lll_init(void);
@@ -570,6 +576,8 @@ void ull_rx_sched(void);
 void ull_rx_sched_done(void);
 void ull_iso_rx_put(memq_link_t *link, void *rx);
 void ull_iso_rx_sched(void);
+void *ull_iso_tx_ack_dequeue(void);
+void ull_iso_lll_ack_enqueue(uint16_t handle, struct node_tx_iso *tx);
 struct event_done_extra *ull_event_done_extra_get(void);
 struct event_done_extra *ull_done_extra_type_set(uint8_t type);
 void *ull_event_done(void *param);

@@ -40,6 +40,7 @@
 #include "lll/lll_df_types.h"
 #include "lll_sync.h"
 #include "lll_sync_iso.h"
+#include "lll_iso_tx.h"
 #include "lll_conn.h"
 #include "lll_df.h"
 
@@ -468,11 +469,24 @@ static MEMQ_DECLARE(ull_done);
 
 #if defined(CONFIG_BT_CONN)
 static MFIFO_DEFINE(ll_pdu_rx_free, sizeof(void *), LL_PDU_RX_CNT);
-static MFIFO_DEFINE(tx_ack, sizeof(struct lll_tx),
-		    CONFIG_BT_BUF_ACL_TX_COUNT);
 
 static void *mark_update;
 #endif /* CONFIG_BT_CONN */
+
+#if defined(CONFIG_BT_CONN) || defined(CONFIG_BT_CTLR_CONN_ISO)
+#if defined(CONFIG_BT_CONN)
+#define BT_BUF_ACL_TX_COUNT CONFIG_BT_BUF_ACL_TX_COUNT
+#else
+#define BT_BUF_ACL_TX_COUNT 0
+#endif /* CONFIG_BT_CONN */
+#if defined(CONFIG_BT_CTLR_CONN_ISO)
+#define BT_CTLR_ISO_TX_BUFFERS CONFIG_BT_CTLR_ISO_TX_BUFFERS
+#else
+#define BT_CTLR_ISO_TX_BUFFERS 0
+#endif /* CONFIG_BT_CTLR_CONN_ISO */
+static MFIFO_DEFINE(tx_ack, sizeof(struct lll_tx),
+		    BT_BUF_ACL_TX_COUNT + BT_CTLR_ISO_TX_BUFFERS);
+#endif /* CONFIG_BT_CONN || CONFIG_BT_CTLR_CONN_ISO */
 
 static void *mark_disable;
 
@@ -721,15 +735,15 @@ void ll_reset(void)
 	LL_ASSERT(!err);
 #endif /* CONFIG_BT_OBSERVER */
 
-#if defined(CONFIG_BT_CTLR_ISO)
-	err = ull_iso_reset();
-	LL_ASSERT(!err);
-#endif /* CONFIG_BT_CTLR_ISO */
-
 #if defined(CONFIG_BT_CTLR_CONN_ISO)
 	err = ull_conn_iso_reset();
 	LL_ASSERT(!err);
 #endif /* CONFIG_BT_CTLR_CONN_ISO */
+
+#if defined(CONFIG_BT_CTLR_ISO)
+	err = ull_iso_reset();
+	LL_ASSERT(!err);
+#endif /* CONFIG_BT_CTLR_ISO */
 
 #if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
 	err = ull_peripheral_iso_reset();
@@ -860,13 +874,6 @@ ll_rx_get_again:
 	*/
 
 	*node_rx = NULL;
-
-#if defined(CONFIG_BT_CTLR_ADV_ISO) || defined(CONFIG_BT_CTLR_CONN_ISO)
-	cmplt = ull_iso_tx_ack_get(handle);
-	if (cmplt) {
-		return cmplt;
-	}
-#endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
 
 	link = memq_peek(memq_ll_rx.head, memq_ll_rx.tail, (void **)&rx);
 	if (link) {
@@ -2392,14 +2399,32 @@ static uint8_t tx_cmplt_get(uint16_t *handle, uint8_t *first, uint8_t last)
 	*handle = tx->handle;
 	cmplt = 0U;
 	do {
-		struct node_tx *node_tx;
 		struct pdu_data *p;
+		struct node_tx *node_tx;
+
+#if defined(CONFIG_BT_CTLR_BROADCAST_ISO) || \
+	defined(CONFIG_BT_CTLR_CONN_ISO)
+		if (IS_CIS_HANDLE(tx->handle)) {
+			struct node_tx_iso *node_tx_iso;
+
+			node_tx_iso = tx->node;
+			p = (void *)node_tx_iso->pdu;
+			/* TODO: We may need something more advanced for framed */
+			if (p->ll_id == PDU_CIS_LLID_COMPLETE_END) {
+				/* We must count each SDU fragment */
+				cmplt += node_tx_iso->sdu_fragments;
+			}
+			ll_iso_link_tx_release(node_tx_iso->link);
+			ll_iso_tx_mem_release (node_tx_iso);
+			goto next_ack;
+		}
+#endif /* CONFIG_BT_CTLR_BROADCAST_ISO || CONFIG_BT_CTLR_CONN_ISO */
 
 		node_tx = tx->node;
 		p = (void *)node_tx->pdu;
 		if (!node_tx || (node_tx == (void *)1) ||
-		    (((uint32_t)node_tx & ~3) &&
-		     (p->ll_id == PDU_DATA_LLID_DATA_START ||
+		    (((uint32_t)node_tx & ~3) && (
+		      p->ll_id == PDU_DATA_LLID_DATA_START ||
 		      p->ll_id == PDU_DATA_LLID_DATA_CONTINUE))) {
 			/* data packet, hence count num cmplt */
 			tx->node = (void *)1;
@@ -2413,6 +2438,7 @@ static uint8_t tx_cmplt_get(uint16_t *handle, uint8_t *first, uint8_t last)
 			ll_tx_mem_release(node_tx);
 		}
 
+next_ack:
 		tx = mfifo_dequeue_iter_get(mfifo_tx_ack.m, mfifo_tx_ack.s,
 					    mfifo_tx_ack.n, mfifo_tx_ack.f,
 					    last, first);

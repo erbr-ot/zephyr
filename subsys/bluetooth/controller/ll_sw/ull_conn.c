@@ -145,7 +145,8 @@ static inline void event_phy_upd_ind_prep(struct ll_conn *conn,
 #endif /* CONFIG_BT_CTLR_PHY */
 
 #if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
-static inline void event_send_cis_rsp(struct ll_conn *conn);
+static inline void event_send_cis_rsp(struct ll_conn *conn,
+				      uint16_t event_counter);
 static inline void event_peripheral_iso_prep(struct ll_conn *conn,
 					     uint16_t event_counter,
 					     uint32_t ticks_at_expire);
@@ -221,6 +222,35 @@ static uint8_t default_phy_rx;
 
 static struct ll_conn conn_pool[CONFIG_BT_MAX_CONN];
 static void *conn_free;
+
+#if defined(CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE)
+#define CPR_APM_RESPOND_WAIT (0U) /* Wait for user response */
+#define CPR_APM_RESPOND_IMMEDIATE (1U) /* Immediate user response */
+
+/* Proprietary handling of CPR Anchor Point Movement Response
+ *
+ * When returning CPR_APM_RESPOND_WAIT the LLCP system changes to the
+ * LLCP_CPR_STATE_USER_WAIT state and an EXTERNAL trigger must set
+ *   (1) ll_conn::llcp_conn_param.state = LLCP_CPR_STATE_RSP;
+ *   (2) ll_conn::llcp_conn_param.cmd = 0U;
+ * for the response to be sent with the values provivded in
+ * ll_conn::llcp_conn_param.offset0..5
+ *
+ * When returning CPR_APM_RESPOND_IMMEDIATE the LLCP system will automatically
+ * respond with the values provivded in ll_conn::llcp_conn_param.offset0..5
+ *
+ * The value of ll_conn::llcp_conn_param.status will in any case determine the
+ * nature of the response sent:
+ *   0U                             - Accept CPR (possibly with changed offsets)
+ *   BT_HCI_ERR_UNSUPP_LL_PARAM_VAL - Reject CPR
+ *
+ * The function is only allowed to change:
+ *   ll_conn::llcp_conn_param.offset0..5
+ *   ll_conn::llcp_conn_param.state
+ *   ll_conn::llcp_conn_param.cmd
+ */
+extern int ull_handle_cpr_anchor_point_move(struct ll_conn *conn);
+#endif /* CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE */
 
 struct ll_conn *ll_conn_acquire(void)
 {
@@ -355,7 +385,8 @@ int ll_tx_mem_enqueue(uint16_t handle, void *tx)
 }
 
 uint8_t ll_conn_update(uint16_t handle, uint8_t cmd, uint8_t status, uint16_t interval_min,
-		    uint16_t interval_max, uint16_t latency, uint16_t timeout)
+		    uint16_t interval_max, uint16_t latency, uint16_t timeout,
+		    uint16_t* offset)
 {
 	struct ll_conn *conn;
 
@@ -416,13 +447,24 @@ uint8_t ll_conn_update(uint16_t handle, uint8_t cmd, uint8_t status, uint16_t in
 			    conn->llcp_conn_param.ack) {
 				return BT_HCI_ERR_CMD_DISALLOWED;
 			}
-
 			conn->llcp_conn_param.status = 0U;
 			conn->llcp_conn_param.interval_min = interval_min;
 			conn->llcp_conn_param.interval_max = interval_max;
 			conn->llcp_conn_param.latency = latency;
 			conn->llcp_conn_param.timeout = timeout;
 			conn->llcp_conn_param.state = cmd;
+			conn->llcp_conn_param.offset0 = offset ? offset[0]
+							       : 0x0000;
+			conn->llcp_conn_param.offset1 = offset ? offset[1]
+							       : 0xffff;
+			conn->llcp_conn_param.offset2 = offset ? offset[2]
+							       : 0xffff;
+			conn->llcp_conn_param.offset3 = offset ? offset[3]
+							       : 0xffff;
+			conn->llcp_conn_param.offset4 = offset ? offset[4]
+							       : 0xffff;
+			conn->llcp_conn_param.offset5 = offset ? offset[5]
+							       : 0xffff;
 			conn->llcp_conn_param.cmd = 1U;
 			conn->llcp_conn_param.req++;
 
@@ -530,39 +572,68 @@ static bool is_valid_disconnect_reason(uint8_t reason)
 uint8_t ll_terminate_ind_send(uint16_t handle, uint8_t reason)
 {
 	struct ll_conn *conn;
+#if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO) || defined(CONFIG_BT_CTLR_CENTRAL_ISO)
+	struct ll_conn_iso_stream *cis;
+#endif
 
-	conn = ll_connected_get(handle);
-	if (!conn) {
-		return BT_HCI_ERR_UNKNOWN_CONN_ID;
-	}
+	if (IS_ACL_HANDLE(handle)) {
+		conn = ll_connected_get(handle);
+
+		/* Is conn still connected? */
+		if (!conn) {
+			return BT_HCI_ERR_CMD_DISALLOWED;
+		}
 
 #if defined(CONFIG_BT_LL_SW_LLCP_LEGACY)
-	if (conn->llcp_terminate.req != conn->llcp_terminate.ack) {
-		return BT_HCI_ERR_CMD_DISALLOWED;
-	}
+		if (conn->llcp_terminate.req != conn->llcp_terminate.ack) {
+			return BT_HCI_ERR_CMD_DISALLOWED;
+		}
 #endif /* CONFIG_BT_LL_SW_LLCP_LEGACY */
 
-	if (!is_valid_disconnect_reason(reason)) {
-		return BT_HCI_ERR_INVALID_PARAM;
-	}
+		if (!is_valid_disconnect_reason(reason)) {
+			return BT_HCI_ERR_INVALID_PARAM;
+		}
 
 #if defined(CONFIG_BT_LL_SW_LLCP_LEGACY)
-	conn->llcp_terminate.reason_own = reason;
-	conn->llcp_terminate.req++; /* (req - ack) == 1, TERM_REQ */
+		conn->llcp_terminate.reason_own = reason;
+		conn->llcp_terminate.req++; /* (req - ack) == 1, TERM_REQ */
 #else /* CONFIG_BT_LL_SW_LLCP_LEGACY */
-	uint8_t err;
+		uint8_t err;
 
-	err = ull_cp_terminate(conn, reason);
-	if (err) {
-		return err;
-	}
+		err = ull_cp_terminate(conn, reason);
+		if (err) {
+			return err;
+		}
 #endif /* CONFIG_BT_LL_SW_LLCP_LEGACY */
 
-	if (IS_ENABLED(CONFIG_BT_PERIPHERAL) && conn->lll.role) {
-		ull_periph_latency_cancel(conn, handle);
+		if (IS_ENABLED(CONFIG_BT_PERIPHERAL) && conn->lll.role) {
+			ull_periph_latency_cancel(conn, handle);
+		}
+		return 0;
 	}
+#if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO) || defined(CONFIG_BT_CTLR_CENTRAL_ISO)
+	if (IS_CIS_HANDLE(handle)) {
+#if !defined(CONFIG_BT_LL_SW_LLCP_LEGACY)
+		cis = ll_iso_stream_connected_get(handle);
+		if (!cis) {
+			return BT_HCI_ERR_UNKNOWN_CONN_ID;
+		}
+		conn = ll_connected_get(cis->lll.acl_handle);
+		/* Is conn still connected? */
+		if (!conn) {
+			return BT_HCI_ERR_CMD_DISALLOWED;
+		}
 
-	return 0;
+		return ull_cp_cis_terminate(conn, cis, reason);
+#else
+		ARG_UNUSED(cis);
+		/* LEGACY LLCP does not support CIS Terminate procedure */
+		return BT_HCI_ERR_UNKNOWN_CMD;
+#endif /* !defined(CONFIG_BT_LL_SW_LLCP_LEGACY) */
+	}
+#endif /* defined(CONFIG_BT_CTLR_PERIPHERAL_ISO) || defined(CONFIG_BT_CTLR_CENTRAL_ISO) */
+
+	return BT_HCI_ERR_UNKNOWN_CONN_ID;
 }
 
 #if defined(CONFIG_BT_CENTRAL) || defined(CONFIG_BT_CTLR_PER_INIT_FEAT_XCHG)
@@ -1098,6 +1169,21 @@ int ull_conn_llcp(struct ll_conn *conn, uint32_t ticks_at_expire, uint16_t lazy)
 			conn->llcp_type = LLCP_CONN_UPD;
 			conn->llcp_ack -= 2U;
 
+#if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
+		} else if (conn->llcp_cis.req != conn->llcp_cis.ack) {
+			if (conn->llcp_cis.state == LLCP_CIS_STATE_RSP_WAIT) {
+				struct lll_conn *lll = &conn->lll;
+				uint16_t event_counter;
+
+				/* Calculate current event counter */
+				event_counter = lll->event_counter +
+						lll->latency_prepare + lazy;
+
+				/* Handle CIS response */
+				event_send_cis_rsp(conn, event_counter);
+			}
+
+#endif /* CONFIG_BT_CTLR_PERIPHERAL_ISO */
 		/* check if feature exchange procedure is requested */
 		} else if (conn->llcp_feature.ack != conn->llcp_feature.req) {
 			/* handle feature exchange state machine */
@@ -1137,27 +1223,6 @@ int ull_conn_llcp(struct ll_conn *conn, uint32_t ticks_at_expire, uint16_t lazy)
 			/* handle PHY Upd state machine */
 			event_phy_req_prep(conn);
 #endif /* CONFIG_BT_CTLR_PHY */
-
-#if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
-		} else if (conn->llcp_cis.req != conn->llcp_cis.ack) {
-			if (conn->llcp_cis.state == LLCP_CIS_STATE_RSP_WAIT) {
-				/* Handle CIS response */
-				event_send_cis_rsp(conn);
-			} else if (conn->llcp_cis.state ==
-						LLCP_CIS_STATE_INST_WAIT) {
-				struct lll_conn *lll = &conn->lll;
-				uint16_t event_counter;
-
-				/* Calculate current event counter */
-				event_counter = lll->event_counter +
-						lll->latency_prepare + lazy;
-
-				/* Start CIS peripheral */
-				event_peripheral_iso_prep(conn,
-							  event_counter,
-							  ticks_at_expire);
-			}
-#endif /* CONFIG_BT_CTLR_PERIPHERAL_ISO */
 		}
 	}
 
@@ -1332,15 +1397,29 @@ int ull_conn_llcp(struct ll_conn *conn, uint32_t ticks_at_expire, uint16_t lazy)
 		}
 	}
 
+#if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
+	/* In any state, allow processing of CIS peripheral waiting for
+	 * instant.
+	 */
+	if (conn->llcp_cis.state == LLCP_CIS_STATE_INST_WAIT) {
+		struct lll_conn *lll = &conn->lll;
+		uint16_t event_counter;
+
+		/* Calculate current event counter */
+		event_counter = lll->event_counter +
+				lll->latency_prepare + lazy;
+
+		event_peripheral_iso_prep(conn, event_counter,
+					  ticks_at_expire);
+
+	}
+#endif /* CONFIG_BT_CTLR_PERIPHERAL_ISO */
+
 	return 0;
 #else /* CONFIG_BT_LL_SW_LLCP_LEGACY */
 	LL_ASSERT(conn->lll.handle != LLL_HANDLE_INVALID);
 
-#if defined(CONFIG_BT_CTLR_CONN_PARAM_REQ)
 	conn->llcp.prep.ticks_at_expire = ticks_at_expire;
-#else /* !CONFIG_BT_CTLR_CONN_PARAM_REQ */
-	ARG_UNUSED(ticks_at_expire);
-#endif /* CONFIG_BT_CTLR_CONN_PARAM_REQ */
 	conn->llcp.prep.lazy = lazy;
 
 	ull_cp_run(conn);
@@ -2403,6 +2482,11 @@ static void conn_cleanup(struct ll_conn *conn, uint8_t reason)
 #endif /* CONFIG_BT_CTLR_PERIPHERAL_ISO || CONFIG_BT_CTLR_CENTRAL_ISO */
 
 	conn_cleanup_finalize(conn);
+}
+
+void ull_conn_timeout(void *param)
+{
+	conn_cleanup(param, BT_HCI_ERR_CONN_TIMEOUT);
 }
 
 static void tx_ull_flush(struct ll_conn *conn)
@@ -3795,12 +3879,12 @@ static inline void event_conn_param_req(struct ll_conn *conn,
 	p->latency = sys_cpu_to_le16(conn->llcp_conn_param.latency);
 	p->timeout = sys_cpu_to_le16(conn->llcp_conn_param.timeout);
 	p->preferred_periodicity = 0U;
-	p->offset0 = sys_cpu_to_le16(0x0000);
-	p->offset1 = sys_cpu_to_le16(0xffff);
-	p->offset2 = sys_cpu_to_le16(0xffff);
-	p->offset3 = sys_cpu_to_le16(0xffff);
-	p->offset4 = sys_cpu_to_le16(0xffff);
-	p->offset5 = sys_cpu_to_le16(0xffff);
+	p->offset0 = sys_cpu_to_le16(conn->llcp_conn_param.offset0);
+	p->offset1 = sys_cpu_to_le16(conn->llcp_conn_param.offset1);
+	p->offset2 = sys_cpu_to_le16(conn->llcp_conn_param.offset2);
+	p->offset3 = sys_cpu_to_le16(conn->llcp_conn_param.offset3);
+	p->offset4 = sys_cpu_to_le16(conn->llcp_conn_param.offset4);
+	p->offset5 = sys_cpu_to_le16(conn->llcp_conn_param.offset5);
 
 	/* Set CPR mutex */
 	cpr_active_set(conn);
@@ -3915,7 +3999,6 @@ static inline void event_conn_param_rsp(struct ll_conn *conn)
 
 		/* Initiate connection update procedure */
 		conn->llcp_cu.win_size = 1U;
-		conn->llcp_cu.win_offset_us = 0U;
 
 		interval_max = conn->llcp_conn_param.interval_max;
 		preferred_periodicity = conn->llcp_conn_param.preferred_periodicity;
@@ -3931,6 +4014,17 @@ static inline void event_conn_param_rsp(struct ll_conn *conn)
 			/* Choose maximum interval as default */
 			conn->llcp_cu.interval = interval_max;
 		}
+
+		/* Use valid offset0 in range [0..interval]. An offset of
+		 * 0xffff means not valid. Disregard other preferred offsets.
+		 */
+		if (conn->llcp_conn_param.offset0 <= conn->llcp_cu.interval) {
+			conn->llcp_cu.win_offset_us =
+				conn->llcp_conn_param.offset0 * 1250U;
+		} else {
+			conn->llcp_cu.win_offset_us = 0U;
+		}
+
 		conn->llcp_cu.latency = conn->llcp_conn_param.latency;
 		conn->llcp_cu.timeout = conn->llcp_conn_param.timeout;
 		conn->llcp_cu.state = LLCP_CUI_STATE_SELECT;
@@ -4051,6 +4145,9 @@ static inline void event_conn_param_prep(struct ll_conn *conn,
 	case LLCP_CPR_STATE_APP_WAIT:
 	case LLCP_CPR_STATE_RSP_WAIT:
 	case LLCP_CPR_STATE_UPD_WAIT:
+#if defined(CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE)
+	case LLCP_CPR_STATE_USER_WAIT:
+#endif /* CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE */
 	case LLCP_CPR_STATE_UPD:
 		/* Do nothing */
 		break;
@@ -4516,6 +4613,9 @@ static inline void event_phy_upd_ind_prep(struct ll_conn *conn,
 		/* reset initiate flag */
 		conn->llcp.phy_upd_ind.initiate = 0U;
 
+		/* reset ack flag */
+		conn->llcp.phy_upd_ind.ack = 0U;
+
 		/* Check if both tx and rx PHY unchanged */
 		if (!((conn->llcp.phy_upd_ind.tx |
 		       conn->llcp.phy_upd_ind.rx) & 0x07)) {
@@ -4582,8 +4682,8 @@ static inline void event_phy_upd_ind_prep(struct ll_conn *conn,
 		ind->instant = sys_cpu_to_le16(conn->llcp.phy_upd_ind.instant);
 
 		ctrl_tx_enqueue(conn, tx);
-	} else if (((event_counter - conn->llcp.phy_upd_ind.instant) &
-		    0xFFFF) <= 0x7FFF) {
+	} else if (conn->llcp.phy_upd_ind.ack && (((event_counter - conn->llcp.phy_upd_ind.instant) &
+		    0xFFFF) <= 0x7FFF)) {
 		struct lll_conn *lll = &conn->lll;
 		struct node_rx_pdu *rx;
 		uint8_t old_tx, old_rx;
@@ -6069,6 +6169,7 @@ static inline uint8_t phy_upd_ind_recv(struct ll_conn *conn, memq_link_t *link,
 	conn->llcp.phy_upd_ind.rx = ind->c_to_p_phy;
 	conn->llcp.phy_upd_ind.instant = instant;
 	conn->llcp.phy_upd_ind.initiate = 0U;
+	conn->llcp.phy_upd_ind.ack = 1U;
 
 	/* Reserve the Rx-ed PHY Update Indication PDU in the connection
 	 * context, by appending to the LLCP node rx list. We do not mark it
@@ -6100,30 +6201,56 @@ static inline uint8_t phy_upd_ind_recv(struct ll_conn *conn, memq_link_t *link,
 #endif /* CONFIG_BT_CTLR_PHY */
 
 #if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
-void event_send_cis_rsp(struct ll_conn *conn)
+void event_send_cis_rsp(struct ll_conn *conn, uint16_t event_counter)
 {
 	struct node_tx *tx;
 
 	/* If waiting for accept/reject from host, do nothing */
-	if (((conn->llcp_cis.req - conn->llcp_cis.ack) & 0xFF) == CIS_REQUEST_AWAIT_HOST) {
+	if (((conn->llcp_cis.req - conn->llcp_cis.ack) & 0xFF) ==
+		CIS_REQUEST_AWAIT_HOST) {
 		return;
 	}
 
 	tx = mem_acquire(&mem_conn_tx_ctrl.free);
 	if (tx) {
 		struct pdu_data *pdu = (void *)tx->pdu;
+		uint16_t conn_event_count;
 
 		ull_pdu_data_init(pdu);
 
 		pdu->ll_id = PDU_DATA_LLID_CTRL;
 		pdu->llctrl.opcode = PDU_DATA_LLCTRL_TYPE_CIS_RSP;
 
+		/* Try to request extra time to setup the CIS. If central's
+		 * CIS_IND is delayed, or it decides to do differently, this
+		 * still might not be possible. Only applies if instance is
+		 * less than two events in the future.
+		 *
+		 * In the example below it is shown how the CIS_IND is adjusted
+		 * by peripheral increasing the event_counter in the CIS_RSP.
+		 * This improves the peripheral's chances of setting up the CIS
+		 * in due time. Current event counter is left most column.
+		 *
+		 * Without correction (LATE)     With correction (OK)
+		 * --------------------------------------------------------
+		 * 10 ==> CIS_REQ E=15           10 ==> CIS_REQ E=15
+		 * 14 <== CIS_RSP E=15           14 <== CIS_RSP E=16 (14+2)
+		 * 15 ==> CIS_IND E=16           15 ==> CIS_IND E=17
+		 * 16 ==> (+ offset) First PDU   16     Peripheral setup
+		 * 16     Peripheral setup       17 ==> (+ offset) First PDU
+		 * 17     Peripheral ready
+		 *
+		 * TODO: Port to new LLCP procedures
+		 */
+		conn_event_count = MAX(conn->llcp_cis.conn_event_count,
+				       event_counter + 2);
+
 		sys_put_le24(conn->llcp_cis.cis_offset_min,
 			     pdu->llctrl.cis_rsp.cis_offset_min);
 		sys_put_le24(conn->llcp_cis.cis_offset_max,
 			     pdu->llctrl.cis_rsp.cis_offset_max);
 		pdu->llctrl.cis_rsp.conn_event_count =
-			sys_cpu_to_le16(conn->llcp_cis.conn_event_count);
+			sys_cpu_to_le16(conn_event_count);
 
 		pdu->len = offsetof(struct pdu_data_llctrl, cis_rsp) +
 				    sizeof(struct pdu_data_llctrl_cis_rsp);
@@ -6137,8 +6264,26 @@ void event_send_cis_rsp(struct ll_conn *conn)
 void event_peripheral_iso_prep(struct ll_conn *conn, uint16_t event_counter,
 			       uint32_t ticks_at_expire)
 {
-	if (event_counter == conn->llcp_cis.conn_event_count) {
-		ull_peripheral_iso_start(conn, ticks_at_expire);
+	struct ll_conn_iso_group *cig;
+	uint16_t start_event_count;
+
+	start_event_count = conn->llcp_cis.conn_event_count;
+
+	cig = ll_conn_iso_group_get_by_id(conn->llcp_cis.cig_id);
+	LL_ASSERT(cig);
+
+	if (!cig->started) {
+		/* Start ISO peripheral one event before the requested instant
+		 * for first CIS. This is done to be able to accept small CIS
+		 * offsets.
+		 */
+		start_event_count--;
+	}
+
+	/* Start ISO peripheral one event before the requested instant */
+	if (event_counter == start_event_count) {
+		/* Start CIS peripheral */
+		ull_peripheral_iso_start(conn, ticks_at_expire, conn->llcp_cis.cis_handle);
 
 		conn->llcp_cis.state = LLCP_CIS_STATE_REQ;
 		conn->llcp_cis.ack = conn->llcp_cis.req;
@@ -6152,20 +6297,55 @@ static uint8_t cis_req_recv(struct ll_conn *conn, memq_link_t *link,
 	struct node_rx_conn_iso_req *conn_iso_req;
 	uint16_t cis_handle;
 	uint8_t err;
+	uint8_t phy;
 	void *node;
 
+	phy = req->c_phy;
+
+	/* Check reqested PHYs. Returning BT_HCI_ERR_INVALID_LL_PARAM shall invoke
+	 * sending of LL_REJECT_EXT_IND.
+	 */
+	for (uint8_t i = 0; i < 2; i++) {
+		/* Fail on multiple PHY specified */
+		if (util_ones_count_get(&phy, sizeof(phy)) > 1U) {
+			return BT_HCI_ERR_INVALID_LL_PARAM;
+		}
+
+		/* Fail on no PHY specified */
+		if (util_ones_count_get(&phy, sizeof(phy)) == 0U) {
+			return BT_HCI_ERR_INVALID_LL_PARAM;
+		}
+
+		/* Fail on unsupported PHY specified */
+		if (((phy & PHY_2M) &&
+		     !(conn->llcp_feature.features_conn & BIT64(BT_LE_FEAT_BIT_PHY_2M))) ||
+		    ((phy & PHY_CODED) &&
+		     !(conn->llcp_feature.features_conn & BIT64(BT_LE_FEAT_BIT_PHY_CODED)))) {
+			return BT_HCI_ERR_INVALID_LL_PARAM;
+		}
+
+		phy &= ~(PHY_1M|PHY_2M|PHY_CODED);
+
+		/* Fail on RFU bits specified */
+		if (util_ones_count_get(&phy, sizeof(phy))) {
+			return BT_HCI_ERR_INVALID_LL_PARAM;
+		}
+		
+		phy = req->p_phy;
+	}
+
 	conn->llcp_cis.cig_id = req->cig_id;
-	conn->llcp_cis.framed = req->framed;
-	conn->llcp_cis.c_max_sdu = sys_le16_to_cpu(req->c_max_sdu);
-	conn->llcp_cis.p_max_sdu = sys_le16_to_cpu(req->p_max_sdu);
+	conn->llcp_cis.c_max_sdu = (uint16_t)(req->c_max_sdu_packed[1] & 0x0F) << 8 |
+					      req->c_max_sdu_packed[0];
+	conn->llcp_cis.p_max_sdu = (uint16_t)(req->p_max_sdu[1] & 0x0F) << 8 | req->p_max_sdu[0];
 	conn->llcp_cis.cis_offset_min = sys_get_le24(req->cis_offset_min);
 	conn->llcp_cis.cis_offset_max = sys_get_le24(req->cis_offset_max);
-	conn->llcp_cis.conn_event_count =
-		sys_le16_to_cpu(req->conn_event_count);
+	conn->llcp_cis.conn_event_count = sys_le16_to_cpu(req->conn_event_count);
 
 	/* Acquire resources for new CIS */
 	err = ull_peripheral_iso_acquire(conn, &pdu->llctrl.cis_req, &cis_handle);
 	if (err) {
+		(*rx)->hdr.type = NODE_RX_TYPE_RELEASE;
 		return err;
 	}
 
@@ -6184,7 +6364,7 @@ static uint8_t cis_req_recv(struct ll_conn *conn, memq_link_t *link,
 	conn_iso_req = node;
 	conn_iso_req->cig_id = req->cig_id;
 	conn_iso_req->cis_id = req->cis_id;
-	conn_iso_req->cis_handle = sys_le16_to_cpu(cis_handle);
+	conn_iso_req->cis_handle = cis_handle;
 
 	return 0;
 }
@@ -6491,6 +6671,11 @@ static inline void ctrl_tx_ack(struct ll_conn *conn, struct node_tx **tx,
 		conn->lll.phy_tx_time = conn->llcp.phy_upd_ind.tx;
 		/* resume data packet tx */
 		conn->llcp_phy.pause_tx = 0U;
+		/* pdu acked */
+		conn->llcp.phy_upd_ind.ack = 1U;
+		/* update instant */
+		uint16_t instant = sys_le16_to_cpu(pdu_tx->llctrl.phy_upd_ind.instant);
+		conn->llcp.phy_upd_ind.instant = instant;
 		break;
 #endif /* CONFIG_BT_CENTRAL */
 #endif /* CONFIG_BT_CTLR_PHY */
@@ -7023,6 +7208,24 @@ static inline int ctrl_rx(memq_link_t *link, struct node_rx_pdu **rx,
 				conn->llcp_conn_param.state =
 					LLCP_CPR_STATE_APP_WAIT;
 			} else {
+#if defined(CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE)
+				/* Defer handling of CPR anchor point move to
+				 * user extension code */
+				int res = ull_handle_cpr_anchor_point_move(conn);
+				if (res == CPR_APM_RESPOND_WAIT) {
+					/* Wait for user response */
+					conn->llcp_conn_param.state = LLCP_CPR_STATE_USER_WAIT;
+				} else if (res == CPR_APM_RESPOND_IMMEDIATE) {
+					/* Immediate user response */
+					conn->llcp_conn_param.cmd = 0U;
+					conn->llcp_conn_param.state = LLCP_CPR_STATE_RSP;
+
+					/* Mark for buffer for release */
+					(*rx)->hdr.type = NODE_RX_TYPE_RELEASE;
+				} else {
+					LL_ASSERT(0);
+				}
+#else /* CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE */
 				conn->llcp_conn_param.status = 0U;
 				conn->llcp_conn_param.cmd = 0U;
 				conn->llcp_conn_param.state =
@@ -7030,6 +7233,7 @@ static inline int ctrl_rx(memq_link_t *link, struct node_rx_pdu **rx,
 
 				/* Mark for buffer for release */
 				(*rx)->hdr.type = NODE_RX_TYPE_RELEASE;
+#endif /* CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE */
 			}
 
 			conn->llcp_conn_param.ack--;
@@ -7510,7 +7714,13 @@ static inline int ctrl_rx(memq_link_t *link, struct node_rx_pdu **rx,
 
 		err = cis_req_recv(conn, link, rx, pdu_rx);
 		if (err) {
-			conn->llcp_terminate.reason_final = err;
+			if (err == BT_HCI_ERR_INVALID_LL_PARAM) {
+				nack = reject_ext_ind_send(conn, *rx,
+						PDU_DATA_LLCTRL_TYPE_CIS_REQ,
+						BT_HCI_ERR_UNSUPP_LL_PARAM_VAL);
+			} else {
+				conn->llcp_terminate.reason_final = err;
+			}
 		}
 		break;
 	}

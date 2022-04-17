@@ -339,6 +339,27 @@ struct bt_gatt_cpf {
  * @{
  */
 
+/** @brief Update ccc cfg address for a connection
+ *
+ *  Runs through the list of attributes in the GATT database and replaces
+ *  all addresses in the ccc cfg entries that matches the specified private
+ *  address with the provided public address.
+ *
+ *  @param private_addr Private address that should be replaced.
+ *
+ *  @param public_addr  Public address that it should be replaced with.
+ *
+ */
+void bt_gatt_update_ccc_cfg_addr(const bt_addr_le_t *private_addr,
+	const bt_addr_le_t *public_addr);
+
+/** @brief Persist the ccc cfg and client features (cf) data.
+ *
+ *  @param conn Connection object.
+ *
+ */
+int bt_gatt_store_ccc_and_cf(struct bt_conn *conn);
+
 /** @brief Register GATT callbacks.
  *
  *  Register callbacks to monitor the state of GATT.

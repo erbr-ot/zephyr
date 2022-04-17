@@ -12,6 +12,7 @@
 #define CONN_INTERVAL_MIN(x) (6)
 #else /* CONFIG_BT_CTLR_USER_CPR_INTERVAL_MIN */
 /* Proprietary user defined CPR Interval Minimum */
+struct ll_conn;
 extern uint16_t ull_conn_interval_min_get(struct ll_conn *conn);
 #define CONN_INTERVAL_MIN(x) (MAX(ull_conn_interval_min_get(x), 1))
 #endif /* CONFIG_BT_CTLR_USER_CPR_INTERVAL_MIN */

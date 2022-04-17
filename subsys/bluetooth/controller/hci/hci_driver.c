@@ -63,6 +63,15 @@
 
 #include "hci_internal.h"
 
+#define RCV_FIFO_DATA 0
+#if defined(CONFIG_BT_HCI_ACL_FLOW_CONTROL)
+#define FLOW_SIGNAL   1
+#define RESET_SIGNAL  2
+#else
+#define RESET_SIGNAL  1
+#endif
+
+static K_SEM_DEFINE(sem_process_recv, 1, 1);
 static K_SEM_DEFINE(sem_prio_recv, 0, K_SEM_MAX_LIMIT);
 static K_FIFO_DEFINE(recv_fifo);
 
@@ -77,6 +86,11 @@ static struct k_poll_signal hbuf_signal =
 		K_POLL_SIGNAL_INITIALIZER(hbuf_signal);
 static sys_slist_t hbuf_pend;
 static int32_t hbuf_count;
+#endif
+
+#if defined(CONFIG_BT_HCI_RESET_SIGNAL)
+static struct k_poll_signal reset_signal =
+		K_POLL_SIGNAL_INITIALIZER(reset_signal);
 #endif
 
 #if defined(CONFIG_BT_CTLR_ISO)
@@ -111,7 +125,7 @@ isoal_status_t sink_sdu_emit_hci(const struct isoal_sink         *sink_ctx,
 {
 	struct bt_hci_iso_ts_data_hdr *data_hdr;
 	uint16_t packet_status_flag;
-	uint16_t slen, slen_packed;
+	uint16_t slen_packed;
 	struct bt_hci_iso_hdr *hdr;
 	uint16_t handle_packed;
 	struct net_buf *buf;
@@ -131,12 +145,8 @@ isoal_status_t sink_sdu_emit_hci(const struct isoal_sink         *sink_ctx,
 			return ISOAL_STATUS_OK;
 		}
 #endif /* CONFIG_BT_CTLR_CONN_ISO_HCI_DATAPATH_SKIP_INVALID_DATA */
-		data_hdr = net_buf_push(buf, BT_HCI_ISO_TS_DATA_HDR_SIZE);
-		hdr = net_buf_push(buf, BT_HCI_ISO_HDR_SIZE);
-
-		handle = sink_ctx->session.handle;
-
-		pb = sink_ctx->sdu_production.sdu_state;
+		pb  = sink_ctx->sdu_production.sdu_state;
+		len = sink_ctx->sdu_production.sdu_written;
 
 		/*
 		 * BLUETOOTH CORE SPECIFICATION Version 5.3 | Vol 4, Part E
@@ -154,28 +164,35 @@ isoal_status_t sink_sdu_emit_hci(const struct isoal_sink         *sink_ctx,
 		 * Time_Stamp field. This bit shall only be set if the PB_Flag field equals 0b00 or
 		 * 0b10.
 		 */
-		ts = !(pb & 1);
+		ts = (pb & 0x1) == 0x0;
+
+		if (ts) {
+			data_hdr = net_buf_push(buf, BT_HCI_ISO_TS_DATA_HDR_SIZE);
+			packet_status_flag = valid_sdu->status;
+
+			/* TODO: Validity of length might need to be reconsidered here. Not handled in ISO-AL.
+			 * BT Core V5.3 : Vol 4 HCI I/F : Part G HCI Func. Spec.:
+			 * 5.4.5 HCI ISO Data packets
+			 * If Packet_Status_Flag equals 0b10 then PB_Flag shall equal 0b10.
+			 * When Packet_Status_Flag is set to 0b10 in packets from the Controller to the Host, there is no data
+			 * and ISO_SDU_Length shall be set to zero.
+			 */
+			slen_packed = bt_iso_pkt_len_pack(len, packet_status_flag);
+
+			data_hdr->ts = sys_cpu_to_le32((uint32_t) valid_sdu->timestamp);
+			data_hdr->data.sn   = sys_cpu_to_le16((uint16_t) valid_sdu->seqn);
+			data_hdr->data.slen = sys_cpu_to_le16(slen_packed);
+
+			len += BT_HCI_ISO_TS_DATA_HDR_SIZE;
+		}
+
+		hdr = net_buf_push(buf, BT_HCI_ISO_HDR_SIZE);
+
+		handle = sink_ctx->session.handle;
 		handle_packed = bt_iso_handle_pack(handle, pb, ts);
-		len = sink_ctx->sdu_production.sdu_written + BT_HCI_ISO_TS_DATA_HDR_SIZE;
 
 		hdr->handle = sys_cpu_to_le16(handle_packed);
 		hdr->len = sys_cpu_to_le16(len);
-
-		packet_status_flag = valid_sdu->status;
-		/* TODO: Validity of length might need to be reconsidered here. Not handled in
-		 * ISO-AL.
-		 * BT Core V5.3 : Vol 4 HCI I/F : Part G HCI Func. Spec.:
-		 * 5.4.5 HCI ISO Data packets
-		 * If Packet_Status_Flag equals 0b10 then PB_Flag shall equal 0b10.
-		 * When Packet_Status_Flag is set to 0b10 in packets from the Controller to the
-		 * Host, there is no data and ISO_SDU_Length shall be set to zero.
-		 */
-		slen = sink_ctx->sdu_production.sdu_written;
-		slen_packed = bt_iso_pkt_len_pack(slen, packet_status_flag);
-
-		data_hdr->ts = sys_cpu_to_le32((uint32_t) valid_sdu->timestamp);
-		data_hdr->data.sn   = sys_cpu_to_le16((uint16_t) valid_sdu->seqn);
-		data_hdr->data.slen = sys_cpu_to_le16(slen_packed);
 
 		/* send fragment up the chain */
 		bt_recv(buf);
@@ -564,13 +581,28 @@ static void recv_thread(void *p1, void *p2, void *p3)
 {
 #if defined(CONFIG_BT_HCI_ACL_FLOW_CONTROL)
 	/* @todo: check if the events structure really needs to be static */
-	static struct k_poll_event events[2] = {
-		K_POLL_EVENT_STATIC_INITIALIZER(K_POLL_TYPE_SIGNAL,
-						K_POLL_MODE_NOTIFY_ONLY,
-						&hbuf_signal, 0),
+	static struct k_poll_event events[] = {
 		K_POLL_EVENT_STATIC_INITIALIZER(K_POLL_TYPE_FIFO_DATA_AVAILABLE,
 						K_POLL_MODE_NOTIFY_ONLY,
 						&recv_fifo, 0),
+		K_POLL_EVENT_STATIC_INITIALIZER(K_POLL_TYPE_SIGNAL,
+						K_POLL_MODE_NOTIFY_ONLY,
+						&hbuf_signal, 0),
+#if defined(CONFIG_BT_HCI_RESET_SIGNAL)
+		K_POLL_EVENT_STATIC_INITIALIZER(K_POLL_TYPE_SIGNAL,
+						K_POLL_MODE_NOTIFY_ONLY,
+						&reset_signal, 0),
+#endif
+	};
+#elif defined(CONFIG_BT_HCI_RESET_SIGNAL)
+	static struct k_poll_event events[] = {
+		K_POLL_EVENT_STATIC_INITIALIZER(K_POLL_TYPE_FIFO_DATA_AVAILABLE,
+						K_POLL_MODE_NOTIFY_ONLY,
+						&recv_fifo, 0),
+		K_POLL_EVENT_STATIC_INITIALIZER(K_POLL_TYPE_SIGNAL,
+						K_POLL_MODE_NOTIFY_ONLY,
+						&reset_signal, 0),
+
 	};
 #endif
 
@@ -579,27 +611,53 @@ static void recv_thread(void *p1, void *p2, void *p3)
 		struct net_buf *buf = NULL;
 
 		BT_DBG("blocking");
-#if defined(CONFIG_BT_HCI_ACL_FLOW_CONTROL)
+
+#if defined(CONFIG_BT_HCI_ACL_FLOW_CONTROL) || \
+	defined(CONFIG_BT_HCI_RESET_SIGNAL)
 		int err;
 
-		err = k_poll(events, 2, K_FOREVER);
+		err = k_poll(events, ARRAY_SIZE(events), K_FOREVER);
 		LL_ASSERT(err == 0);
-		if (events[0].state == K_POLL_STATE_SIGNALED) {
-			events[0].signal->signaled = 0U;
-		} else if (events[1].state ==
-			   K_POLL_STATE_FIFO_DATA_AVAILABLE) {
-			node_rx = k_fifo_get(events[1].fifo, K_NO_WAIT);
+
+#if defined(CONFIG_BT_HCI_ACL_FLOW_CONTROL)
+		if (events[FLOW_SIGNAL].state == K_POLL_STATE_SIGNALED) {
+			events[FLOW_SIGNAL].signal->signaled = 0U;
+		} else
+#endif
+#if defined(CONFIG_BT_HCI_RESET_SIGNAL)
+		if (events[RESET_SIGNAL].state == K_POLL_STATE_SIGNALED) {
+			events[RESET_SIGNAL].signal->signaled = 0U;
+			events[RESET_SIGNAL].state = K_POLL_STATE_NOT_READY;
+			/* flush fifo, no need to free, the LL has already done it */
+			k_fifo_init(&recv_fifo);
+			continue;
+		} else
+#endif
+		if (events[RCV_FIFO_DATA].state ==
+			K_POLL_STATE_FIFO_DATA_AVAILABLE) {
+			node_rx = k_fifo_get(events[RCV_FIFO_DATA].fifo, K_NO_WAIT);
 		}
 
-		events[0].state = K_POLL_STATE_NOT_READY;
-		events[1].state = K_POLL_STATE_NOT_READY;
+#if defined(CONFIG_BT_HCI_RESET_SIGNAL)
+		k_sem_take(&sem_process_recv, K_FOREVER);
+		err = k_poll(events, ARRAY_SIZE(events), K_NO_WAIT);
+
+		if (events[RESET_SIGNAL].state == K_POLL_STATE_SIGNALED) {
+			k_sem_give(&sem_process_recv);
+			continue;
+		}
+#endif
+#if defined(CONFIG_BT_HCI_ACL_FLOW_CONTROL)
+		events[RCV_FIFO_DATA].state = K_POLL_STATE_NOT_READY;
+		events[FLOW_SIGNAL].state = K_POLL_STATE_NOT_READY;
 
 		/* process host buffers first if any */
 		buf = process_hbuf(node_rx);
-
+#endif
 #else
 		node_rx = k_fifo_get(&recv_fifo, K_FOREVER);
 #endif
+
 		BT_DBG("unblocked");
 
 		if (node_rx && !buf) {
@@ -628,6 +686,10 @@ static void recv_thread(void *p1, void *p2, void *p3)
 
 			k_yield();
 		}
+
+#if defined(CONFIG_BT_HCI_RESET_SIGNAL)
+		k_sem_give(&sem_process_recv);
+#endif
 	}
 }
 
@@ -726,6 +788,9 @@ static int hci_driver_send(struct net_buf *buf)
 
 static int hci_driver_open(void)
 {
+	struct k_poll_signal *signal_reset = NULL;
+	struct k_poll_signal *signal_hbuf = NULL;
+	struct k_sem *sem_process = NULL;
 	uint32_t err;
 
 	DEBUG_INIT();
@@ -736,11 +801,15 @@ static int hci_driver_open(void)
 		return err;
 	}
 
-#if defined(CONFIG_BT_HCI_ACL_FLOW_CONTROL)
-	hci_init(&hbuf_signal);
-#else
-	hci_init(NULL);
+#if defined(CONFIG_BT_HCI_RESET_SIGNAL)
+	signal_reset = &reset_signal;
+	sem_process = &sem_process_recv;
 #endif
+#if defined(CONFIG_BT_HCI_ACL_FLOW_CONTROL)
+	signal_hbuf = &hbuf_signal;
+#endif
+
+	hci_init(signal_reset, signal_hbuf, sem_process);
 
 	k_thread_create(&prio_recv_thread_data, prio_recv_thread_stack,
 			K_KERNEL_STACK_SIZEOF(prio_recv_thread_stack),

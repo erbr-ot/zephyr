@@ -1108,6 +1108,13 @@ uint8_t ll_adv_enable(uint8_t enable)
 		conn->phy_pref_rx = ull_conn_default_phy_rx_get();
 #endif /* CONFIG_BT_CTLR_PHY */
 
+#if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
+		conn->llcp_cis.req = conn->llcp_cis.ack = 0;
+		conn->llcp_cis.state = LLCP_CIS_STATE_REQ;
+		conn->llcp_cis.cig_id = 0U;
+		conn->llcp_cis.cis_handle = 0U;
+#endif /* CONFIG_BT_CTLR_PERIPHERAL_ISO */
+
 		conn->tx_head = conn->tx_ctrl = conn->tx_ctrl_last =
 		conn->tx_data = conn->tx_data_last = 0;
 #else /* CONFIG_BT_LL_SW_LLCP_LEGACY */
