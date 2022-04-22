@@ -742,12 +742,13 @@ static void disable(uint16_t handle)
 
 	cig = ll_conn_iso_group_get(handle);
 
-	(void)ull_ticker_stop_with_mark(TICKER_ID_CONN_ISO_RESUME_BASE + handle,
-					cig, &cig->lll);
+	(void)ticker_stop(TICKER_INSTANCE_ID_CTLR, TICKER_USER_ID_THREAD,
+			  TICKER_ID_CONN_ISO_RESUME_BASE + handle, NULL,
+			  NULL);
 
 	err = ull_ticker_stop_with_mark(TICKER_ID_CONN_ISO_BASE + handle,
 					cig, &cig->lll);
-	
+
 	LL_ASSERT(err == 0 || err == -EALREADY);
 
 	cig->lll.handle = LLL_HANDLE_INVALID;
