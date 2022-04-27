@@ -1209,6 +1209,7 @@ static isoal_status_t isoal_tx_try_emit_pdu(struct isoal_source *source,
 					pp->payload_number,
 					pp->pdu_written);
 		pp->payload_number++;
+		pp->sdu_fragments = 0;
 	}
 
 	return err;
@@ -1280,10 +1281,11 @@ static isoal_status_t isoal_tx_unframed_produce(struct isoal_source *source,
 		/* Reset PDU fragmentation count for this SDU */
 		pp->pdu_cnt = 0;
 
+		/* The start of an unframed SDU will always be in a new PDU.
+		 * There cannot be any other fragments packed.
+		 */
 		pp->sdu_fragments = 0;
 	}
-
-	pp->sdu_fragments++;
 
 	/* PDUs should be created until the SDU fragment has been fragmented or
 	 * if this is the last fragment of the SDU, until the required padding
@@ -1305,6 +1307,13 @@ static isoal_status_t isoal_tx_unframed_produce(struct isoal_source *source,
 			pp->pdu_available
 		);
 
+		/* End of the SDU fragment has been reached when the last of the
+		 * SDU is packed into a PDU.
+		 */
+		bool end_of_sdu_frag = !padding_pdu &&
+				((consume_len > 0 && consume_len == packet_available) ||
+					zero_length_sdu);
+
 		if (consume_len > 0) {
 			err |= session->pdu_write(&pdu->contents,
 						  pp->pdu_written,
@@ -1314,6 +1323,13 @@ static isoal_status_t isoal_tx_unframed_produce(struct isoal_source *source,
 			pp->pdu_written   += consume_len;
 			pp->pdu_available -= consume_len;
 			packet_available  -= consume_len;
+		}
+
+		if (end_of_sdu_frag) {
+			/* Each PDU will carry the number of completed SDU
+			 * fragments contained in that PDU.
+			 */
+			pp->sdu_fragments++;
 		}
 
 		/* End of the SDU is reached at the end of the last SDU fragment
@@ -1575,11 +1591,7 @@ static isoal_status_t isoal_tx_framed_produce(struct isoal_source *source,
 
 		/* Reset PDU fragmentation count for this SDU */
 		pp->pdu_cnt = 0;
-
-		pp->sdu_fragments = 0;
 	}
-
-	pp->sdu_fragments++;
 
 	/* PDUs should be created until the SDU fragment has been fragmented or if
 	 * this is the last fragment of the SDU, until the required padding PDU(s)
@@ -1618,6 +1630,13 @@ static isoal_status_t isoal_tx_framed_produce(struct isoal_source *source,
 			pp->pdu_available
 		);
 
+		/* End of the SDU fragment has been reached when the last of the
+		 * SDU is packed into a PDU.
+		 */
+		bool end_of_sdu_frag = !padding_pdu &&
+				((consume_len > 0 && consume_len == packet_available) ||
+					zero_length_sdu);
+
 		if (consume_len > 0) {
 			err |= session->pdu_write(&pdu->contents,
 						  pp->pdu_written,
@@ -1627,6 +1646,13 @@ static isoal_status_t isoal_tx_framed_produce(struct isoal_source *source,
 			pp->pdu_written   += consume_len;
 			pp->pdu_available -= consume_len;
 			packet_available  -= consume_len;
+		}
+
+		if (end_of_sdu_frag) {
+			/* Each PDU will carry the number of completed SDU
+			 * fragments contained in that PDU.
+			 */
+			pp->sdu_fragments++;
 		}
 
 		/* End of the SDU is reached at the end of the last SDU fragment
