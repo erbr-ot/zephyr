@@ -5242,8 +5242,15 @@ int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 		 * 4.5.13.3 Connected Isochronous Data:
 		 * This burst is associated with the corresponding CIS event but
 		 * the payloads may be transmitted in later events as well.
+		 * If flush timeout is greater than one, use the current event,
+		 * otherwise postpone to the next.
+		 *
+		 * TODO: Calculate the best possible target event based on CIS
+		 * reference, FT and event_count.
 		 */
-		sdu_frag_tx.target_event = cis->lll.event_count;
+		sdu_frag_tx.target_event = cis->lll.event_count +
+			(cis->lll.tx.flush_timeout > 1 ? 0 : 1);
+
 		sdu_frag_tx.cig_ref_point = cig->cig_ref_point;
 
 		/* Get controller's input data path for CIS */
