@@ -125,7 +125,6 @@ struct isoal_sdu_produced {
 struct isoal_pdu_produced {
 	/** Contents information provided at PDU allocation */
 	struct isoal_pdu_buffer contents;
-	uint64_t payload_number;
 };
 
 
