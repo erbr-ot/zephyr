@@ -755,39 +755,6 @@ void ull_iso_rx_sched(void)
 	mayfly_enqueue(TICKER_USER_ID_LLL, TICKER_USER_ID_ULL_HIGH, 1, &mfy);
 }
 
-#if defined(CONFIG_BT_CTLR_CONN_ISO)
-static void iso_rx_cig_ref_point_update(struct ll_conn_iso_group *cig,
-					const struct ll_conn_iso_stream *cis,
-					const struct node_rx_iso_meta  *meta)
-{
-	uint32_t cig_sync_delay;
-	uint32_t cis_sync_delay;
-	uint64_t event_count;
-	uint8_t burst_number;
-	uint8_t role;
-
-	role = cig->lll.role;
-	cig_sync_delay = cig->sync_delay;
-	cis_sync_delay = cis->sync_delay;
-	burst_number = cis->lll.rx.burst_number;
-	event_count = cis->lll.event_count;
-
-	if (role) {
-		/* Peripheral */
-
-		/* Check if this is the first payload received for this cis in
-		 * this event
-		 */
-		if (meta->payload_number == (burst_number * event_count)) {
-			/* Update the CIG reference point based on the CIS
-			 * anchor point
-			 */
-			cig->cig_ref_point = meta->timestamp + cis_sync_delay - cig_sync_delay;
-		}
-	}
-}
-#endif /* CONFIG_BT_CTLR_CONN_ISO */
-
 static void iso_rx_demux(void *param)
 {
 	struct ll_conn_iso_stream *cis;
@@ -820,8 +787,6 @@ static void iso_rx_demux(void *param)
 				cis = ll_conn_iso_stream_get(rx_pdu->hdr.handle);
 				cig = cis->group;
 				dp  = cis->hdr.datapath_out;
-
-				iso_rx_cig_ref_point_update(cig, cis, &rx_pdu->hdr.rx_iso_meta);
 
 				if (dp && dp->path_id != BT_HCI_DATAPATH_ID_HCI) {
 					/* If vendor specific datapath pass to ISO AL here,

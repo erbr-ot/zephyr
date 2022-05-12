@@ -408,8 +408,9 @@ void ull_peripheral_iso_start(struct ll_conn *acl, uint32_t ticks_at_expire,
 	 * until the first anchor point for the leading CIS is available.
 	 */
 	cig->cig_ref_point = HAL_TICKER_TICKS_TO_US(ticks_at_expire);
-	cig->cig_ref_point += acl_to_cig_ref_point;
 	cig->cig_ref_point += (acl->lll.interval * CONN_INT_UNIT_US);
+	cig->cig_ref_point += EVENT_OVERHEAD_START_US;
+	cig->cig_ref_point += acl_to_cig_ref_point;
 
 	/* Start CIS peripheral CIG ticker */
 	ticker_status = ticker_start(TICKER_INSTANCE_ID_CTLR,
