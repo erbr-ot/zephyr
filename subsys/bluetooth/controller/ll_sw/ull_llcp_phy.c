@@ -660,6 +660,12 @@ static void lp_pu_st_wait_tx_ack_phy_update_ind(struct ll_conn *conn, struct pro
 	case LP_PU_EVT_ACK:
 		LL_ASSERT(conn->lll.role == BT_HCI_ROLE_CENTRAL);
 		if (ctx->data.pu.p_to_c_phy || ctx->data.pu.c_to_p_phy) {
+#if defined(CONFIG_BT_CTLR_PHY_UPDATE_IND_TX_ACKED_INSTANT_OVERRIDE)
+			struct pdu_data *pdu_tx = (struct pdu_data *)ctx->tx_ack->pdu;
+			/* Read back instant in case LLL has adjusted */
+			ctx->data.pu.instant = sys_le16_to_cpu(pdu_tx->llctrl.phy_upd_ind.instant);
+#endif /* CONFIG_BT_CTLR_PHY_UPDATE_IND_TX_ACKED_INSTANT_OVERRIDE */
+
 			/* Either phys should change */
 			if (ctx->data.pu.c_to_p_phy) {
 				/* central to periph tx phy changes so, apply timing restriction */
@@ -1110,6 +1116,13 @@ static void rp_pu_st_wait_tx_ack_phy(struct ll_conn *conn, struct proc_ctx *ctx,
 		} else if (ctx->state == RP_PU_STATE_WAIT_TX_ACK_PHY_UPDATE_IND) {
 			LL_ASSERT(conn->lll.role == BT_HCI_ROLE_CENTRAL);
 			if (ctx->data.pu.c_to_p_phy || ctx->data.pu.p_to_c_phy) {
+#if defined(CONFIG_BT_CTLR_PHY_UPDATE_IND_TX_ACKED_INSTANT_OVERRIDE)
+				struct pdu_data *pdu_tx = (struct pdu_data *)ctx->tx_ack->pdu;
+				/* Read back instant in case LLL has adjusted */
+				ctx->data.pu.instant =
+					sys_le16_to_cpu(pdu_tx->llctrl.phy_upd_ind.instant);
+#endif /* CONFIG_BT_CTLR_PHY_UPDATE_IND_TX_ACKED_INSTANT_OVERRIDE */
+
 				/* UPDATE_IND acked, so lets await instant */
 				if (ctx->data.pu.c_to_p_phy) {
 					/*

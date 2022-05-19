@@ -634,6 +634,13 @@ config BT_CTLR_FORCE_MD_AUTO
 	  Force MD bit in transmitted PDU based on runtime incoming transmit
 	  data throughput.
 
+config BT_CTLR_PHY_UPDATE_IND_TX_ACKED_INSTANT_OVERRIDE
+	bool "Override of Central PHY Update instant on TX ack"
+	depends on BT_CTLR_PHY && BT_CENTRAL
+	help
+	  This enables read back of possibly modified instant on TX ack of phy_update_ind.
+	  This allows for LLL to modify of instant before sending.
+
 config BT_CTLR_CONN_RANDOM_FORCE
 	bool "Random forced scheduling for peripheral on missed anchor point"
 	depends on BT_PERIPHERAL
