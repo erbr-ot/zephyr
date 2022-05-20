@@ -2954,6 +2954,7 @@ static void gatt_sub_remove(struct bt_conn *conn, struct gatt_sub *sub,
 		/* Remove subscription from the list*/
 		sys_slist_remove(&sub->list, prev, &params->node);
 		/* Notify removal */
+		__ASSERT(params->notify,  "invalid parameters\n");
 		params->notify(conn, params, NULL, 0);
 	}
 
@@ -4653,6 +4654,7 @@ static void gatt_write_ccc_rsp(struct bt_conn *conn, uint8_t err,
 		}
 	} else if (!params->value) {
 		/* Notify with NULL data to complete unsubscribe */
+		__ASSERT(params->notify,  "invalid parameters\n");
 		params->notify(conn, params, NULL, 0);
 	}
 
@@ -4901,6 +4903,7 @@ int bt_gatt_unsubscribe(struct bt_conn *conn,
 
 	if (has_subscription) {
 		/* Notify with NULL data to complete unsubscribe */
+		__ASSERT(params->notify,  "invalid parameters\n");
 		params->notify(conn, params, NULL, 0);
 	}
 
