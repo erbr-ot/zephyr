@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <zephyr.h>
+#include <zephyr/zephyr.h>
 #include <soc.h>
 
 #include "hal/cpu.h"
@@ -117,7 +117,7 @@ static void iso_rx_demux(void *param);
 #if defined(CONFIG_BT_CTLR_ADV_ISO) || defined(CONFIG_BT_CTLR_CONN_ISO)
 #define NODE_TX_BUFFER_SIZE MROUND(offsetof(struct node_tx_iso, pdu) + \
 				   offsetof(struct pdu_iso, payload) + \
-				   ISO_TX_BUFFER_SIZE)
+				   CONFIG_BT_CTLR_ISO_TX_BUFFER_SIZE)
 
 static struct {
 	void *free;
@@ -128,8 +128,6 @@ static struct {
 	void *free;
 	uint8_t pool[sizeof(memq_link_t) * CONFIG_BT_CTLR_ISO_TX_BUFFERS];
 } mem_link_iso_tx;
-
-
 #endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
 
 
@@ -450,13 +448,14 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 	lll_iso = &sync_iso->lll;
 
 	role = 1U; /* FIXME: Set role from LLL struct */
+	framed = 0;
 	burst_number = lll_iso->bn;
 	sdu_interval = lll_iso->sdu_interval;
 	iso_interval = lll_iso->iso_interval;
 
 	if (path_id == BT_HCI_DATAPATH_ID_HCI) {
 		/* Not vendor specific, thus alloc and emit functions known */
-		err = isoal_sink_create(handle, role,
+		err = isoal_sink_create(handle, role, framed,
 					burst_number, flush_timeout,
 					sdu_interval, iso_interval,
 					stream_sync_delay, group_sync_delay,
@@ -470,7 +469,7 @@ uint8_t ll_setup_iso_path(uint16_t handle, uint8_t path_dir, uint8_t path_id,
 
 		/* Request vendor sink callbacks for path */
 		if (ll_data_path_sink_create(dp, &sdu_alloc, &sdu_emit, &sdu_write)) {
-			err = isoal_sink_create(handle, role,
+			err = isoal_sink_create(handle, role, framed,
 						burst_number, flush_timeout,
 						sdu_interval, iso_interval,
 						stream_sync_delay, group_sync_delay,
@@ -656,16 +655,24 @@ void ll_iso_tx_mem_release(void *node_tx)
 	mem_release(node_tx, &mem_iso_tx.free);
 }
 
-int ll_iso_tx_mem_enqueue(uint16_t handle, void *node_tx, memq_link_t *link)
+int ll_iso_tx_mem_enqueue(uint16_t handle, void *node_tx, void *link)
 {
-	if (IS_ENABLED(CONFIG_BT_CTLR_CONN_ISO) && IS_CIS_HANDLE(handle)) {
+	if (IS_ENABLED(CONFIG_BT_CTLR_CONN_ISO) &&
+	    IS_CIS_HANDLE(handle)) {
 		struct ll_conn_iso_stream *cis;
 
 		cis = ll_conn_iso_stream_get(handle);
 		memq_enqueue(link, node_tx, &cis->lll.memq_tx.tail);
 
-	} else if (IS_ENABLED(CONFIG_BT_CTLR_ADV_ISO) && IS_ADV_HANDLE(handle)) {
+	} else if (IS_ENABLED(CONFIG_BT_CTLR_ADV_ISO) &&
+		   IS_ADV_ISO_HANDLE(handle)) {
 		struct lll_adv_iso_stream *stream;
+
+		/* FIXME: When hci_iso_handle uses ISOAL, link is provided and
+		 * this code should be removed.
+		 */
+		link = mem_acquire(&mem_link_iso_tx.free);
+		LL_ASSERT(link);
 
 		stream = ull_adv_iso_stream_get(handle);
 		memq_enqueue(link, node_tx, &stream->memq_tx.tail);
@@ -716,10 +723,14 @@ void ull_iso_lll_ack_enqueue(uint16_t handle, struct node_tx_iso *node_tx)
 		if (dp) {
 			isoal_tx_pdu_release(dp->source_hdl, node_tx);
 		}
-	} else if (IS_ENABLED(CONFIG_BT_CTLR_ADV_ISO) && IS_ADV_HANDLE(handle)) {
-		/* Process as TX ack */
+	} else if (IS_ENABLED(CONFIG_BT_CTLR_ADV_ISO) && IS_ADV_ISO_HANDLE(handle)) {
+		/* Process as TX ack. TODO: Can be unified with CIS and use
+		 * ISOAL.
+		 */
 		ll_tx_ack_put(handle, (void *)node_tx);
 		ll_rx_sched();
+	} else {
+		LL_ASSERT(0);
 	}
 }
 #endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
@@ -757,10 +768,12 @@ void ull_iso_rx_sched(void)
 
 static void iso_rx_demux(void *param)
 {
+#if defined(CONFIG_BT_CTLR_CONN_ISO)
 	struct ll_conn_iso_stream *cis;
 	struct ll_conn_iso_group *cig;
 	struct ll_iso_datapath *dp;
 	struct node_rx_pdu *rx_pdu;
+#endif /* CONFIG_BT_CTLR_CONN_ISO */
 	struct node_rx_hdr *rx;
 	memq_link_t *link;
 
@@ -907,14 +920,14 @@ void ull_iso_datapath_release(struct ll_iso_datapath *dp)
 	mem_release(dp, &datapath_free);
 }
 
-#if defined (CONFIG_BT_CTLR_ADV_ISO) || defined(CONFIG_BT_CTLR_CONN_ISO)
-void ll_iso_link_tx_release(memq_link_t *link)
+#if defined(CONFIG_BT_CTLR_ADV_ISO) || defined(CONFIG_BT_CTLR_CONN_ISO)
+void ll_iso_link_tx_release(void *link)
 {
 	mem_release(link, &mem_link_iso_tx.free);
 }
 #endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
 
-#if defined(CONFIG_BT_CTLR_ISO)
+#if defined(CONFIG_BT_CTLR_CONN_ISO)
 /**
  * Allocate a PDU from the LL and store the details in the given buffer. Allocation
  * is not expected to fail as there must always be sufficient PDU buffers. Any
@@ -944,7 +957,7 @@ static isoal_status_t ll_iso_pdu_alloc(struct isoal_pdu_buffer *pdu_buffer)
 	 * the ISOAL based on the minimum of the buffer size and the respective
 	 * Max_PDU_C_To_P or Max_PDU_P_To_C.
 	 */
-	pdu_buffer->size = ISO_TX_BUFFER_SIZE;
+	pdu_buffer->size = CONFIG_BT_CTLR_ISO_TX_BUFFER_SIZE;
 
 	return ISOAL_STATUS_OK;
 }

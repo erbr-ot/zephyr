@@ -14,12 +14,12 @@
 #define __TCP_INTERNAL_H
 
 #include <zephyr/types.h>
-#include <random/rand32.h>
+#include <zephyr/random/rand32.h>
 
-#include <net/net_core.h>
-#include <net/net_ip.h>
-#include <net/net_pkt.h>
-#include <net/net_context.h>
+#include <zephyr/net/net_core.h>
+#include <zephyr/net/net_ip.h>
+#include <zephyr/net/net_pkt.h>
+#include <zephyr/net/net_context.h>
 
 #include "connection.h"
 
@@ -366,6 +366,16 @@ void net_tcp_init(void);
 #else
 #define net_tcp_init(...)
 #endif
+
+/**
+ * @brief Obtain a semaphore indicating if transfers are blocked (either due to
+ *        filling TX window or entering retransmission mode).
+ *
+ * @param context Network context
+ *
+ * @return semaphore indicating if transfers are blocked
+ */
+struct k_sem *net_tcp_tx_sem_get(struct net_context *context);
 
 #ifdef __cplusplus
 }

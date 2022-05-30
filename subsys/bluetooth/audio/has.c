@@ -5,16 +5,16 @@
  */
 
 #include <stdlib.h>
-#include <zephyr.h>
+#include <zephyr/zephyr.h>
 
-#include <device.h>
+#include <zephyr/device.h>
 
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/gatt.h>
-#include <bluetooth/audio/audio.h>
-#include <bluetooth/audio/capabilities.h>
-#include <bluetooth/audio/has.h>
-#include <sys/check.h>
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/gatt.h>
+#include <zephyr/bluetooth/audio/audio.h>
+#include <zephyr/bluetooth/audio/capabilities.h>
+#include <zephyr/bluetooth/audio/has.h>
+#include <zephyr/sys/check.h>
 
 #include "has_internal.h"
 
@@ -30,7 +30,7 @@
 
 static struct bt_has has;
 
-#if CONFIG_BT_HAS_PRESET_COUNT > 0
+#if defined(CONFIG_BT_HAS_PRESET_SUPPORT)
 static ssize_t write_control_point(struct bt_conn *conn, const struct bt_gatt_attr *attr,
 				   const void *data, uint16_t len, uint16_t offset, uint8_t flags);
 
@@ -46,7 +46,12 @@ static ssize_t read_active_preset_index(struct bt_conn *conn, const struct bt_ga
 	return bt_gatt_attr_read(conn, attr, buf, len, offset, &has.active_index,
 				 sizeof(has.active_index));
 }
-#endif /* CONFIG_BT_HAS_PRESET_COUNT > 0 */
+
+static void ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
+{
+	BT_DBG("attr %p value 0x%04x", attr, value);
+}
+#endif /* CONFIG_BT_HAS_PRESET_SUPPORT */
 
 static ssize_t read_features(struct bt_conn *conn, const struct bt_gatt_attr *attr, void *buf,
 			     uint16_t len, uint16_t offset)
@@ -61,17 +66,12 @@ static ssize_t read_features(struct bt_conn *conn, const struct bt_gatt_attr *at
 				 sizeof(has.features));
 }
 
-static void ccc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
-{
-	BT_DBG("attr %p value 0x%04x", attr, value);
-}
-
 /* Hearing Access Service GATT Attributes */
 BT_GATT_SERVICE_DEFINE(has_svc,
 	BT_GATT_PRIMARY_SERVICE(BT_UUID_HAS),
 	BT_GATT_CHARACTERISTIC(BT_UUID_HAS_HEARING_AID_FEATURES, BT_GATT_CHRC_READ,
 			       BT_GATT_PERM_READ_ENCRYPT, read_features, NULL, NULL),
-#if CONFIG_BT_HAS_PRESET_COUNT > 0
+#if defined(CONFIG_BT_HAS_PRESET_SUPPORT)
 	BT_GATT_CHARACTERISTIC(BT_UUID_HAS_PRESET_CONTROL_POINT,
 #if defined(CONFIG_BT_EATT)
 			       BT_GATT_CHRC_WRITE | BT_GATT_CHRC_INDICATE | BT_GATT_CHRC_NOTIFY,
@@ -84,10 +84,10 @@ BT_GATT_SERVICE_DEFINE(has_svc,
 			       BT_GATT_CHRC_READ | BT_GATT_CHRC_NOTIFY, BT_GATT_PERM_READ_ENCRYPT,
 			       read_active_preset_index, NULL, NULL),
 	BT_GATT_CCC(ccc_cfg_changed, BT_GATT_PERM_READ | BT_GATT_PERM_WRITE_ENCRYPT),
-#endif /* CONFIG_BT_HAS_PRESET_COUNT > 0 */
+#endif /* CONFIG_BT_HAS_PRESET_SUPPORT */
 );
 
-#if CONFIG_BT_HAS_PRESET_COUNT > 0
+#if defined(CONFIG_BT_HAS_PRESET_SUPPORT)
 #define PRESET_CONTROL_POINT_ATTR &has_svc.attrs[4]
 
 static struct has_client {
@@ -326,6 +326,33 @@ static int control_point_send(struct has_client *client, struct net_buf_simple *
 	return -ECANCELED;
 }
 
+static int control_point_send_all(struct net_buf_simple *buf)
+{
+	int result = 0;
+
+	for (size_t i = 0; i < ARRAY_SIZE(has_client_list); i++) {
+		struct has_client *client = &has_client_list[i];
+		int err;
+
+		if (!client->conn) {
+			continue;
+		}
+
+		if (!bt_gatt_is_subscribed(client->conn, PRESET_CONTROL_POINT_ATTR,
+					   BT_GATT_CCC_NOTIFY | BT_GATT_CCC_INDICATE)) {
+			continue;
+		}
+
+		err = control_point_send(client, buf);
+		if (err) {
+			result = err;
+			/* continue anyway */
+		}
+	}
+
+	return result;
+}
+
 static int bt_has_cp_read_preset_rsp(struct has_client *client, const struct has_preset *preset,
 				     bool is_last)
 {
@@ -391,6 +418,54 @@ static void process_control_point_work(struct k_work *work)
 			client->read_presets_req.num_presets--;
 		}
 	}
+}
+
+static uint8_t get_prev_preset_index(struct has_preset *preset)
+{
+	const struct has_preset *prev = NULL;
+
+	for (size_t i = 0; i < ARRAY_SIZE(has_preset_list); i++) {
+		const struct has_preset *tmp = &has_preset_list[i];
+
+		if (tmp->index == BT_HAS_PRESET_INDEX_NONE || tmp == preset) {
+			break;
+		}
+
+		prev = tmp;
+	}
+
+	return prev ? prev->index : BT_HAS_PRESET_INDEX_NONE;
+}
+
+static void preset_changed_prepare(struct net_buf_simple *buf, uint8_t change_id, uint8_t is_last)
+{
+	struct bt_has_cp_hdr *hdr;
+	struct bt_has_cp_preset_changed *preset_changed;
+
+	hdr = net_buf_simple_add(buf, sizeof(*hdr));
+	hdr->opcode = BT_HAS_OP_PRESET_CHANGED;
+	preset_changed = net_buf_simple_add(buf, sizeof(*preset_changed));
+	preset_changed->change_id = change_id;
+	preset_changed->is_last = is_last;
+}
+
+static int bt_has_cp_generic_update(struct has_preset *preset, uint8_t is_last)
+{
+	struct bt_has_cp_generic_update *generic_update;
+
+	NET_BUF_SIMPLE_DEFINE(buf, sizeof(struct bt_has_cp_hdr) +
+			      sizeof(struct bt_has_cp_preset_changed) +
+			      sizeof(struct bt_has_cp_generic_update) + BT_HAS_PRESET_NAME_MAX);
+
+	preset_changed_prepare(&buf, BT_HAS_CHANGE_ID_GENERIC_UPDATE, is_last);
+
+	generic_update = net_buf_simple_add(&buf, sizeof(*generic_update));
+	generic_update->prev_index = get_prev_preset_index(preset);
+	generic_update->index = preset->index;
+	generic_update->properties = preset->properties;
+	net_buf_simple_add_mem(&buf, preset->name, strlen(preset->name));
+
+	return control_point_send_all(&buf);
 }
 
 static uint8_t handle_read_preset_req(struct bt_conn *conn, struct net_buf_simple *buf)
@@ -524,12 +599,15 @@ int bt_has_preset_register(const struct bt_has_preset_register_param *param)
 		return -ENOMEM;
 	}
 
-	return 0;
+	return bt_has_cp_generic_update(preset, BT_HAS_IS_LAST);
 }
 
 int bt_has_preset_unregister(uint8_t index)
 {
 	struct has_preset *preset = NULL;
+
+	NET_BUF_SIMPLE_DEFINE(buf, sizeof(struct bt_has_cp_hdr) +
+			      sizeof(struct bt_has_cp_preset_changed) + sizeof(uint8_t));
 
 	CHECKIF(index == BT_HAS_PRESET_INDEX_NONE) {
 		BT_ERR("index is invalid");
@@ -541,7 +619,60 @@ int bt_has_preset_unregister(uint8_t index)
 		return -ENOENT;
 	}
 
+	preset_changed_prepare(&buf, BT_HAS_CHANGE_ID_PRESET_DELETED, BT_HAS_IS_LAST);
+	net_buf_simple_add_u8(&buf, preset->index);
+
 	preset_free(preset);
+
+	return control_point_send_all(&buf);
+}
+
+int bt_has_preset_available(uint8_t index)
+{
+	struct has_preset *preset = NULL;
+
+	CHECKIF(index == BT_HAS_PRESET_INDEX_NONE) {
+		BT_ERR("index is invalid");
+		return -EINVAL;
+	}
+
+	/* toggle property bit if needed */
+	if (!(preset->properties & BT_HAS_PROP_AVAILABLE)) {
+		NET_BUF_SIMPLE_DEFINE(buf, sizeof(struct bt_has_cp_hdr) +
+				      sizeof(struct bt_has_cp_preset_changed) + sizeof(uint8_t));
+
+		preset->properties ^= BT_HAS_PROP_AVAILABLE;
+
+		preset_changed_prepare(&buf, BT_HAS_CHANGE_ID_PRESET_AVAILABLE, BT_HAS_IS_LAST);
+		net_buf_simple_add_u8(&buf, preset->index);
+
+		return control_point_send_all(&buf);
+	}
+
+	return 0;
+}
+
+int bt_has_preset_unavailable(uint8_t index)
+{
+	struct has_preset *preset = NULL;
+
+	CHECKIF(index == BT_HAS_PRESET_INDEX_NONE) {
+		BT_ERR("index is invalid");
+		return -EINVAL;
+	}
+
+	/* toggle property bit if needed */
+	if (preset->properties & BT_HAS_PROP_AVAILABLE) {
+		NET_BUF_SIMPLE_DEFINE(buf, sizeof(struct bt_has_cp_hdr) +
+				      sizeof(struct bt_has_cp_preset_changed) + sizeof(uint8_t));
+
+		preset->properties ^= BT_HAS_PROP_AVAILABLE;
+
+		preset_changed_prepare(&buf, BT_HAS_CHANGE_ID_PRESET_UNAVAILABLE, BT_HAS_IS_LAST);
+		net_buf_simple_add_u8(&buf, preset->index);
+
+		return control_point_send_all(&buf);
+	}
 
 	return 0;
 }
@@ -575,7 +706,7 @@ void bt_has_preset_foreach(uint8_t index, bt_has_preset_func_t func, void *user_
 
 	preset_foreach(start_index, end_index, bt_has_preset_foreach_func, &data);
 }
-#endif /* CONFIG_BT_HAS_PRESET_COUNT > 0 */
+#endif /* CONFIG_BT_HAS_PRESET_SUPPORT */
 
 static int has_init(const struct device *dev)
 {
@@ -598,17 +729,23 @@ static int has_init(const struct device *dev)
 		has.features |= BT_HAS_FEAT_WRITABLE_PRESETS_SUPP;
 	}
 
-	if (IS_ENABLED(CONFIG_BT_HAS_HEARING_AID_BANDED)) {
-		/* HAP_d1.0r00; 3.7 BAP Unicast Server role requirements
-		 * A Banded Hearing Aid in the HA role shall set the Front Left and the Front
-		 * Right bits to a value of 0b1 in the Sink Audio Locations characteristic value.
-		 */
-		bt_audio_capability_set_location(BT_AUDIO_SINK, BT_AUDIO_LOCATION_FRONT_LEFT |
-								BT_AUDIO_LOCATION_FRONT_RIGHT);
-	} else if (IS_ENABLED(CONFIG_BT_HAS_HEARING_AID_LEFT)) {
-		bt_audio_capability_set_location(BT_AUDIO_SINK, BT_AUDIO_LOCATION_FRONT_LEFT);
-	} else {
-		bt_audio_capability_set_location(BT_AUDIO_SINK, BT_AUDIO_LOCATION_FRONT_RIGHT);
+	if (IS_ENABLED(CONFIG_BT_PAC_SNK_LOC)) {
+		if (IS_ENABLED(CONFIG_BT_HAS_HEARING_AID_BANDED)) {
+			/* HAP_d1.0r00; 3.7 BAP Unicast Server role requirements
+			 * A Banded Hearing Aid in the HA role shall set the
+			 * Front Left and the Front Right bits to a value of 0b1
+			 * in the Sink Audio Locations characteristic value.
+			 */
+			bt_audio_capability_set_location(BT_AUDIO_DIR_SINK,
+							 (BT_AUDIO_LOCATION_FRONT_LEFT |
+								BT_AUDIO_LOCATION_FRONT_RIGHT));
+		} else if (IS_ENABLED(CONFIG_BT_HAS_HEARING_AID_LEFT)) {
+			bt_audio_capability_set_location(BT_AUDIO_DIR_SINK,
+							 BT_AUDIO_LOCATION_FRONT_LEFT);
+		} else {
+			bt_audio_capability_set_location(BT_AUDIO_DIR_SINK,
+							 BT_AUDIO_LOCATION_FRONT_RIGHT);
+		}
 	}
 
 	return 0;

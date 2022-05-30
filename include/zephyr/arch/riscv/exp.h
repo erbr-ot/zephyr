@@ -17,7 +17,7 @@
 
 #ifndef _ASMLANGUAGE
 #include <zephyr/types.h>
-#include <toolchain.h>
+#include <zephyr/toolchain.h>
 
 #ifdef CONFIG_RISCV_SOC_CONTEXT_SAVE
 #include <soc_context.h>
@@ -74,6 +74,7 @@ struct __esf {
 
 	ulong_t s0;		/* callee-saved s0 */
 
+	ulong_t tp;		/* thread pointer */
 #ifdef CONFIG_USERSPACE
 	ulong_t sp;		/* preserved (user or kernel) stack pointer */
 #endif

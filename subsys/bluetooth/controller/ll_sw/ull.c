@@ -8,11 +8,11 @@
 #include <stdbool.h>
 #include <errno.h>
 
-#include <zephyr.h>
+#include <zephyr/zephyr.h>
 #include <soc.h>
-#include <device.h>
-#include <drivers/entropy.h>
-#include <bluetooth/hci.h>
+#include <zephyr/device.h>
+#include <zephyr/drivers/entropy.h>
+#include <zephyr/bluetooth/hci.h>
 
 #include "hal/cpu.h"
 #include "hal/ccm.h"
@@ -54,8 +54,12 @@
 #include "ull_filter.h"
 #include "ull_df_types.h"
 #include "ull_df_internal.h"
-
 #include "isoal.h"
+
+#if defined(CONFIG_BT_CTLR_USER_EXT)
+#include "ull_vendor.h"
+#endif /* CONFIG_BT_CTLR_USER_EXT */
+
 #include "ull_internal.h"
 #include "ull_iso_internal.h"
 #include "ull_adv_internal.h"
@@ -71,10 +75,6 @@
 
 #include "ull_conn_iso_internal.h"
 #include "ull_peripheral_iso_internal.h"
-
-#if defined(CONFIG_BT_CTLR_USER_EXT)
-#include "ull_vendor.h"
-#endif /* CONFIG_BT_CTLR_USER_EXT */
 
 #include "ll.h"
 #include "ll_feat.h"
@@ -473,20 +473,22 @@ static MFIFO_DEFINE(ll_pdu_rx_free, sizeof(void *), LL_PDU_RX_CNT);
 static void *mark_update;
 #endif /* CONFIG_BT_CONN */
 
-#if defined(CONFIG_BT_CONN) || defined(CONFIG_BT_CTLR_CONN_ISO)
+#if defined(CONFIG_BT_CONN) || defined(CONFIG_BT_CTLR_ADV_ISO)
 #if defined(CONFIG_BT_CONN)
 #define BT_BUF_ACL_TX_COUNT CONFIG_BT_BUF_ACL_TX_COUNT
 #else
 #define BT_BUF_ACL_TX_COUNT 0
 #endif /* CONFIG_BT_CONN */
-#if defined(CONFIG_BT_CTLR_CONN_ISO)
+
+#if defined(CONFIG_BT_CTLR_ADV_ISO) || defined(CONFIG_BT_CTLR_CONN_ISO)
 #define BT_CTLR_ISO_TX_BUFFERS CONFIG_BT_CTLR_ISO_TX_BUFFERS
 #else
 #define BT_CTLR_ISO_TX_BUFFERS 0
-#endif /* CONFIG_BT_CTLR_CONN_ISO */
+#endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
+
 static MFIFO_DEFINE(tx_ack, sizeof(struct lll_tx),
 		    BT_BUF_ACL_TX_COUNT + BT_CTLR_ISO_TX_BUFFERS);
-#endif /* CONFIG_BT_CONN || CONFIG_BT_CTLR_CONN_ISO */
+#endif /* CONFIG_BT_CONN || CONFIG_BT_CTLR_ADV_ISO */
 
 static void *mark_disable;
 
@@ -511,12 +513,12 @@ static void rx_demux(void *param);
 #if defined(CONFIG_BT_CTLR_LOW_LAT_ULL)
 static void rx_demux_yield(void);
 #endif /* CONFIG_BT_CTLR_LOW_LAT_ULL */
-#if defined(CONFIG_BT_CONN)
+#if defined(CONFIG_BT_CONN) || defined(CONFIG_BT_CTLR_ADV_ISO)
 static uint8_t tx_cmplt_get(uint16_t *handle, uint8_t *first, uint8_t last);
 static inline void rx_demux_conn_tx_ack(uint8_t ack_last, uint16_t handle,
 					memq_link_t *link,
 					struct node_tx *node_tx);
-#endif /* CONFIG_BT_CONN */
+#endif /* CONFIG_BT_CONN || CONFIG_BT_CTLR_ADV_ISO */
 static inline int rx_demux_rx(memq_link_t *link, struct node_rx_hdr *rx);
 static inline void rx_demux_event_done(memq_link_t *link,
 				       struct node_rx_hdr *rx);
@@ -847,6 +849,9 @@ void ll_reset(void)
 	err = ull_df_reset();
 	LL_ASSERT(!err);
 #endif
+
+	/* clear static random address */
+	(void)ll_addr_set(1U, NULL);
 }
 
 /**
@@ -866,18 +871,20 @@ uint8_t ll_rx_get(void **node_rx, uint16_t *handle)
 
 #if defined(CONFIG_BT_CONN) || \
 	(defined(CONFIG_BT_OBSERVER) && defined(CONFIG_BT_CTLR_ADV_EXT)) || \
-	defined(CONFIG_BT_CTLR_ADV_PERIODIC)
+	defined(CONFIG_BT_CTLR_ADV_PERIODIC) || \
+	defined(CONFIG_BT_CTLR_ADV_ISO)
 ll_rx_get_again:
 #endif /* CONFIG_BT_CONN ||
 	* (CONFIG_BT_OBSERVER && CONFIG_BT_CTLR_ADV_EXT) ||
-	* CONFIG_BT_CTLR_ADV_PERIODIC
+	* CONFIG_BT_CTLR_ADV_PERIODIC ||
+	* CONFIG_BT_CTLR_ADV_ISO
 	*/
 
 	*node_rx = NULL;
 
 	link = memq_peek(memq_ll_rx.head, memq_ll_rx.tail, (void **)&rx);
 	if (link) {
-#if defined(CONFIG_BT_CONN)
+#if defined(CONFIG_BT_CONN) || defined(CONFIG_BT_CTLR_ADV_ISO)
 		cmplt = tx_cmplt_get(handle, &mfifo_tx_ack.f, rx->ack_last);
 		if (!cmplt) {
 			uint8_t f, cmplt_prev, cmplt_curr;
@@ -891,7 +898,7 @@ ll_rx_get_again:
 							  mfifo_tx_ack.l);
 			} while ((cmplt_prev != 0U) ||
 				 (cmplt_prev != cmplt_curr));
-#endif /* CONFIG_BT_CONN */
+#endif /* CONFIG_BT_CONN || CONFIG_BT_CTLR_ADV_ISO */
 
 			if (0) {
 #if defined(CONFIG_BT_CONN) || \
@@ -939,11 +946,11 @@ ll_rx_get_again:
 
 			*node_rx = rx;
 
-#if defined(CONFIG_BT_CONN)
+#if defined(CONFIG_BT_CONN) || defined(CONFIG_BT_CTLR_ADV_ISO)
 		}
 	} else {
 		cmplt = tx_cmplt_get(handle, &mfifo_tx_ack.f, mfifo_tx_ack.l);
-#endif /* CONFIG_BT_CONN */
+#endif /* CONFIG_BT_CONN || CONFIG_BT_CTLR_ADV_ISO */
 	}
 
 	return cmplt;
@@ -1654,7 +1661,9 @@ void *ll_pdu_rx_alloc(void)
 {
 	return MFIFO_DEQUEUE(ll_pdu_rx_free);
 }
+#endif /* CONFIG_BT_CONN */
 
+#if defined(CONFIG_BT_CONN) || defined(CONFIG_BT_CTLR_ADV_ISO)
 void ll_tx_ack_put(uint16_t handle, struct node_tx *node_tx)
 {
 	struct lll_tx *tx;
@@ -1668,7 +1677,7 @@ void ll_tx_ack_put(uint16_t handle, struct node_tx *node_tx)
 
 	MFIFO_ENQUEUE(tx_ack, idx);
 }
-#endif /* CONFIG_BT_CONN */
+#endif /* CONFIG_BT_CONN || CONFIG_BT_CTLR_ADV_ISO */
 
 void ll_timeslice_ticker_id_get(uint8_t * const instance_index,
 				uint8_t * const ticker_id)
@@ -1941,13 +1950,19 @@ void *ull_prepare_dequeue_iter(uint8_t *idx)
 
 void ull_prepare_dequeue(uint8_t caller_id)
 {
+	void *param_resume_head = NULL;
+	void *param_resume_next = NULL;
 	struct lll_event *next;
 
 	next = ull_prepare_dequeue_get();
 	while (next) {
+		void *param = next->prepare_param.param;
 		uint8_t is_aborted = next->is_aborted;
 		uint8_t is_resume = next->is_resume;
 
+		/* Let LLL invoke the `prepare` interface if radio not in active
+		 * use. Otherwise, enqueue at end of the prepare pipeline queue.
+		 */
 		if (!is_aborted) {
 			static memq_link_t link;
 			static struct mayfly mfy = {0, 0, &link, NULL,
@@ -1962,10 +1977,46 @@ void ull_prepare_dequeue(uint8_t caller_id)
 
 		MFIFO_DEQUEUE(prep);
 
+		/* Check for anymore more prepare elements in queue */
 		next = ull_prepare_dequeue_get();
-
-		if (!next || (!is_aborted && (!is_resume || next->is_resume))) {
+		if (!next) {
 			break;
+		}
+
+		/* A valid prepare element has its `prepare` invoked or was
+		 * enqueued back into prepare pipeline.
+		 */
+		if (!is_aborted) {
+			/* The prepare element was not a resume event, it would
+			 * use the radio or was enqueued back into prepare
+			 * pipeline with a preempt timeout being set.
+			 */
+			if (!is_resume) {
+				break;
+			}
+
+			/* Remember the first encountered resume and the next
+			 * resume element in the prepare pipeline so that we do
+			 * not infinitely loop through the resume events in
+			 * prepare pipeline.
+			 */
+			if (!param_resume_head) {
+				param_resume_head = param;
+			} else if (!param_resume_next) {
+				param_resume_next = param;
+			}
+
+			/* Stop traversing the prepare pipeline when we reach
+			 * back to the first or next resume event where we
+			 * initially started processing the prepare pipeline.
+			 */
+			if (next->is_resume &&
+			    ((next->prepare_param.param ==
+			      param_resume_head) ||
+			     (next->prepare_param.param ==
+			      param_resume_next))) {
+				break;
+			}
 		}
 	}
 }
@@ -2383,7 +2434,7 @@ static void rx_demux_yield(void)
 }
 #endif /* CONFIG_BT_CTLR_LOW_LAT_ULL */
 
-#if defined(CONFIG_BT_CONN)
+#if defined(CONFIG_BT_CONN) || defined(CONFIG_BT_CTLR_ADV_ISO)
 static uint8_t tx_cmplt_get(uint16_t *handle, uint8_t *first, uint8_t last)
 {
 	struct lll_tx *tx;
@@ -2399,45 +2450,68 @@ static uint8_t tx_cmplt_get(uint16_t *handle, uint8_t *first, uint8_t last)
 	*handle = tx->handle;
 	cmplt = 0U;
 	do {
-		struct pdu_data *p;
-		struct node_tx *node_tx;
-
-#if defined(CONFIG_BT_CTLR_BROADCAST_ISO) || \
+		if (0) {
+#if defined(CONFIG_BT_CTLR_ADV_ISO) || \
 	defined(CONFIG_BT_CTLR_CONN_ISO)
-		if (IS_CIS_HANDLE(tx->handle)) {
-			struct node_tx_iso *node_tx_iso;
+		} else if (IS_CIS_HANDLE(tx->handle) ||
+			   IS_ADV_ISO_HANDLE(tx->handle)) {
+			struct node_tx_iso *tx_node_iso;
+			struct pdu_data *p;
+			uint8_t fragments;
 
-			node_tx_iso = tx->node;
-			p = (void *)node_tx_iso->pdu;
+			tx_node_iso = tx->node;
+			p = (void *)tx_node_iso->pdu;
 
 			/* We count each SDU fragment completed by this PDU */
-			cmplt += node_tx_iso->sdu_fragments;
+			fragments = tx_node_iso->sdu_fragments;
+			if (fragments == 0) {
+				/* FIXME: If ISOAL is not used for TX,
+				 * sdu_fragments is not incremented. In
+				 * that case we assume unfragmented for
+				 * now.
+				 */
+				fragments = 1;
+			}
 
-			ll_iso_link_tx_release(node_tx_iso->link);
-			ll_iso_tx_mem_release (node_tx_iso);
+			cmplt += fragments;
+
+			ll_iso_link_tx_release(tx_node_iso->link);
+			ll_iso_tx_mem_release (tx_node_iso);
+
 			goto next_ack;
-		}
-#endif /* CONFIG_BT_CTLR_BROADCAST_ISO || CONFIG_BT_CTLR_CONN_ISO */
+#endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
 
-		node_tx = tx->node;
-		p = (void *)node_tx->pdu;
-		if (!node_tx || (node_tx == (void *)1) ||
-		    (((uint32_t)node_tx & ~3) && (
-		      p->ll_id == PDU_DATA_LLID_DATA_START ||
-		      p->ll_id == PDU_DATA_LLID_DATA_CONTINUE))) {
-			/* data packet, hence count num cmplt */
-			tx->node = (void *)1;
-			cmplt++;
+#if defined(CONFIG_BT_CONN)
 		} else {
-			/* ctrl packet or flushed, hence dont count num cmplt */
-			tx->node = (void *)2;
+			struct node_tx *tx_node;
+			struct pdu_data *p;
+
+			tx_node = tx->node;
+			p = (void *)tx_node->pdu;
+			if (!tx_node || (tx_node == (void *)1) ||
+			    (((uint32_t)tx_node & ~3) &&
+			     (p->ll_id == PDU_DATA_LLID_DATA_START ||
+			      p->ll_id == PDU_DATA_LLID_DATA_CONTINUE))) {
+				/* data packet, hence count num cmplt */
+				tx->node = (void *)1;
+				cmplt++;
+			} else {
+				/* ctrl packet or flushed, hence dont count num cmplt */
+				tx->node = (void *)2;
+			}
+
+			if (((uint32_t)tx_node & ~3)) {
+				ll_tx_mem_release(tx_node);
+			}
+#endif /* CONFIG_BT_CONN */
+
 		}
 
-		if (((uint32_t)node_tx & ~3)) {
-			ll_tx_mem_release(node_tx);
-		}
-
+#if defined(CONFIG_BT_CTLR_ADV_ISO) || \
+	defined(CONFIG_BT_CTLR_CONN_ISO)
 next_ack:
+#endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
+
 		tx = mfifo_dequeue_iter_get(mfifo_tx_ack.m, mfifo_tx_ack.s,
 					    mfifo_tx_ack.n, mfifo_tx_ack.f,
 					    last, first);
@@ -2476,7 +2550,7 @@ static inline void rx_demux_conn_tx_ack(uint8_t ack_last, uint16_t handle,
 			ll_rx_sched();
 		}
 }
-#endif /* CONFIG_BT_CONN */
+#endif /* CONFIG_BT_CONN || CONFIG_BT_CTLR_ADV_ISO */
 
 #if !defined(CONFIG_BT_CTLR_LOW_LAT_ULL)
 static void ull_done(void *param)

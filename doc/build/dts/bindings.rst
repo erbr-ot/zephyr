@@ -1069,7 +1069,7 @@ For example, with this DTS fragment:
 
 .. code-block:: devicetree
 
-   #include <dt-bindings/gpio/gpio.h>
+   #include <zephyr/dt-bindings/gpio/gpio.h>
 
    / {
 	zephyr,user {
@@ -1132,7 +1132,7 @@ gpio_dt_spec``, then use it like this:
 
 .. code-block:: C
 
-   #include <drivers/gpio.h>
+   #include <zephyr/drivers/gpio.h>
 
    #define ZEPHYR_USER_NODE DT_PATH(zephyr_user)
 

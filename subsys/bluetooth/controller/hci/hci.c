@@ -11,16 +11,16 @@
 #include <version.h>
 #include <errno.h>
 
-#include <sys/util.h>
-#include <sys/byteorder.h>
-#include <sys/atomic.h>
+#include <zephyr/sys/util.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/sys/atomic.h>
 
-#include <drivers/bluetooth/hci_driver.h>
+#include <zephyr/drivers/bluetooth/hci_driver.h>
 
-#include <bluetooth/hci.h>
-#include <bluetooth/hci_vs.h>
-#include <bluetooth/buf.h>
-#include <bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/hci.h>
+#include <zephyr/bluetooth/hci_vs.h>
+#include <zephyr/bluetooth/buf.h>
+#include <zephyr/bluetooth/bluetooth.h>
 
 #include "../host/hci_ecc.h"
 
@@ -946,6 +946,23 @@ static void read_supported_commands(struct net_buf *buf, struct net_buf **evt)
 #endif /* CONFIG_BT_CTLR_DF_SCAN_CTE_RX */
 	/* LE Read Antenna Information */
 	rp->commands[40] |= BIT(4);
+#if defined(CONFIG_BT_CTLR_DF_CONN_CTE_TX)
+	/* LE Set Connection CTE Transmit Parameters */
+	rp->commands[40] |= BIT(1);
+#endif /* CONFIG_BT_CTLR_DF_CONN_CTE_TX */
+#if defined(CONFIG_BT_CTLR_DF_CONN_CTE_RX)
+	/* LE Set Connection CTE Receive Parameters */
+	rp->commands[40] |= BIT(0);
+#endif /* CONFIG_BT_CTLR_DF_CONN_CTE_RX */
+#if defined(CONFIG_BT_CTLR_DF_CONN_CTE_REQ)
+	/* LE Connection CTE Request Enable */
+	rp->commands[40] |= BIT(2);
+#endif /* CONFIG_BT_CTLR_DF_CONN_CTE_REQ */
+#if defined(CONFIG_BT_CTLR_DF_CONN_CTE_RSP)
+	/* LE Connection CTE Response Enable */
+	rp->commands[40] |= BIT(3);
+#endif /* CONFIG_BT_CTLR_DF_CONN_CTE_RSP */
+
 #endif /* CONFIG_BT_CTLR_DF */
 
 #if defined(CONFIG_BT_HCI_RAW) && defined(CONFIG_BT_TINYCRYPT_ECC)
@@ -1362,7 +1379,7 @@ static void le_read_buffer_size_v2(struct net_buf *buf, struct net_buf **evt)
 
 	rp->acl_max_len = sys_cpu_to_le16(LL_LENGTH_OCTETS_TX_MAX);
 	rp->acl_max_num = CONFIG_BT_BUF_ACL_TX_COUNT;
-	rp->iso_max_len = sys_cpu_to_le16(ISO_TX_BUFFER_SIZE);
+	rp->iso_max_len = sys_cpu_to_le16(CONFIG_BT_CTLR_ISO_TX_BUFFER_SIZE);
 	rp->iso_max_num = CONFIG_BT_CTLR_ISO_TX_BUFFERS;
 }
 #endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
@@ -3291,6 +3308,24 @@ static void le_set_ext_adv_param(struct net_buf *buf, struct net_buf **evt)
 		return;
 	}
 
+	min_interval = sys_get_le24(cmd->prim_min_interval);
+
+	if (IS_ENABLED(CONFIG_BT_CTLR_PARAM_CHECK)) {
+		const uint32_t max_interval =
+					sys_get_le24(cmd->prim_max_interval);
+
+		/* Compare advertising interval maximum with implementation
+		 * supported advertising interval maximum value defined in the
+		 * Kconfig CONFIG_BT_CTLR_ADV_INTERVAL_MAX.
+		 */
+		if ((min_interval > max_interval) ||
+		    (min_interval < BT_HCI_LE_PRIM_ADV_INTERVAL_MIN) ||
+		    (max_interval > CONFIG_BT_CTLR_ADV_INTERVAL_MAX)) {
+			*evt = cmd_complete_status(BT_HCI_ERR_UNSUPP_FEATURE_PARAM_VAL);
+			return;
+		}
+	}
+
 	status = ll_adv_set_by_hci_handle_get_or_new(cmd->handle, &handle);
 	if (status) {
 		*evt = cmd_complete_status(status);
@@ -3298,7 +3333,6 @@ static void le_set_ext_adv_param(struct net_buf *buf, struct net_buf **evt)
 	}
 
 	evt_prop = sys_le16_to_cpu(cmd->props);
-	min_interval = sys_get_le24(cmd->prim_min_interval);
 	tx_pwr = cmd->tx_power;
 	phy_p = BIT(cmd->prim_adv_phy - 1);
 	phy_s = BIT(cmd->sec_adv_phy - 1);
@@ -3482,7 +3516,7 @@ static void le_clear_adv_sets(struct net_buf *buf, struct net_buf **evt)
 static void le_set_per_adv_param(struct net_buf *buf, struct net_buf **evt)
 {
 	struct bt_hci_cp_le_set_per_adv_param *cmd = (void *)buf->data;
-	uint16_t interval;
+	uint16_t max_interval;
 	uint16_t flags;
 	uint8_t status;
 	uint8_t handle;
@@ -3491,16 +3525,34 @@ static void le_set_per_adv_param(struct net_buf *buf, struct net_buf **evt)
 		return;
 	}
 
+	max_interval = sys_le16_to_cpu(cmd->max_interval);
+
+	if (IS_ENABLED(CONFIG_BT_CTLR_PARAM_CHECK)) {
+		const uint32_t min_interval =
+					sys_le16_to_cpu(cmd->min_interval);
+
+		/* Compare periodic advertising interval maximum with
+		 * implementation supported periodic advertising interval
+		 * maximum value defined in the Kconfig
+		 * CONFIG_BT_CTLR_ADV_PERIODIC_INTERVAL_MAX.
+		 */
+		if ((min_interval > max_interval) ||
+		    (min_interval < BT_HCI_LE_PER_ADV_INTERVAL_MIN) ||
+		    (max_interval > CONFIG_BT_CTLR_ADV_PERIODIC_INTERVAL_MAX)) {
+			*evt = cmd_complete_status(BT_HCI_ERR_UNSUPP_FEATURE_PARAM_VAL);
+			return;
+		}
+	}
+
 	status = ll_adv_set_by_hci_handle_get(cmd->handle, &handle);
 	if (status) {
 		*evt = cmd_complete_status(status);
 		return;
 	}
 
-	interval = sys_le16_to_cpu(cmd->max_interval);
 	flags = sys_le16_to_cpu(cmd->props);
 
-	status = ll_adv_sync_param_set(handle, interval, flags);
+	status = ll_adv_sync_param_set(handle, max_interval, flags);
 
 	*evt = cmd_complete_status(status);
 }
@@ -3575,7 +3627,7 @@ static void le_set_ext_scan_param(struct net_buf *buf, struct net_buf **evt)
 
 	phys = cmd->phys;
 	if (IS_ENABLED(CONFIG_BT_CTLR_PARAM_CHECK) &&
-	    (phys > phys_bitmask)) {
+	    (((phys & phys_bitmask) == 0) || (phys & ~phys_bitmask))) {
 		*evt = cmd_complete_status(BT_HCI_ERR_UNSUPP_FEATURE_PARAM_VAL);
 
 		return;
@@ -3911,7 +3963,7 @@ static void le_ext_create_connection(struct net_buf *buf, struct net_buf **evt)
 
 	phys = cmd->phys;
 	if (IS_ENABLED(CONFIG_BT_CTLR_PARAM_CHECK) &&
-	    (phys > phys_bitmask)) {
+	    (((phys & phys_bitmask) == 0) || (phys & ~phys_bitmask))) {
 		*evt = cmd_status(BT_HCI_ERR_UNSUPP_FEATURE_PARAM_VAL);
 
 		return;
@@ -5154,6 +5206,7 @@ int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 	uint8_t flags;
 	uint16_t len;
 
+	iso_data_hdr = NULL;
 	*evt  = NULL;
 	hdr   = NULL;
 	dp_in = NULL;
@@ -5269,13 +5322,18 @@ int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 		}
 
 		/* TODO: Assign *evt if an immediate response is required.*/
-	} else
+		return 0;
+	}
 #endif /* CONFIG_BT_CTLR_CONN_ISO */
+
 #if defined(CONFIG_BT_CTLR_ADV_ISO)
-	if (IS_ADV_HANDLE(handle)) {
 		/* FIXME: Use ISOAL */
 		struct node_tx_iso *tx;
+		uint16_t stream_handle;
 		uint16_t slen;
+
+		/* FIXME: Code only expects header present */
+		slen = iso_data_hdr ? iso_data_hdr->slen : 0;
 
 		/* Check invalid BIS PDU length */
 		if (slen > LL_BIS_OCTETS_TX_MAX) {
@@ -5347,18 +5405,17 @@ int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 
 		stream->pkt_seq_num++;
 
-		if (ll_iso_tx_mem_enqueue(stream_handle, tx)) {
+		if (ll_iso_tx_mem_enqueue(stream_handle, tx, NULL)) {
 			BT_ERR("Invalid ISO Tx Enqueue");
 			ll_iso_tx_mem_release(tx);
 			return -EINVAL;
 		}
-	} else
-#endif /* CONFIG_BT_CTLR_ADV_ISO */
-	{
-		return -EINVAL;
-	}
 
-	return 0;
+		return 0;
+	}
+#endif /* CONFIG_BT_CTLR_ADV_ISO */
+
+	return -EINVAL;
 }
 #endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_ISO */
 
@@ -6222,7 +6279,6 @@ static void le_ext_adv_report(struct pdu_data *pdu_data,
 	const uint8_t *data = NULL;
 	uint8_t scan_data_len = 0U;
 	uint8_t adv_addr_type = 0U;
-	bool direct_report = false;
 	uint8_t sec_phy_scan = 0U;
 	uint8_t *adv_addr = NULL;
 	uint8_t data_status = 0U;
@@ -6329,11 +6385,21 @@ static void le_ext_adv_report(struct pdu_data *pdu_data,
 			bt_addr_le_t addr;
 
 			lll = node_rx->hdr.rx_ftr.param;
+
+#if defined(CONFIG_BT_CTLR_EXT_SCAN_FP)
 			direct_addr_type_curr =
 				ext_adv_direct_addr_type(lll,
 							 direct_resolved_curr,
 							 direct_report_curr,
 							 adv->rx_addr, ptr);
+#else /* !CONFIG_BT_CTLR_EXT_SCAN_FP */
+			direct_addr_type_curr =
+				ext_adv_direct_addr_type(lll,
+							 direct_resolved_curr,
+							 false, adv->rx_addr,
+							 ptr);
+#endif /* !CONFIG_BT_CTLR_EXT_SCAN_FP */
+
 			direct_addr_curr = ptr;
 			ptr += BDADDR_SIZE;
 
@@ -6454,10 +6520,6 @@ no_ext_hdr:
 			rl_idx = rl_idx_curr;
 #endif /* CONFIG_BT_CTLR_PRIVACY */
 
-#if defined(CONFIG_BT_CTLR_EXT_SCAN_FP)
-			direct_report = direct_report_curr;
-#endif /* CONFIG_BT_CTLR_EXT_SCAN_FP */
-
 #if defined(CONFIG_BT_CTLR_SYNC_PERIODIC) && \
 	defined(CONFIG_BT_CTLR_FILTER_ACCEPT_LIST)
 			devmatch = devmatch_curr;
@@ -6506,12 +6568,6 @@ no_ext_hdr:
 				rl_idx = rl_idx_curr;
 			}
 #endif /* CONFIG_BT_CTLR_PRIVACY */
-
-#if defined(CONFIG_BT_CTLR_EXT_SCAN_FP)
-			if (!direct_report) {
-				direct_report = direct_report_curr;
-			}
-#endif /* CONFIG_BT_CTLR_EXT_SCAN_FP */
 
 #if defined(CONFIG_BT_CTLR_SYNC_PERIODIC) && \
 	defined(CONFIG_BT_CTLR_FILTER_ACCEPT_LIST)
@@ -7879,7 +7935,11 @@ static void le_unknown_rsp(struct pdu_data *pdu_data, uint16_t handle,
 		le_remote_feat_complete(BT_HCI_ERR_UNSUPP_REMOTE_FEATURE,
 					    NULL, handle, buf);
 		break;
-
+#if defined(CONFIG_BT_CTLR_DF_CONN_CTE_REQ)
+	case PDU_DATA_LLCTRL_TYPE_CTE_REQ:
+		le_df_cte_req_failed(BT_HCI_ERR_UNSUPP_REMOTE_FEATURE, handle, buf);
+		break;
+#endif /* CONFIG_BT_CTLR_DF_CONN_CTE_REQ */
 	default:
 		BT_WARN("type: 0x%02x",	pdu_data->llctrl.unknown_rsp.type);
 		break;

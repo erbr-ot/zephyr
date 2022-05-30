@@ -10,18 +10,18 @@
 #include <string.h>
 #include <errno.h>
 
-#include <toolchain.h>
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/conn.h>
-#include <bluetooth/gatt.h>
-#include <bluetooth/uuid.h>
-#include <bluetooth/l2cap.h>
-#include <sys/byteorder.h>
-#include <sys/printk.h>
-#include <sys/__assert.h>
-#include <net/buf.h>
+#include <zephyr/toolchain.h>
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/gatt.h>
+#include <zephyr/bluetooth/uuid.h>
+#include <zephyr/bluetooth/l2cap.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/sys/printk.h>
+#include <zephyr/sys/__assert.h>
+#include <zephyr/net/buf.h>
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 #define LOG_MODULE_NAME bttester_gatt
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
@@ -1396,6 +1396,51 @@ static uint8_t read_cb(struct bt_conn *conn, uint8_t err,
 	return BT_GATT_ITER_CONTINUE;
 }
 
+static uint8_t read_uuid_cb(struct bt_conn *conn, uint8_t err,
+		       struct bt_gatt_read_params *params, const void *data,
+		       uint16_t length)
+{
+	struct gatt_read_uuid_rp *rp = (void *)gatt_buf.buf;
+	struct gatt_char_value value;
+
+	/* Respond to the Lower Tester with ATT Error received */
+	if (err) {
+		rp->att_response = err;
+	}
+
+	/* read complete */
+	if (!data) {
+		tester_send(BTP_SERVICE_ID_GATT, btp_opcode, CONTROLLER_INDEX,
+			    gatt_buf.buf, gatt_buf.len);
+		read_destroy(params);
+
+		return BT_GATT_ITER_STOP;
+	}
+
+	value.handle = params->by_uuid.start_handle;
+	value.data_len = length;
+
+	if (!gatt_buf_add(&value, sizeof(struct gatt_char_value))) {
+		tester_rsp(BTP_SERVICE_ID_GATT, btp_opcode,
+			   CONTROLLER_INDEX, BTP_STATUS_FAILED);
+		read_destroy(params);
+
+		return BT_GATT_ITER_STOP;
+	}
+
+	if (!gatt_buf_add(data, length)) {
+		tester_rsp(BTP_SERVICE_ID_GATT, btp_opcode,
+			   CONTROLLER_INDEX, BTP_STATUS_FAILED);
+		read_destroy(params);
+
+		return BT_GATT_ITER_STOP;
+	}
+
+	rp->values_count++;
+
+	return BT_GATT_ITER_CONTINUE;
+}
+
 static void read_data(uint8_t *data, uint16_t len)
 {
 	const struct gatt_read_cmd *cmd = (void *) data;
@@ -1449,7 +1494,7 @@ static void read_uuid(uint8_t *data, uint16_t len)
 		goto fail;
 	}
 
-	if (!gatt_buf_reserve(sizeof(struct gatt_read_rp))) {
+	if (!gatt_buf_reserve(sizeof(struct gatt_read_uuid_rp))) {
 		goto fail;
 	}
 
@@ -1457,7 +1502,7 @@ static void read_uuid(uint8_t *data, uint16_t len)
 	read_params.handle_count = 0;
 	read_params.by_uuid.start_handle = sys_le16_to_cpu(cmd->start_handle);
 	read_params.by_uuid.end_handle = sys_le16_to_cpu(cmd->end_handle);
-	read_params.func = read_cb;
+	read_params.func = read_uuid_cb;
 
 	btp_opcode = GATT_READ_UUID;
 

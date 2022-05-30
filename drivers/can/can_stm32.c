@@ -4,18 +4,18 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <drivers/can/transceiver.h>
-#include <drivers/clock_control/stm32_clock_control.h>
-#include <drivers/clock_control.h>
-#include <drivers/pinctrl.h>
-#include <sys/util.h>
+#include <zephyr/drivers/can/transceiver.h>
+#include <zephyr/drivers/clock_control/stm32_clock_control.h>
+#include <zephyr/drivers/clock_control.h>
+#include <zephyr/drivers/pinctrl.h>
+#include <zephyr/sys/util.h>
 #include <string.h>
-#include <kernel.h>
+#include <zephyr/kernel.h>
 #include <soc.h>
 #include <errno.h>
 #include <stdbool.h>
-#include <drivers/can.h>
-#include <logging/log.h>
+#include <zephyr/drivers/can.h>
+#include <zephyr/logging/log.h>
 
 #include "can_stm32.h"
 
@@ -341,7 +341,7 @@ static int can_leave_sleep_mode(CAN_TypeDef *can)
 	return 0;
 }
 
-static int can_stm32_set_mode(const struct device *dev, enum can_mode mode)
+static int can_stm32_set_mode(const struct device *dev, can_mode_t mode)
 {
 	const struct can_stm32_config *cfg = dev->config;
 	CAN_TypeDef *can = cfg->can;
@@ -349,6 +349,11 @@ static int can_stm32_set_mode(const struct device *dev, enum can_mode mode)
 	int ret;
 
 	LOG_DBG("Set mode %d", mode);
+
+	if ((mode & ~(CAN_MODE_LOOPBACK | CAN_MODE_LISTENONLY)) != 0) {
+		LOG_ERR("unsupported mode: 0x%08x", mode);
+		return -ENOTSUP;
+	}
 
 	k_mutex_lock(&data->inst_mutex, K_FOREVER);
 
@@ -366,23 +371,18 @@ static int can_stm32_set_mode(const struct device *dev, enum can_mode mode)
 		goto done;
 	}
 
-	switch (mode) {
-	case CAN_NORMAL_MODE:
-		can->BTR &= ~(CAN_BTR_LBKM | CAN_BTR_SILM);
-		break;
-	case CAN_LOOPBACK_MODE:
-		can->BTR &= ~(CAN_BTR_SILM);
+	if ((mode & CAN_MODE_LOOPBACK) != 0) {
+		/* Loopback mode */
 		can->BTR |= CAN_BTR_LBKM;
-		break;
-	case CAN_SILENT_MODE:
-		can->BTR &= ~(CAN_BTR_LBKM);
+	} else {
+		can->BTR &= ~CAN_BTR_LBKM;
+	}
+
+	if ((mode & CAN_MODE_LISTENONLY) != 0) {
+		/* Silent mode */
 		can->BTR |= CAN_BTR_SILM;
-		break;
-	case CAN_SILENT_LOOPBACK_MODE:
-		can->BTR |= CAN_BTR_LBKM | CAN_BTR_SILM;
-		break;
-	default:
-		break;
+	} else {
+		can->BTR &= ~CAN_BTR_SILM;
 	}
 
 done:
@@ -402,15 +402,12 @@ done:
 }
 
 static int can_stm32_set_timing(const struct device *dev,
-				const struct can_timing *timing,
-				const struct can_timing *timing_data)
+				const struct can_timing *timing)
 {
 	const struct can_stm32_config *cfg = dev->config;
 	CAN_TypeDef *can = cfg->can;
 	struct can_stm32_data *data = dev->data;
 	int ret = -EIO;
-
-	ARG_UNUSED(timing_data);
 
 	k_mutex_lock(&data->inst_mutex, K_FOREVER);
 	ret = can_enter_init_mode(can);
@@ -458,13 +455,6 @@ static int can_stm32_get_core_clock(const struct device *dev, uint32_t *rate)
 	}
 
 	return 0;
-}
-
-static int can_stm32_get_max_filters(const struct device *dev, enum can_ide id_type)
-{
-	ARG_UNUSED(id_type);
-
-	return CONFIG_CAN_MAX_FILTER;
 }
 
 static int can_stm32_get_max_bitrate(const struct device *dev, uint32_t *max_bitrate)
@@ -573,12 +563,12 @@ static int can_stm32_init(const struct device *dev)
 		}
 	}
 
-	ret = can_stm32_set_timing(dev, &timing, NULL);
+	ret = can_stm32_set_timing(dev, &timing);
 	if (ret) {
 		return ret;
 	}
 
-	ret = can_stm32_set_mode(dev, CAN_NORMAL_MODE);
+	ret = can_stm32_set_mode(dev, CAN_MODE_NORMAL);
 	if (ret) {
 		return ret;
 	}
@@ -1156,7 +1146,6 @@ static const struct can_driver_api can_api_funcs = {
 #endif
 	.set_state_change_callback = can_stm32_set_state_change_callback,
 	.get_core_clock = can_stm32_get_core_clock,
-	.get_max_filters = can_stm32_get_max_filters,
 	.get_max_bitrate = can_stm32_get_max_bitrate,
 	.timing_min = {
 		.sjw = 0x1,

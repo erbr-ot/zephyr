@@ -4,8 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <zephyr.h>
-#include <bluetooth/bluetooth.h>
+#include <zephyr/zephyr.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/bluetooth/bluetooth.h>
 
 #include "hal/ccm.h"
 #include "hal/ticker.h"
@@ -44,7 +45,7 @@
 
 /* Used by LISTIFY */
 #define _INIT_MAYFLY_ARRAY(_i, _l, _fp) \
-	{ ._link = &_l[_i], .fp = _fp } ,
+	{ ._link = &_l[_i], .fp = _fp },
 
 /* Declare static initialized array of mayflies with associated link element */
 #define DECLARE_MAYFLY_ARRAY(_name, _fp, _cnt) \
@@ -563,7 +564,7 @@ static void cis_disabled_cb(void *param)
 			 */
 			ll_remove_iso_path(cis->lll.handle, BT_HCI_DATAPATH_DIR_CTLR_TO_HOST);
 			ll_remove_iso_path(cis->lll.handle, BT_HCI_DATAPATH_DIR_HOST_TO_CTLR);
-	
+
 			ll_conn_iso_stream_release(cis);
 			cig->lll.num_cis--;
 

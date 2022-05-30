@@ -35,6 +35,7 @@ Peripherals
    regulators.rst
    reset.rst
    rtc.rst
+   sdhc.rst
    sensor.rst
    spi.rst
    tcpc.rst
@@ -43,3 +44,4 @@ Peripherals
    watchdog.rst
    video.rst
    espi.rst
+   mipi_dsi.rst

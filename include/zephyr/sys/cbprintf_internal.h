@@ -11,9 +11,9 @@
 #include <stdarg.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <toolchain.h>
-#include <sys/util.h>
-#include <sys/__assert.h>
+#include <zephyr/toolchain.h>
+#include <zephyr/sys/util.h>
+#include <zephyr/sys/__assert.h>
 
 /*
  * Special alignment cases
@@ -52,7 +52,7 @@ static inline void z_cbprintf_wcpy(int *dst, int *src, size_t len)
 	}
 }
 
-#include <sys/cbprintf_cxx.h>
+#include <zephyr/sys/cbprintf_cxx.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -168,6 +168,8 @@ extern "C" {
 #else
 #define Z_CBPRINTF_ARG_SIZE(v) ({\
 	__auto_type _v = (v) + 0; \
+	/* Static code analysis may complain about unused variable. */ \
+	(void)_v; \
 	size_t _arg_size = _Generic((v), \
 		float : sizeof(double), \
 		default : \
@@ -194,6 +196,9 @@ extern "C" {
 				float : (arg) + 0, \
 				default : \
 					0.0); \
+		/* Static code analysis may complain about unused variable. */ \
+		(void)_v; \
+		(void)_d; \
 		size_t arg_size = Z_CBPRINTF_ARG_SIZE(arg); \
 		size_t _wsize = arg_size / sizeof(int); \
 		z_cbprintf_wcpy((int *)buf, \
@@ -357,7 +362,15 @@ union z_cbprintf_hdr {
 /* Allocation to avoid using VLA and alloca. Alloc frees space when leaving
  * a function which can lead to increased stack usage if logging is used
  * multiple times. VLA is not always available.
+ *
+ * Use large array when optimization is off to avoid increased stack usage.
  */
+#ifdef CONFIG_NO_OPTIMIZATIONS
+#define Z_CBPRINTF_ON_STACK_ALLOC(_name, _len) \
+	__ASSERT(_len <= 32, "Too many string arguments."); \
+	uint8_t _name##_buf32[32]; \
+	_name = _name##_buf32
+#else
 #define Z_CBPRINTF_ON_STACK_ALLOC(_name, _len) \
 	__ASSERT(_len <= 32, "Too many string arguments."); \
 	uint8_t _name##_buf4[4]; \
@@ -370,6 +383,7 @@ union z_cbprintf_hdr {
 		((_len) <= 12 ? _name##_buf12 : \
 		((_len) <= 16 ? _name##_buf16 : \
 		 _name##_buf32)))
+#endif
 
 /** @brief Statically package a formatted string with arguments.
  *

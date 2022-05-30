@@ -24,13 +24,19 @@
 #if !defined(_ASMLANGUAGE)
 
 #if defined(CONFIG_ARM64)
-#include <arch/arm64/structs.h>
+#include <zephyr/arch/arm64/structs.h>
 #else
 
 /* Default definitions when no architecture specific definitions exist. */
 
 /* Per CPU architecture specifics (empty) */
 struct _cpu_arch {
+#ifdef __cplusplus
+	/* This struct will have a size 0 in C which is not allowed in C++ (it'll have a size 1). To
+	 * prevent this, we add a 1 byte dummy variable.
+	 */
+	uint8_t dummy;
+#endif
 };
 
 #endif

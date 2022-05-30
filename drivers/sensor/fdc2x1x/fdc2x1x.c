@@ -8,14 +8,14 @@
 
 #define DT_DRV_COMPAT ti_fdc2x1x
 
-#include <device.h>
-#include <pm/device.h>
-#include <sys/util.h>
-#include <logging/log.h>
+#include <zephyr/device.h>
+#include <zephyr/pm/device.h>
+#include <zephyr/sys/util.h>
+#include <zephyr/logging/log.h>
 #include <math.h>
 
 #include "fdc2x1x.h"
-#include "drivers/sensor/fdc2x1x.h"
+#include <zephyr/drivers/sensor/fdc2x1x.h>
 
 LOG_MODULE_REGISTER(FDC2X1X, CONFIG_SENSOR_LOG_LEVEL);
 

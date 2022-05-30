@@ -8,10 +8,10 @@
 #define ZEPHYR_INCLUDE_KERNEL_THREAD_H_
 
 #ifdef CONFIG_DEMAND_PAGING_THREAD_STATS
-#include <sys/mem_manage.h>
+#include <zephyr/sys/mem_manage.h>
 #endif
 
-#include <kernel/stats.h>
+#include <zephyr/kernel/stats.h>
 
 /**
  * @typedef k_thread_entry_t
@@ -169,7 +169,7 @@ struct _mem_domain_info {
 
 #ifdef CONFIG_THREAD_USERSPACE_LOCAL_DATA
 struct _thread_userspace_local_data {
-#if defined(CONFIG_ERRNO) && !defined(CONFIG_ERRNO_IN_TLS)
+#if defined(CONFIG_ERRNO) && !defined(CONFIG_ERRNO_IN_TLS) && !defined(CONFIG_LIBC_ERRNO)
 	int errno_var;
 #endif
 };
@@ -207,6 +207,15 @@ typedef struct k_thread_runtime_stats {
 	 */
 
 	uint64_t idle_cycles;
+#endif
+
+#if __cplusplus && !defined(CONFIG_SCHED_THREAD_USAGE) &&                                          \
+	!defined(CONFIG_SCHED_THREAD_USAGE_ANALYSIS) && !defined(CONFIG_SCHED_THREAD_USAGE_ALL)
+	/* If none of the above Kconfig values are defined, this struct will have a size 0 in C
+	 * which is not allowed in C++ (it'll have a size 1). To prevent this, we add a 1 byte dummy
+	 * variable when the struct would otherwise be empty.
+	 */
+	uint8_t dummy;
 #endif
 }  k_thread_runtime_stats_t;
 
@@ -265,7 +274,7 @@ struct k_thread {
 	struct _thread_userspace_local_data *userspace_local_data;
 #endif
 
-#if defined(CONFIG_ERRNO) && !defined(CONFIG_ERRNO_IN_TLS)
+#if defined(CONFIG_ERRNO) && !defined(CONFIG_ERRNO_IN_TLS) && !defined(CONFIG_LIBC_ERRNO)
 #ifndef CONFIG_USERSPACE
 	/** per-thread errno variable */
 	int errno_var;

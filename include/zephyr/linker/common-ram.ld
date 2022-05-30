@@ -45,6 +45,13 @@
 	} GROUP_DATA_LINK_IN(RAMABLE_REGION, ROMABLE_REGION)
 #endif
 
+#if defined(CONFIG_HAS_DYNAMIC_DEVICE_HANDLES)
+	SECTION_DATA_PROLOGUE(device_handles,,)
+	{
+#include "device-handles.ld"
+	} GROUP_DATA_LINK_IN(RAMABLE_REGION, ROMABLE_REGION)
+#endif 	/* CONFIG_HAS_DYNAMIC_DEVICE_HANDLES */
+
 	SECTION_DATA_PROLOGUE(initshell,,)
 	{
 		/* link in shell initialization objects for all modules that
@@ -138,11 +145,3 @@
 #ifdef CONFIG_USERSPACE
 	_static_kernel_objects_end = .;
 #endif
-
-#if defined(CONFIG_ZTEST)
-	ITERABLE_SECTION_RAM(ztest_suite_node, 4)
-#if defined(CONFIG_ZTEST_NEW_API)
-	ITERABLE_SECTION_RAM(ztest_unit_test, 4)
-	ITERABLE_SECTION_RAM(ztest_test_rule, 4)
-#endif /* CONFIG_ZTEST_NEW_API */
-#endif /* CONFIG_ZTEST */

@@ -22,12 +22,9 @@
  * communicate to or from the Host or Link. Each stream set is uni directional.
  */
 
-#include <drivers/dma.h>
+#include <zephyr/drivers/dma.h>
 
 #include "dma_cavs_hda.h"
-
-#include <logging/log.h>
-LOG_MODULE_REGISTER(dma_cavs_hda_dma, CONFIG_DMA_LOG_LEVEL);
 
 /* Define low level driver required values */
 #define HDA_HOST_IN_BASE DT_PROP_BY_IDX(DT_NODELABEL(hda_host_in), reg, 0)
@@ -98,6 +95,81 @@ int cavs_hda_dma_host_out_config(const struct device *dev,
 	return res;
 }
 
+int cavs_hda_dma_link_in_config(const struct device *dev,
+				       uint32_t channel,
+				       struct dma_config *dma_cfg)
+{
+	const struct cavs_hda_dma_cfg *const cfg = dev->config;
+	struct dma_block_config *blk_cfg;
+	uint8_t *buf;
+	int res;
+
+	__ASSERT(channel < cfg->dma_channels, "Channel does not exist");
+	__ASSERT(dma_cfg->block_count == 1,
+		 "HDA does not support scatter gather or chained "
+		 "block transfers.");
+	__ASSERT(dma_cfg->channel_direction == cfg->direction,
+		 "Unexpected channel direction, HDA link in supports "
+		 "PERIPHERAL_TO_MEMORY");
+
+	blk_cfg = dma_cfg->head_block;
+	buf = (uint8_t *)(uintptr_t)(blk_cfg->source_address);
+	res = cavs_hda_set_buffer(cfg->base, channel, buf,
+				  blk_cfg->block_size);
+
+	if (res == 0 && dma_cfg->source_data_size <= 3) {
+		/* set the sample container set bit to 16bits */
+		*DGCS(cfg->base, channel) |= DGCS_SCS;
+	}
+
+	return res;
+}
+
+
+int cavs_hda_dma_link_out_config(const struct device *dev,
+					uint32_t channel,
+					struct dma_config *dma_cfg)
+{
+	const struct cavs_hda_dma_cfg *const cfg = dev->config;
+	struct dma_block_config *blk_cfg;
+	uint8_t *buf;
+	int res;
+
+	__ASSERT(channel < cfg->dma_channels, "Channel does not exist");
+	__ASSERT(dma_cfg->block_count == 1,
+		 "HDA does not support scatter gather or chained "
+		 "block transfers.");
+	__ASSERT(dma_cfg->channel_direction == cfg->direction,
+		 "Unexpected channel direction, HDA link out supports "
+		 "MEMORY_TO_PERIPHERAL");
+
+	blk_cfg = dma_cfg->head_block;
+	buf = (uint8_t *)(uintptr_t)(blk_cfg->dest_address);
+
+	res = cavs_hda_set_buffer(cfg->base, channel, buf,
+				  blk_cfg->block_size);
+
+	if (res == 0 && dma_cfg->dest_data_size <= 3) {
+		/* set the sample container set bit to 16bits */
+		*DGCS(cfg->base, channel) |= DGCS_SCS;
+	}
+
+	return res;
+}
+
+
+int cavs_hda_dma_link_reload(const struct device *dev, uint32_t channel,
+				    uint32_t src, uint32_t dst, size_t size)
+{
+	const struct cavs_hda_dma_cfg *const cfg = dev->config;
+
+	__ASSERT(channel < cfg->dma_channels, "Channel does not exist");
+
+	cavs_hda_link_commit(cfg->base, channel, size);
+
+	return 0;
+}
+
 int cavs_hda_dma_host_reload(const struct device *dev, uint32_t channel,
 				    uint32_t src, uint32_t dst, size_t size)
 {
@@ -105,7 +177,7 @@ int cavs_hda_dma_host_reload(const struct device *dev, uint32_t channel,
 
 	__ASSERT(channel < cfg->dma_channels, "Channel does not exist");
 
-	cavs_hda_commit(cfg->base, channel, size);
+	cavs_hda_host_commit(cfg->base, channel, size);
 
 	return 0;
 }
@@ -181,8 +253,6 @@ int cavs_hda_dma_init(const struct device *dev)
 	data->ctx.dma_channels = cfg->dma_channels;
 	data->ctx.atomic = data->channels_atomic;
 	data->ctx.magic = DMA_MAGIC;
-
-	LOG_INF("Intel cAVS HDA %s initialized", dev->name);
 
 	return 0;
 }

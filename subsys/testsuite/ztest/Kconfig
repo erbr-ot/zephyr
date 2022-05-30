@@ -63,7 +63,6 @@ config ZTEST_RETEST_IF_PASSED
 
 config ZTEST_FATAL_HOOK
 	bool "Using a pre-defined fatal handler and hook function"
-	default n
 	help
 	  Use the pre-defined common fatal error handler and a post hook to
 	  do actions in your test case, this option often enabled when doing
@@ -72,7 +71,6 @@ config ZTEST_FATAL_HOOK
 
 config ZTEST_ASSERT_HOOK
 	bool "Using a pre-defined assert handler and hook function"
-	default n
 	help
 	  Use the pre-defined common assert fail handler and a post hook to
 	  do actions in your test case, this option often enabled when doing
@@ -98,6 +96,30 @@ config ZTEST_RULE_1CPU
 	  ztest_1cpu_stop after each test.
 
 endmenu
+
+config ZTEST_SHUFFLE
+	bool "Shuffle the order of tests and suites"
+	select TEST_RANDOM_GENERATOR if !ENTROPY_HAS_DRIVER
+	help
+	  This rule will shuffle the order of tests and test suites.
+
+if ZTEST_SHUFFLE
+config ZTEST_SHUFFLE_SUITE_REPEAT_COUNT
+	int "Number of iterations the test suite will run"
+	default 3
+	help
+	  This rule will execute a test suite N number of times. The tests
+	  per suite will be shuffled on each iteration.  The test order will likely
+	  be different per iteration.
+
+config ZTEST_SHUFFLE_TEST_REPEAT_COUNT
+	int "Number of iterations the test will run"
+	default 3
+	help
+	  This rule will execute a test N number of times.  The test order will
+	  likely be different per iteration.
+
+endif #ZTEST_SHUFFLE
 
 endif # ZTEST_NEW_API
 

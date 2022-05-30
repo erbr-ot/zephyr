@@ -76,10 +76,20 @@
 /* CRC polynomial */
 #define PDU_CRC_POLYNOMIAL     ((0x5bUL) | ((0x06UL) << 8) | ((0x00UL) << 16))
 
-/* Data channel minimum payload size and time */
-#define PDU_DC_PAYLOAD_SIZE_MIN 27
-#define PDU_DC_PAYLOAD_TIME_MIN 328
+/* Data channel minimum payload size and time in us */
+#define PDU_DC_PAYLOAD_SIZE_MIN       27
+#define PDU_DC_PAYLOAD_TIME_MIN       328
 #define PDU_DC_PAYLOAD_TIME_MIN_CODED 2704
+
+/* Data channel maximum payload size and time in us */
+#define PDU_DC_PAYLOAD_SIZE_MAX       251
+#define PDU_DC_PAYLOAD_TIME_MAX_CODED 17040
+
+#if defined(CONFIG_BT_CTLR_DF)
+#define PDU_DC_PAYLOAD_TIME_MAX       2128
+#else /* !CONFIG_BT_CTLR_DF */
+#define PDU_DC_PAYLOAD_TIME_MAX       2120
+#endif /* !CONFIG_BT_CTLR_DF */
 
 /* Link Layer header size of Data PDU. Assumes pdu_data is packed */
 #define PDU_DC_LL_HEADER_SIZE  (offsetof(struct pdu_data, lldata))
@@ -695,10 +705,14 @@ struct pdu_data_llctrl_cis_req {
 	/* c_max_sdu:12
 	 * rfu:3
 	 * framed:1
+	 * NOTE: This layout as bitfields is not portable for BE using
+	 * endianness conversion macros.
 	 */
 	uint8_t  c_max_sdu_packed[2];
 	/* p_max_sdu:12
 	 * rfu:4
+	 * NOTE: This layout as bitfields is not portable for BE using
+	 * endianness conversion macros.
 	 */
 	uint8_t  p_max_sdu[2];
 	uint8_t  c_sdu_interval[3];

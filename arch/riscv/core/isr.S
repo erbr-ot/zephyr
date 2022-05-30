@@ -6,15 +6,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <toolchain.h>
-#include <linker/sections.h>
+#include <zephyr/toolchain.h>
+#include <zephyr/linker/sections.h>
 #include <offsets_short.h>
-#include <arch/cpu.h>
-#include <sys/util.h>
-#include <kernel.h>
-#include <syscall.h>
-#include <arch/riscv/csr.h>
-#include <arch/riscv/syscall.h>
+#include <zephyr/arch/cpu.h>
+#include <zephyr/sys/util.h>
+#include <zephyr/kernel.h>
+#include <zephyr/syscall.h>
+#include <zephyr/arch/riscv/csr.h>
+#include <zephyr/arch/riscv/syscall.h>
 #include "asm_macros.inc"
 
 /* Convenience macros for loading/storing register states. */
@@ -59,6 +59,7 @@
 	op a5, __z_arch_esf_t_a5_OFFSET(sp)		;\
 	op a6, __z_arch_esf_t_a6_OFFSET(sp)		;\
 	op a7, __z_arch_esf_t_a7_OFFSET(sp)		;\
+	op tp, __z_arch_esf_t_tp_OFFSET(sp)             ;\
 	op ra, __z_arch_esf_t_ra_OFFSET(sp)
 
 #ifdef CONFIG_SMP
@@ -90,6 +91,7 @@ GTEXT(z_riscv_thread_start)
 
 #ifdef CONFIG_TRACING
 GTEXT(sys_trace_isr_enter)
+GTEXT(sys_trace_isr_exit)
 #endif
 
 #ifdef CONFIG_USERSPACE
@@ -124,8 +126,6 @@ GTEXT(__irq_wrapper)
 
 /*
  * Handler called upon each exception/interrupt/fault
- * In this architecture, system call (ECALL) is used to perform context
- * switching or IRQ offloading (when enabled).
  */
 SECTION_FUNC(exception.entry, __irq_wrapper)
 
@@ -245,11 +245,6 @@ skip_store_fp_caller_saved:
 	/* If a0 != 0, jump to is_interrupt */
 	bnez a0, is_interrupt
 
-#ifdef CONFIG_PMP_STACK_GUARD
-	li t0, MSTATUS_MPRV
-	csrs mstatus, t0
-#endif
-
 	/*
 	 * If the exception is the result of an ECALL, check whether to
 	 * perform a context-switch or an IRQ offload. Otherwise call _Fault
@@ -299,6 +294,14 @@ is_kernel_syscall:
 	lr t0, __z_arch_esf_t_mepc_OFFSET(sp)
 	addi t0, t0, 4
 	sr t0, __z_arch_esf_t_mepc_OFFSET(sp)
+
+#ifdef CONFIG_PMP_STACK_GUARD
+	/* Re-activate PMP for m-mode */
+	li t1, MSTATUS_MPP
+	csrc mstatus, t1
+	li t1, MSTATUS_MPRV
+	csrs mstatus, t1
+#endif
 
 	/* Determine what to do. Operation code is in a7. */
 	lr a7, __z_arch_esf_t_a7_OFFSET(sp)
@@ -355,6 +358,16 @@ do_irq_offload:
 
 #ifdef CONFIG_USERSPACE
 is_user_syscall:
+
+#ifdef CONFIG_PMP_STACK_GUARD
+	/*
+	 * We came from userspace and need to reconfigure the
+	 * PMP for kernel mode stack guard.
+	 */
+	lr a0, ___cpu_t_current_OFFSET(s0)
+	call z_riscv_pmp_stackguard_enable
+#endif
+
 	/* It is safe to re-enable IRQs now */
 	csrs mstatus, MSTATUS_IEN
 
@@ -404,6 +417,29 @@ valid_syscall_id:
 #endif /* CONFIG_USERSPACE */
 
 is_interrupt:
+
+#ifdef CONFIG_PMP_STACK_GUARD
+#ifdef CONFIG_USERSPACE
+	/*
+	 * If we came from userspace then we need to reconfigure the
+	 * PMP for kernel mode stack guard.
+	 */
+	lr t0, __z_arch_esf_t_mstatus_OFFSET(sp)
+	li t1, MSTATUS_MPP
+	and t0, t0, t1
+	bnez t0, 1f
+	lr a0, ___cpu_t_current_OFFSET(s0)
+	call z_riscv_pmp_stackguard_enable
+	j 2f
+#endif /* CONFIG_USERSPACE */
+1:	/* Re-activate PMP for m-mode */
+	li t1, MSTATUS_MPP
+	csrc mstatus, t1
+	li t1, MSTATUS_MPRV
+	csrs mstatus, t1
+2:
+#endif
+
 	/* Increment _current_cpu->nested */
 	lw t3, ___cpu_t_nested_OFFSET(s0)
 	addi t4, t3, 1
@@ -454,6 +490,10 @@ on_irq_stack:
 
 	/* Call ISR function */
 	jalr ra, t1, 0
+
+#ifdef CONFIG_TRACING_ISR
+    call sys_trace_isr_exit
+#endif
 
 irq_done:
 	/* Decrement _current_cpu->nested */
@@ -545,6 +585,12 @@ no_fp:	/* make sure this is reflected in the restored mstatus */
 	li t1, MSTATUS_MPP
 	and t0, t4, t1
 	bnez t0, 1f
+
+#ifdef CONFIG_PMP_STACK_GUARD
+	/* Remove kernel stack guard and Reconfigure PMP for user mode */
+	lr a0, ___cpu_t_current_OFFSET(s0)
+	call z_riscv_pmp_usermode_enable
+#endif
 
 #if !defined(CONFIG_SMP)
 	/* Set user mode variable */

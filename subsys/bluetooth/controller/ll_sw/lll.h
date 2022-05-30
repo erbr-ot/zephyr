@@ -380,9 +380,9 @@ struct node_rx_ftr {
 
 /* Meta-information for isochronous PDUs in node_rx_hdr */
 struct node_rx_iso_meta {
-	uint64_t payload_number : 39; /* cisPayloadNumber */
-	uint64_t status : 8;          /* Status of reception (OK/not OK) */
-	uint32_t timestamp;           /* Time of reception */
+	uint64_t payload_number:39; /* cisPayloadNumber */
+	uint64_t status:8;          /* Status of reception (OK/not OK) */
+	uint32_t timestamp;         /* Time of reception */
 };
 
 /* Define invalid/unassigned Controller state/role instance handle */

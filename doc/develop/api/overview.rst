@@ -50,7 +50,7 @@ current :ref:`stability level <api_lifecycle>`.
    * - :ref:`can_api`
      - Unstable
      - 1.14
-     - 3.0
+     - 3.1
 
    * - :ref:`counter_api`
      - Unstable
@@ -222,6 +222,11 @@ current :ref:`stability level <api_lifecycle>`.
      - 1.14
      - 2.4
 
+   * - :ref:`mipi_dsi_api`
+     - Experimental
+     - 3.1
+     - 3.1
+
    * - :ref:`misc_api`
      - Stable
      - 1.0
@@ -306,6 +311,11 @@ current :ref:`stability level <api_lifecycle>`.
      - Experimental
      - 2.3
      - 2.3
+
+   * - :ref:`sdhc_api`
+     - Experimental
+     - 3.1
+     - 3.1
 
    * - :ref:`task_wdt_api`
      - Experimental

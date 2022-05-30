@@ -23,10 +23,10 @@
 #ifndef ZEPHYR_INCLUDE_NET_LWM2M_H_
 #define ZEPHYR_INCLUDE_NET_LWM2M_H_
 
-#include <kernel.h>
-#include <sys/mutex.h>
-#include <net/coap.h>
-#include <net/lwm2m_path.h>
+#include <zephyr/kernel.h>
+#include <zephyr/sys/mutex.h>
+#include <zephyr/net/coap.h>
+#include <zephyr/net/lwm2m_path.h>
 
 /**
  * @brief LwM2M Objects managed by OMA for LwM2M tech specification.  Objects
@@ -117,6 +117,9 @@ struct lwm2m_ctx {
 	struct coap_pending pendings[CONFIG_LWM2M_ENGINE_MAX_PENDING];
 	struct coap_reply replies[CONFIG_LWM2M_ENGINE_MAX_REPLIES];
 	sys_slist_t pending_sends;
+#if defined(CONFIG_LWM2M_QUEUE_MODE_ENABLED)
+	sys_slist_t queued_messages;
+#endif
 	sys_slist_t observer;
 
 	/** A pointer to currently processed request, for internal LwM2M engine
@@ -151,6 +154,19 @@ struct lwm2m_ctx {
 	 */
 	bool use_dtls;
 
+#if defined(CONFIG_LWM2M_QUEUE_MODE_ENABLED)
+	/**
+	 * Flag to indicate that the socket connection is suspended.
+	 * With queue mode, this will tell if there is a need to reconnect.
+	 */
+	bool connection_suspended;
+
+	/**
+	 * Flag to indicate that the client is buffering Notifications and Send messages.
+	 * True value buffer Notifications and Send messages.
+	 */
+	bool buffer_client_messages;
+#endif
 	/** Current index of Security Object used for server credentials */
 	int sec_obj_inst;
 
@@ -1163,8 +1179,11 @@ typedef void (*lwm2m_ctx_event_cb_t)(struct lwm2m_ctx *ctx,
  * @param[in] observe_cb Observe callback function called when an observer was
  *			 added or deleted, and when a notification was acked or
  *			 has timed out
+ *
+ * @return 0 for success, -EINPROGRESS when client is already running
+ *         or negative error codes in case of failure.
  */
-void lwm2m_rd_client_start(struct lwm2m_ctx *client_ctx, const char *ep_name,
+int lwm2m_rd_client_start(struct lwm2m_ctx *client_ctx, const char *ep_name,
 			   uint32_t flags, lwm2m_ctx_event_cb_t event_cb,
 			   lwm2m_observe_cb_t observe_cb);
 
@@ -1180,8 +1199,10 @@ void lwm2m_rd_client_start(struct lwm2m_ctx *client_ctx, const char *ep_name,
  * @param[in] event_cb Client event callback function
  * @param[in] deregister True to deregister the client if registered.
  *                       False to force close the connection.
+ *
+ * @return 0 for success or negative in case of error.
  */
-void lwm2m_rd_client_stop(struct lwm2m_ctx *client_ctx,
+int lwm2m_rd_client_stop(struct lwm2m_ctx *client_ctx,
 			  lwm2m_ctx_event_cb_t event_cb, bool deregister);
 
 /**

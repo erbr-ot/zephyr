@@ -5,15 +5,15 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <zephyr.h>
-#include <net/buf.h>
-#include <mgmt/mcumgr/buf.h>
+#include <zephyr/zephyr.h>
+#include <zephyr/net/buf.h>
+#include <zephyr/mgmt/mcumgr/buf.h>
 #include "mgmt/mgmt.h"
 #include "smp/smp.h"
-#include "mgmt/mcumgr/smp.h"
+#include <zephyr/mgmt/mcumgr/smp.h>
 #include "smp_reassembly.h"
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(mcumgr_smp, CONFIG_MCUMGR_SMP_LOG_LEVEL);
 
 /* To be able to unit test some callers some functions need to be
@@ -128,12 +128,6 @@ zephyr_smp_split_frag(struct net_buf **nb, void *arg, uint16_t mtu)
 	return frag;
 }
 
-static void
-zephyr_smp_reset_buf(void *buf, void *arg)
-{
-	net_buf_reset(buf);
-}
-
 static int
 zephyr_smp_write_hdr(struct cbor_nb_writer *cnw, const struct mgmt_hdr *hdr)
 {
@@ -239,7 +233,6 @@ zephyr_smp_handle_reqs(struct k_work *work)
 static const struct mgmt_streamer_cfg zephyr_smp_cbor_cfg = {
 	.alloc_rsp = zephyr_smp_alloc_rsp,
 	.trim_front = zephyr_smp_trim_front,
-	.reset_buf = zephyr_smp_reset_buf,
 	.write_hdr = zephyr_smp_write_hdr,
 	.free_buf = zephyr_smp_free_buf,
 };

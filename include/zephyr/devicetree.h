@@ -19,7 +19,7 @@
 #include <devicetree_unfixed.h>
 #include <devicetree_fixups.h>
 
-#include <sys/util.h>
+#include <zephyr/sys/util.h>
 
 /**
  * @brief devicetree.h API
@@ -891,6 +891,25 @@
  */
 #define DT_STRING_UPPER_TOKEN(node_id, prop) \
 	DT_CAT4(node_id, _P_, prop, _STRING_UPPER_TOKEN)
+
+/**
+ * @brief Like DT_STRING_UPPER_TOKEN(), but with a fallback to default_value
+ *
+ * If the value exists, this expands to DT_STRING_UPPER_TOKEN(node_id, prop).
+ * The default_value parameter is not expanded in this case.
+ *
+ * Otherwise, this expands to default_value.
+ *
+ * @param node_id node identifier
+ * @param prop lowercase-and-underscores property name
+ * @param default_value a fallback value to expand to
+ * @return if @p prop exists, its value as an uppercased token, i.e. without
+ *         any quotes and with special characters converted to underscores.
+ *         Othewise @p default_value
+ */
+#define DT_STRING_UPPER_TOKEN_OR(node_id, prop, default_value) \
+	COND_CODE_1(DT_NODE_HAS_PROP(node_id, prop), \
+		(DT_STRING_UPPER_TOKEN(node_id, prop)), (default_value))
 
 /*
  * phandle properties
@@ -2496,6 +2515,26 @@
 #define DT_INST_LABEL(inst) DT_INST_PROP(inst, label)
 
 /**
+ * @brief Get a string property's value as a token.
+ * @param inst instance number
+ * @param prop lowercase-and-underscores property string name
+ * @return the value of @p prop as a token, i.e. without any quotes
+ *         and with special characters converted to underscores
+ */
+#define DT_INST_STRING_TOKEN(inst, prop) \
+	DT_STRING_TOKEN(DT_DRV_INST(inst), prop)
+
+/**
+ * @brief Like DT_INST_STRING_TOKEN(), but uppercased.
+ * @param inst instance number
+ * @param prop lowercase-and-underscores property string name
+ * @return the value of @p prop as an uppercased token, i.e. without
+ *         any quotes and with special characters converted to underscores
+ */
+#define DT_INST_STRING_UPPER_TOKEN(inst, prop) \
+	DT_STRING_UPPER_TOKEN(DT_DRV_INST(inst), prop)
+
+/**
  * @brief Get a DT_DRV_COMPAT instance's property value from a phandle's node
  * @param inst instance number
  * @param ph lowercase-and-underscores property of "inst"
@@ -2738,15 +2777,28 @@
 #define DT_INST_ON_BUS(inst, bus) DT_ON_BUS(DT_DRV_INST(inst), bus)
 
 /**
- * @brief Tests if DT_DRV_COMPAT's has string property, returns string token if
- *        found, otherwise returns default_value.
+ * @brief Like DT_INST_STRING_TOKEN(), but with a fallback to default_value
  * @param inst instance number
  * @param name lowercase-and-underscores property name
  * @param default_value a fallback value to expand to
- * @return the property's value or default_value
+ * @return if @p prop exists, its value as a token, i.e. without any quotes and
+ *         with special characters converted to underscores. Othewise
+ *         @p default_value
  */
 #define DT_INST_STRING_TOKEN_OR(inst, name, default_value) \
 	DT_STRING_TOKEN_OR(DT_DRV_INST(inst), name, default_value)
+
+/**
+ * @brief Like DT_INST_STRING_UPPER_TOKEN(), but with a fallback to default_value
+ * @param inst instance number
+ * @param name lowercase-and-underscores property name
+ * @param default_value a fallback value to expand to
+ * @return if @p prop exists, its value as an uppercased token, i.e. without
+ *         any quotes and with special characters converted to underscores.
+ *         Othewise @p default_value
+ */
+#define DT_INST_STRING_UPPER_TOKEN_OR(inst, name, default_value) \
+	DT_STRING_UPPER_TOKEN_OR(DT_DRV_INST(inst), name, default_value)
 
 /**
  * @brief Test if any DT_DRV_COMPAT node is on a bus of a given type
@@ -3014,18 +3066,18 @@
 	IS_ENABLED(UTIL_CAT(DT_CAT(DT_COMPAT_, compat), _BUS_##bus))
 
 /* have these last so they have access to all previously defined macros */
-#include <devicetree/io-channels.h>
-#include <devicetree/clocks.h>
-#include <devicetree/gpio.h>
-#include <devicetree/spi.h>
-#include <devicetree/dma.h>
-#include <devicetree/pwms.h>
-#include <devicetree/fixed-partitions.h>
-#include <devicetree/zephyr.h>
-#include <devicetree/ordinals.h>
-#include <devicetree/pinctrl.h>
-#include <devicetree/can.h>
-#include <devicetree/reset.h>
-#include <devicetree/mbox.h>
+#include <zephyr/devicetree/io-channels.h>
+#include <zephyr/devicetree/clocks.h>
+#include <zephyr/devicetree/gpio.h>
+#include <zephyr/devicetree/spi.h>
+#include <zephyr/devicetree/dma.h>
+#include <zephyr/devicetree/pwms.h>
+#include <zephyr/devicetree/fixed-partitions.h>
+#include <zephyr/devicetree/zephyr.h>
+#include <zephyr/devicetree/ordinals.h>
+#include <zephyr/devicetree/pinctrl.h>
+#include <zephyr/devicetree/can.h>
+#include <zephyr/devicetree/reset.h>
+#include <zephyr/devicetree/mbox.h>
 
 #endif /* DEVICETREE_H */

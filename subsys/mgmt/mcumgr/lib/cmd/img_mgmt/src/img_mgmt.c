@@ -4,15 +4,16 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <sys/util.h>
+#include <zephyr/sys/util.h>
 #include <limits.h>
 #include <assert.h>
 #include <string.h>
+#include <zephyr/toolchain.h>
 
 #include <zcbor_common.h>
 #include <zcbor_decode.h>
 #include <zcbor_encode.h>
-#include <mgmt/mcumgr/buf.h>
+#include <zephyr/mgmt/mcumgr/buf.h>
 #include "zcbor_bulk/zcbor_bulk_priv.h"
 #include "mgmt/mgmt.h"
 
@@ -22,7 +23,6 @@
 #include "img_mgmt_priv.h"
 #include "img_mgmt/img_mgmt_config.h"
 
-static void *img_mgmt_upload_arg;
 static img_mgmt_upload_fn img_mgmt_upload_cb;
 
 const struct img_mgmt_dfu_callbacks_t *img_mgmt_dfu_callbacks_fn;
@@ -266,14 +266,14 @@ img_mgmt_erase(struct mgmt_ctxt *ctxt)
 
 	rc = img_mgmt_impl_erase_slot();
 
-	if (!rc) {
+	if (rc != 0) {
 		img_mgmt_dfu_stopped();
 	}
 
 	ok = zcbor_tstr_put_lit(zse, "rc")	&&
 	     zcbor_int32_put(zse, rc);
 
-	return ok ? MGMT_ERR_EOK : MGMT_ERR_ENOMEM;
+	return ok ? MGMT_ERR_EOK : MGMT_ERR_EMSGSIZE;
 }
 
 static int
@@ -287,7 +287,7 @@ img_mgmt_upload_good_rsp(struct mgmt_ctxt *ctxt)
 	     zcbor_tstr_put_lit(zse, "off")			&&
 	     zcbor_int32_put(zse,  g_img_mgmt_state.off);
 
-	return ok ? MGMT_ERR_EOK : MGMT_ERR_ENOMEM;
+	return ok ? MGMT_ERR_EOK : MGMT_ERR_EMSGSIZE;
 }
 
 /**
@@ -385,7 +385,8 @@ img_mgmt_upload(struct mgmt_ctxt *ctxt)
 	 * request.
 	 */
 	if (img_mgmt_upload_cb != NULL) {
-		rc = img_mgmt_upload_cb(req.off, action.size, img_mgmt_upload_arg);
+		rc = img_mgmt_upload_cb(req, action);
+
 		if (rc != 0) {
 			IMG_MGMT_UPLOAD_ACTION_SET_RC_RSN(&action, img_mgmt_err_str_app_reject);
 			goto end;
@@ -515,10 +516,9 @@ img_mgmt_dfu_confirmed(void)
 }
 
 void
-img_mgmt_set_upload_cb(img_mgmt_upload_fn cb, void *arg)
+img_mgmt_set_upload_cb(img_mgmt_upload_fn cb)
 {
 	img_mgmt_upload_cb = cb;
-	img_mgmt_upload_arg = arg;
 }
 
 void

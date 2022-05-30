@@ -9,7 +9,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <bluetooth/iso.h>
+#include <zephyr/bluetooth/iso.h>
 
 typedef enum __packed {
 	BT_CONN_DISCONNECTED,
@@ -130,8 +130,8 @@ struct bt_conn_iso {
 	uint16_t seq_num;
 #endif /* CONFIG_BT_ISO_UNICAST) || CONFIG_BT_ISO_BROADCASTER */
 
-	/** Type of the ISO channel */
-	enum bt_iso_chan_type type;
+	/** Stored information about the ISO stream */
+	struct bt_iso_info info;
 };
 
 typedef void (*bt_conn_tx_cb_t)(struct bt_conn *conn, void *user_data);
@@ -274,9 +274,6 @@ struct bt_iso_create_param {
 };
 
 int bt_conn_iso_init(void);
-
-/* Add a new ISO connection */
-struct bt_conn *bt_conn_add_iso(struct bt_conn *acl);
 
 /* Cleanup ISO references */
 void bt_iso_cleanup_acl(struct bt_conn *iso_conn);

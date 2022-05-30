@@ -5,7 +5,7 @@
  */
 
 struct lll_conn_iso_stream_rxtx {
-	uint64_t payload_number : 39; /* cisPayloadNumber */
+	uint64_t payload_number:39; /* cisPayloadNumber */
 	uint8_t  phy;               /* PHY */
 	uint8_t  burst_number;      /* Burst number (BN) */
 	uint8_t  flush_timeout;     /* Flush timeout (FT) */

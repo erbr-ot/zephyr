@@ -6,7 +6,7 @@
 
 #include <stdint.h>
 #include <zephyr/types.h>
-#include <toolchain.h>
+#include <zephyr/toolchain.h>
 
 /** Function return error codes */
 typedef uint8_t isoal_status_t;
@@ -358,7 +358,7 @@ struct isoal_pdu_production {
 	uint64_t                  sdu_fragments:8;
 	isoal_pdu_len_t           pdu_written;
 	isoal_pdu_len_t           pdu_available;
-	/* Location (byte index) of last segmentatio header */
+	/* Location (byte index) of last segmentation header */
 	isoal_pdu_len_t           last_seg_hdr_loc;
 };
 

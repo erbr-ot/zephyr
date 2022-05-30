@@ -8,12 +8,12 @@
 #define LOG_MODULE_NAME net_lwm2m_obj_firmware
 #define LOG_LEVEL CONFIG_LWM2M_LOG_LEVEL
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
 #include <string.h>
 #include <stdio.h>
-#include <init.h>
+#include <zephyr/init.h>
 
 #include "lwm2m_object.h"
 #include "lwm2m_engine.h"
@@ -239,14 +239,17 @@ static int package_write_cb(uint16_t obj_inst_id, uint16_t res_id,
 		 * make sure it fail after timeout
 		 */
 		lwm2m_firmware_set_update_state_inst(obj_inst_id, STATE_DOWNLOADING);
-	} else if (state != STATE_DOWNLOADING) {
-		if (data_len == 0U && state == STATE_DOWNLOADED) {
+	} else if (state == STATE_DOWNLOADED) {
+		if (data_len == 0U || (data_len == 1U && data[0] == '\0')) {
 			/* reset to state idle and result default */
 			lwm2m_firmware_set_update_result_inst(obj_inst_id, RESULT_DEFAULT);
+			LOG_DBG("Update canceled by writing %d bytes", data_len);
 			return 0;
 		}
-
-		LOG_DBG("Cannot download: state = %d", state);
+		LOG_WRN("Download has already completed");
+		return -EPERM;
+	} else if (state != STATE_DOWNLOADING) {
+		LOG_WRN("Cannot download: state = %d", state);
 		return -EPERM;
 	}
 

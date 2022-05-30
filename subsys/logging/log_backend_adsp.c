@@ -4,11 +4,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <logging/log_backend.h>
-#include <logging/log_core.h>
-#include <logging/log_msg.h>
-#include <logging/log_output.h>
-#include <logging/log_backend_std.h>
+#include <zephyr/logging/log_backend.h>
+#include <zephyr/logging/log_core.h>
+#include <zephyr/logging/log_msg.h>
+#include <zephyr/logging/log_output.h>
+#include <zephyr/logging/log_backend_std.h>
 
 /*
  * A lock is needed as log_process() and log_panic() have no internal locks
@@ -52,6 +52,11 @@ static uint32_t format_flags(void)
 	if (IS_ENABLED(CONFIG_LOG_BACKEND_FORMAT_TIMESTAMP)) {
 		flags |= LOG_OUTPUT_FLAG_FORMAT_TIMESTAMP;
 	}
+
+	if (IS_ENABLED(CONFIG_LOG_BACKEND_ADSP_OUTPUT_SYST)) {
+		flags |= LOG_OUTPUT_FLAG_FORMAT_SYST;
+	}
+
 	return flags;
 }
 

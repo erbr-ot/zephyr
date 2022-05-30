@@ -6,8 +6,8 @@
  */
 
 
-#include <drivers/adc.h>
-#include <zephyr.h>
+#include <zephyr/drivers/adc.h>
+#include <zephyr/zephyr.h>
 #include <ztest.h>
 
 #if defined(CONFIG_SHIELD_MIKROE_ADC_CLICK)
@@ -51,6 +51,7 @@
 	defined(CONFIG_BOARD_BT510) || \
 	defined(CONFIG_BOARD_PINNACLE_100_DVK) || \
 	defined(CONFIG_BOARD_ARDUINO_NANO_33_BLE) || \
+	defined(CONFIG_BOARD_ARDUINO_NANO_33_BLE_SENSE) || \
 	defined(CONFIG_BOARD_UBX_BMD300EVAL_NRF52832) || \
 	defined(CONFIG_BOARD_UBX_BMD330EVAL_NRF52810) || \
 	defined(CONFIG_BOARD_UBX_BMD340EVAL_NRF52840) || \

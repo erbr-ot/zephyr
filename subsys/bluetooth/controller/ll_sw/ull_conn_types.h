@@ -154,6 +154,10 @@ struct ll_conn {
 
 	struct node_rx_pdu *llcp_rx;
 
+#if defined(CONFIG_BT_CTLR_RX_ENQUEUE_HOLD)
+	struct node_rx_pdu *llcp_rx_hold;
+#endif /* CONFIG_BT_CTLR_RX_ENQUEUE_HOLD */
+
 	struct {
 		uint8_t  req;
 		uint8_t  ack;
@@ -361,6 +365,8 @@ struct llcp_struct {
 	struct {
 		sys_slist_t pend_proc_list;
 		uint8_t state;
+		/* Procedure Response Timeout timer expire value */
+		uint16_t prt_expire;
 		uint8_t pause;
 	} local;
 
@@ -368,6 +374,8 @@ struct llcp_struct {
 	struct {
 		sys_slist_t pend_proc_list;
 		uint8_t state;
+		/* Procedure Response Timeout timer expire value */
+		uint16_t prt_expire;
 		uint8_t pause;
 		uint8_t collision;
 		uint8_t incompat;
@@ -376,6 +384,9 @@ struct llcp_struct {
 		uint8_t paused_cmd;
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_RSP || CONFIG_BT_CTLR_DF_CONN_CTE_REQ */
 	} remote;
+
+	/* Procedure Response Timeout timer reload value */
+	uint16_t prt_reload;
 
 	/* Prepare parameters */
 	struct {
@@ -401,7 +412,17 @@ struct llcp_struct {
 	struct {
 		uint8_t sent;
 		uint8_t valid;
+		/*
+		 * Stores features supported by peer device. The content of the member may be
+		 * verified when feature exchange procedure has completed, valid member is set to 1.
+		 */
 		uint64_t features_peer;
+		/*
+		 * Stores features common for two connected devices. Before feature exchange
+		 * procedure is completed, the member stores information about all features
+		 * supported by local device. After completion of the procedure, the feature set
+		 * may be limited to features that are common.
+		 */
 		uint64_t features_used;
 	} fex;
 
@@ -425,15 +446,12 @@ struct llcp_struct {
 		/* Procedure may be active periodically, active state must be stored.
 		 * If procedure is active, request parameters update may not be issued.
 		 */
-		uint8_t is_enabled:1;
-		uint8_t is_active:1;
+		volatile uint8_t is_enabled;
 		uint8_t cte_type;
 		/* Minimum requested CTE length in 8us units */
 		uint8_t min_cte_len;
 		uint16_t req_interval;
 		uint16_t req_expire;
-		void *disable_param;
-		void (*disable_cb)(void *param);
 	} cte_req;
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_REQ */
 

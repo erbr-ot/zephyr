@@ -7,25 +7,25 @@
 
 #define DT_DRV_COMPAT espressif_esp_at
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(wifi_esp_at, CONFIG_WIFI_LOG_LEVEL);
 
-#include <kernel.h>
+#include <zephyr/kernel.h>
 #include <ctype.h>
 #include <errno.h>
-#include <zephyr.h>
-#include <device.h>
-#include <init.h>
+#include <zephyr/zephyr.h>
+#include <zephyr/device.h>
+#include <zephyr/init.h>
 #include <stdlib.h>
 
-#include <drivers/gpio.h>
-#include <drivers/uart.h>
+#include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/uart.h>
 
-#include <net/dns_resolve.h>
-#include <net/net_if.h>
-#include <net/net_ip.h>
-#include <net/net_offload.h>
-#include <net/wifi_mgmt.h>
+#include <zephyr/net/dns_resolve.h>
+#include <zephyr/net/net_if.h>
+#include <zephyr/net/net_ip.h>
+#include <zephyr/net/net_offload.h>
+#include <zephyr/net/wifi_mgmt.h>
 
 #include "esp.h"
 
@@ -384,13 +384,20 @@ MODEM_CMD_DEFINE(on_cmd_wifi_connected)
 	return 0;
 }
 
-MODEM_CMD_DEFINE(on_cmd_wifi_disconnected)
+static void esp_mgmt_disconnect_work(struct k_work *work)
 {
-	struct esp_data *dev = CONTAINER_OF(data, struct esp_data,
-					    cmd_handler_data);
+	struct esp_socket *sock;
+	struct esp_data *dev;
 
-	if (!esp_flags_are_set(dev, EDF_STA_CONNECTED)) {
-		return 0;
+	dev = CONTAINER_OF(work, struct esp_data, disconnect_work);
+
+	/* Cleanup any sockets that weren't closed */
+	for (int i = 0; i < ARRAY_SIZE(dev->sockets); i++) {
+		sock = &dev->sockets[i];
+		if (esp_socket_connected(sock)) {
+			LOG_WRN("Socket %d left open, manually closing", i);
+			esp_socket_close(sock);
+		}
 	}
 
 	esp_flags_clear(dev, EDF_STA_CONNECTED);
@@ -398,6 +405,16 @@ MODEM_CMD_DEFINE(on_cmd_wifi_disconnected)
 
 	net_if_ipv4_addr_rm(dev->net_iface, &dev->ip);
 	wifi_mgmt_raise_disconnect_result_event(dev->net_iface, 0);
+}
+
+MODEM_CMD_DEFINE(on_cmd_wifi_disconnected)
+{
+	struct esp_data *dev = CONTAINER_OF(data, struct esp_data,
+					    cmd_handler_data);
+
+	if (esp_flags_are_set(dev, EDF_STA_CONNECTED)) {
+		k_work_submit_to_queue(&dev->workq, &dev->disconnect_work);
+	}
 
 	return 0;
 }
@@ -508,6 +525,8 @@ MODEM_CMD_DEFINE(on_cmd_closed)
 	atomic_val_t old_flags;
 
 	link_id = data->match_buf[0] - '0';
+
+	LOG_DBG("Link %d closed", link_id);
 
 	dev = CONTAINER_OF(data, struct esp_data, cmd_handler_data);
 	sock = esp_socket_ref_from_link_id(dev, link_id);
@@ -951,7 +970,7 @@ static void esp_init_work(struct k_work *work)
 		SETUP_CMD_NOHANDLE(
 			ESP_CMD_CWLAPOPT(ESP_CMD_CWLAPOPT_ORDERED, ESP_CMD_CWLAPOPT_MASK)),
 
-#if defined(CONFIG_WIFI_ESP_AT_VERSION_2_0)
+#if !defined(CONFIG_WIFI_ESP_AT_VERSION_1_7)
 		SETUP_CMD_NOHANDLE(ESP_CMD_CWMODE(STA)),
 		SETUP_CMD_NOHANDLE("AT+CWAUTOCONN=0"),
 		SETUP_CMD_NOHANDLE(ESP_CMD_CWMODE(NONE)),
@@ -1100,6 +1119,7 @@ static int esp_init(const struct device *dev)
 	k_work_init_delayable(&data->ip_addr_work, esp_ip_addr_work);
 	k_work_init(&data->scan_work, esp_mgmt_scan_work);
 	k_work_init(&data->connect_work, esp_mgmt_connect_work);
+	k_work_init(&data->disconnect_work, esp_mgmt_disconnect_work);
 	k_work_init(&data->mode_switch_work, esp_mode_switch_work);
 	if (IS_ENABLED(CONFIG_WIFI_ESP_AT_DNS_USE)) {
 		k_work_init(&data->dns_work, esp_dns_work);

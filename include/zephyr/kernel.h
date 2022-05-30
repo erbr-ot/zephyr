@@ -14,12 +14,12 @@
 #define ZEPHYR_INCLUDE_KERNEL_H_
 
 #if !defined(_ASMLANGUAGE)
-#include <kernel_includes.h>
+#include <zephyr/kernel_includes.h>
 #include <errno.h>
 #include <limits.h>
 #include <stdbool.h>
-#include <toolchain.h>
-#include <tracing/tracing_macros.h>
+#include <zephyr/toolchain.h>
+#include <zephyr/tracing/tracing_macros.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -465,6 +465,19 @@ __syscall int32_t k_usleep(int32_t us);
 __syscall void k_busy_wait(uint32_t usec_to_wait);
 
 /**
+ * @brief Check whether it is possible to yield in the current context.
+ *
+ * This routine checks whether the kernel is in a state where it is possible to
+ * yield or call blocking API's. It should be used by code that needs to yield
+ * to perform correctly, but can feasibly be called from contexts where that
+ * is not possible. For example in the PRE_KERNEL initialization step, or when
+ * being run from the idle thread.
+ *
+ * @return True if it is possible to yield in the current context, false otherwise.
+ */
+bool k_can_yield(void);
+
+/**
  * @brief Yield the current thread.
  *
  * This routine causes the current thread to yield execution to another
@@ -756,7 +769,7 @@ __syscall void k_thread_deadline_set(k_tid_t thread, int deadline);
  * After this returns, the thread will no longer be schedulable on any
  * CPUs.  The thread must not be currently runnable.
  *
- * @note You should enable @kconfig{CONFIG_SCHED_DEADLINE} in your project
+ * @note You should enable @kconfig{CONFIG_SCHED_CPU_MASK} in your project
  * configuration.
  *
  * @param thread Thread to operate upon
@@ -770,7 +783,7 @@ int k_thread_cpu_mask_clear(k_tid_t thread);
  * After this returns, the thread will be schedulable on any CPU.  The
  * thread must not be currently runnable.
  *
- * @note You should enable @kconfig{CONFIG_SCHED_DEADLINE} in your project
+ * @note You should enable @kconfig{CONFIG_SCHED_CPU_MASK} in your project
  * configuration.
  *
  * @param thread Thread to operate upon
@@ -783,7 +796,7 @@ int k_thread_cpu_mask_enable_all(k_tid_t thread);
  *
  * The thread must not be currently runnable.
  *
- * @note You should enable @kconfig{CONFIG_SCHED_DEADLINE} in your project
+ * @note You should enable @kconfig{CONFIG_SCHED_CPU_MASK} in your project
  * configuration.
  *
  * @param thread Thread to operate upon
@@ -797,7 +810,7 @@ int k_thread_cpu_mask_enable(k_tid_t thread, int cpu);
  *
  * The thread must not be currently runnable.
  *
- * @note You should enable @kconfig{CONFIG_SCHED_DEADLINE} in your project
+ * @note You should enable @kconfig{CONFIG_SCHED_CPU_MASK} in your project
  * configuration.
  *
  * @param thread Thread to operate upon
@@ -805,6 +818,18 @@ int k_thread_cpu_mask_enable(k_tid_t thread, int cpu);
  * @return Zero on success, otherwise error code
  */
 int k_thread_cpu_mask_disable(k_tid_t thread, int cpu);
+
+/**
+ * @brief Pin a thread to a CPU
+ *
+ * Pin a thread to a CPU by first clearing the cpu mask and then enabling the
+ * thread on the selected CPU.
+ *
+ * @param thread Thread to operate upon
+ * @param cpu CPU index
+ * @return Zero on success, otherwise error code
+ */
+int k_thread_cpu_pin(k_tid_t thread, int cpu);
 #endif
 
 /**
@@ -1062,12 +1087,16 @@ __syscall int k_thread_name_copy(k_tid_t thread, char *buf,
 /**
  * @brief Get thread state string
  *
- * Get the human friendly thread state string
+ * This routine generates a human friendly string containing the thread's
+ * state, and copies as much of it as possible into @a buf.
  *
  * @param thread_id Thread ID
- * @retval Thread state string, empty if no state flag is set
+ * @param buf Buffer into which to copy state strings
+ * @param buf_size Size of the buffer
+ *
+ * @retval Pointer to @a buf if data was copied, else a pointer to "".
  */
-const char *k_thread_state_str(k_tid_t thread_id);
+const char *k_thread_state_str(k_tid_t thread_id, char *buf, size_t buf_size);
 
 /**
  * @}
@@ -5906,7 +5935,7 @@ extern void k_sys_runtime_stats_disable(void);
 }
 #endif
 
-#include <tracing/tracing.h>
+#include <zephyr/tracing/tracing.h>
 #include <syscalls/kernel.h>
 
 #endif /* !_ASMLANGUAGE */

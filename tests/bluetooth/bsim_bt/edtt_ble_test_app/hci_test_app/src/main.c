@@ -8,20 +8,20 @@
  * @brief HCI interface application
  */
 
-#include <zephyr.h>
+#include <zephyr/zephyr.h>
 
-#include <settings/settings.h>
+#include <zephyr/settings/settings.h>
 
-#include <sys/byteorder.h>
-#include <debug/stack.h>
+#include <zephyr/sys/byteorder.h>
+#include <zephyr/debug/stack.h>
 
-#include <net/buf.h>
+#include <zephyr/net/buf.h>
 
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/l2cap.h>
-#include <bluetooth/hci_vs.h>
-#include <bluetooth/hci_raw.h>
-#include <bluetooth/iso.h>
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/l2cap.h>
+#include <zephyr/bluetooth/hci_vs.h>
+#include <zephyr/bluetooth/hci_raw.h>
+#include <zephyr/bluetooth/iso.h>
 
 #include "edtt_driver.h"
 #include "bs_tracing.h"
@@ -33,7 +33,7 @@
 #define LOG_LEVEL CONFIG_BT_LOG_LEVEL
 #endif
 
-#include <logging/log.h>
+#include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(hci_test_app);
 
 static uint16_t waiting_opcode;

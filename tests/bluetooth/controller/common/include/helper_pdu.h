@@ -57,6 +57,8 @@ void helper_pdu_encode_cis_rsp(struct pdu_data *pdu, void *param);
 void helper_pdu_encode_cis_ind(struct pdu_data *pdu, void *param);
 void helper_pdu_encode_cis_terminate_ind(struct pdu_data *pdu, void *param);
 
+void helper_pdu_encode_zero(struct pdu_data *pdu, void *param);
+
 void helper_pdu_verify_ping_req(const char *file, uint32_t line, struct pdu_data *pdu, void *param);
 void helper_pdu_verify_ping_rsp(const char *file, uint32_t line, struct pdu_data *pdu, void *param);
 
@@ -134,6 +136,8 @@ void helper_pdu_verify_cte_req(const char *file, uint32_t line, struct pdu_data 
 void helper_pdu_verify_cte_rsp(const char *file, uint32_t line, struct pdu_data *pdu, void *param);
 void helper_node_verify_cte_rsp(const char *file, uint32_t line, struct node_rx_pdu *rx,
 				void *param);
+void helper_pdu_ntf_verify_cte_rsp(const char *file, uint32_t line, struct pdu_data *pdu,
+				   void *param);
 
 void helper_node_verify_cis_request(const char *file, uint32_t line, struct node_rx_pdu *rx,
 				void *param);
@@ -178,6 +182,7 @@ enum helper_pdu_opcode {
 	LL_CIS_RSP,
 	LL_CIS_IND,
 	LL_CIS_TERMINATE_IND,
+	LL_ZERO,
 };
 
 enum helper_node_opcode {

@@ -6,12 +6,12 @@
 #include <string.h>
 #include <zephyr/types.h>
 #include <sys/types.h>
-#include <toolchain.h>
-#include <sys/util.h>
+#include <zephyr/toolchain.h>
+#include <zephyr/sys/util.h>
 
-#include <zephyr.h>
+#include <zephyr/zephyr.h>
 
-#include <bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/bluetooth.h>
 
 #include "util/memq.h"
 #include "pdu.h"
@@ -201,6 +201,11 @@ isoal_status_t isoal_sink_create(
 	 * BIS: SDU_Synchronization_Reference =
 	 *   BIG reference anchor point +
 	 *   BIG_Sync_Delay + SDU_interval + ISO_Interval - Time_Offset.
+	 */
+	/* TODO: This needs to be rechecked.
+	 * Latency should be in us but flush_timeout and iso_interval are
+	 * integers.
+	 * (i.e. Correct calculation should require iso_interval x 1250us)
 	 */
 	if (role == BT_CONN_ROLE_PERIPHERAL) {
 		isoal_global.sink_state[*hdl].session.latency_unframed =
@@ -513,8 +518,6 @@ static isoal_status_t isoal_rx_unframed_consume(struct isoal_sink *sink,
 	 * count and as a result the last_pdu detection is no longer reliable.
 	 */
 	if (sp->fsm == ISOAL_ERR_SPOOL) {
-
-
 	 	if ((!pdu_err && !seq_err &&
 			/* Previous sequence error should have move to the
 			 * ISOAL_ERR_SPOOL state and emitted the SDU in production. No
@@ -637,6 +640,20 @@ static isoal_status_t isoal_rx_unframed_consume(struct isoal_sink *sink,
 				(sp->fsm  != ISOAL_ERR_SPOOL)) {
 		/* END fragment never seen */
 		sp->sdu_status |= ISOAL_SDU_STATUS_ERRORS;
+	}
+
+	/* BT Core V5.3 : Vol 4 HCI I/F : Part G HCI Func. Spec.:
+	 * 5.4.5 HCI ISO Data packets
+	 * If Packet_Status_Flag equals 0b10 then PB_Flag shall equal 0b10.
+	 * When Packet_Status_Flag is set to 0b10 in packets from the Controller to the
+	 * Host, there is no data and ISO_SDU_Length shall be set to zero.
+	 *
+	 * TODO: Move to hci_driver to allow vendor path to have dedicated handling.
+	 */
+	if (sp->sdu_status == ISOAL_SDU_STATUS_LOST_DATA) {
+		sp->sdu_written = 0;
+		end_of_packet = 1;
+		length = 0;
 	}
 
 	/* Append valid PDU to SDU */
@@ -1109,7 +1126,7 @@ static isoal_status_t isoal_tx_pdu_emit(const struct isoal_source *source_ctx,
 	/* Retrieve Node handle */
 	node_tx = produced_pdu->contents.handle;
 	/* Set payload number */
-	node_tx->payload_number = payload_number & 0x7fffffffff;
+	node_tx->payload_count = payload_number & 0x7fffffffff;
 	node_tx->sdu_fragments = sdu_fragments;
 	/* Set PDU LLID */
 	produced_pdu->contents.pdu->ll_id = pdu_ll_id;
@@ -1287,6 +1304,8 @@ static isoal_status_t isoal_tx_unframed_produce(struct isoal_source *source,
 		pp->sdu_fragments = 0;
 	}
 
+	pp->sdu_fragments++;
+
 	/* PDUs should be created until the SDU fragment has been fragmented or
 	 * if this is the last fragment of the SDU, until the required padding
 	 * PDU(s) are sent.
@@ -1383,7 +1402,7 @@ static isoal_status_t isoal_tx_unframed_produce(struct isoal_source *source,
 }
 
 /**
- * @brief  Inserts a segmentation header at the current wirte point in the PDU
+ * @brief  Inserts a segmentation header at the current write point in the PDU
  *         under production.
  * @param  source              source handle
  * @param  sc                  start / continuation bit value to be written
@@ -1438,7 +1457,7 @@ static isoal_status_t isoal_insert_seg_header_timeoffset(struct isoal_source *so
 	/* Write to PDU */
 	err = session->pdu_write(&pdu->contents,
 				  pp->pdu_written,
-				  (uint8_t*) &seg_hdr,
+				  (uint8_t *)&seg_hdr,
 				  write_size);
 	pp->pdu_written   += write_size;
 	pp->pdu_available -= write_size;
@@ -1478,7 +1497,7 @@ static isoal_status_t isoal_update_seg_header_cmplt_length(struct isoal_source *
 	/* Re-write the segmentation header at the same location */
 	return session->pdu_write(&pdu->contents,
 				  pp->last_seg_hdr_loc,
-				  (uint8_t*) &seg_hdr,
+				  (uint8_t *)&seg_hdr,
 				  PDU_ISO_SEG_HDR_SIZE);
 }
 
@@ -1671,7 +1690,7 @@ static isoal_status_t isoal_tx_framed_produce(struct isoal_source *source,
 		 * should not be emitted as long as there is space left. If the
 		 * PDU is not released, it might require a flush timeout to
 		 * trigger the release as receiving an SDU per SDU interval is
-		 * not guarenteed. As there is no trigger for this in the
+		 * not guaranteed. As there is no trigger for this in the
 		 * ISO-AL, the PDU is released. This does mean that the
 		 * bandwidth of this implementation will be less that the ideal
 		 * supported by framed PDUs. Ideally ISOAL_SEGMENT_MIN_SIZE

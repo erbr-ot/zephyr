@@ -307,6 +307,7 @@ CMSIS API layer:
          - samples/subsys/portability/cmsis_rtos_v*/
          - tests/subsys/portability/cmsis_rtos_v*/
     labels:
+        - "area: CMSIS API Layer"
         - "area: Portability"
 
 CMSIS-DSP integration:
@@ -321,6 +322,18 @@ CMSIS-DSP integration:
         - tests/lib/cmsis_dsp/
     labels:
         - "area: CMSIS-DSP"
+
+CMSIS-NN integration:
+    status: maintained
+    maintainers:
+        - JordanYates
+    collaborators:
+        - stephanosio
+    files:
+        - modules/Kconfig.cmsis_nn
+        - tests/lib/cmsis_nn/
+    labels:
+        - "area: CMSIS-NN"
 
 Common Architecture Interface:
     status: odd fixes
@@ -404,9 +417,9 @@ Devicetree:
 Disk:
     status: maintained
     maintainers:
-        - jfischer-no
-    collaborators:
         - danieldegrasse
+    collaborators:
+        - jfischer-no
     files:
         - include/zephyr/storage/disk_access.h
         - include/zephyr/drivers/disk.h
@@ -488,9 +501,7 @@ Documentation:
     collaborators:
         - alexanderwachter
         - karstenkoenig
-        - nixward
         - martinjaeger
-        - legoabram
     files:
         - doc/hardware/peripherals/canbus/
         - drivers/can/
@@ -568,6 +579,20 @@ Documentation:
         - samples/drivers/dac/
     labels:
         - "area: DAC"
+
+"Drivers: DAI":
+    status: maintained
+    maintainers:
+        - juimonen
+    collaborators:
+        - lgirdwood
+        - kv2019i
+    files:
+        - drivers/dai/
+        - doc/hardware/peripherals/audio/dai.rst
+        - include/zephyr/drivers/dai.h
+    labels:
+        - "area: DAI"
 
 "Drivers: DMA":
     status: maintained
@@ -1113,6 +1138,7 @@ Logging:
         - nordic-krch
     collaborators:
         - chen-png
+        - aasthagr
     files:
         - include/zephyr/logging/
         - samples/subsys/logging/
@@ -1330,7 +1356,7 @@ nRF52 BSIM:
     files:
         - boards/posix/nrf52_bsim/
     labels:
-        - "platform: nrf52_bsim"
+        - "platform: nRF52 BSIM"
 
 POSIX API layer:
     status: odd fixes
@@ -1501,7 +1527,7 @@ Synopsys Platforms:
     labels:
         - "platform: Synopsys"
 
-Nuvoton_NPCX Platforms:
+Nuvoton NPCX Platforms:
     status: maintained
     maintainers:
         - MulinChao
@@ -1523,9 +1549,9 @@ Nuvoton_NPCX Platforms:
         - dts/bindings/*/*npcx*
         - drivers/*/*_npcx*.c
     labels:
-        - "platform: Nuvoton_NPCX"
+        - "platform: Nuvoton NPCX"
 
-Nuvoton_Numicro Platforms:
+Nuvoton Numicro Platforms:
     status: odd fixes
     collaborators:
         - ssekar15
@@ -1536,7 +1562,7 @@ Nuvoton_Numicro Platforms:
         - dts/bindings/*/*numicro*
         - drivers/*/*_numicro*
     labels:
-        - "platform: Nuvoton_Numicro"
+        - "platform: Nuvoton Numicro"
 
 SiLabs Platforms:
     status: odd fixes
@@ -1607,7 +1633,7 @@ NXP Platforms:
   labels:
     - "platform: NXP"
 
-Microchip Platforms:
+Microchip MEC Platforms:
   status: maintained
   maintainers:
     - jvasanth1
@@ -1620,7 +1646,23 @@ Microchip Platforms:
     - soc/arm/microchip_mec/
     - drivers/*/*mchp*.c
   labels:
-    - "platform: Microchip"
+    - "platform: Microchip MEC"
+
+Microchip SAM Platforms:
+  status: maintained
+  maintainers:
+    - nandojve
+  collaborators:
+    - mnkp
+    - stephanosio
+  files:
+    - boards/arm/atsam*/
+    - boards/arm/sam*/
+    - dts/arm/atmel/
+    - soc/arm/atmel_sam*/
+    - drivers/*/*sam*.c
+  labels:
+    - "platform: Microchip SAM"
 
 nRF Platforms:
     status: maintained
@@ -1661,6 +1703,7 @@ STM32 Platforms:
         - ABOSTM
         - FRASTM
         - gmarull
+        - GeorgeCGV
     files:
         - boards/arm/nucleo_*/
         - boards/arm/stm32*_disco/
@@ -1718,7 +1761,7 @@ ITE Platforms:
         - drivers/*/*/*it8xxx2*.c
         - drivers/*/*it8xxx2*.c
         - dts/bindings/*/*ite*
-        - dts/riscv/*it8xxx2*
+        - dts/riscv/ite/
         - soc/riscv/riscv-ite/
     labels:
         - "platform: ITE"
@@ -1776,6 +1819,20 @@ TF-M Integration:
         - modules/trusted-firmware-m/
     labels:
         - "area: TF-M"
+
+Toolchain Integration:
+    status: maintained
+    maintainers:
+        - tejlmand
+    collaborators:
+        - stephanosio
+    files:
+        - cmake/bintools/
+        - cmake/compiler/
+        - cmake/linker/
+        - cmake/toolchain/
+    labels:
+        - "area: Toolchains"
 
 Tracing:
     status: maintained

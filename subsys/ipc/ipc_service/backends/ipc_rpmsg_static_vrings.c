@@ -4,18 +4,18 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <logging/log.h>
-#include <zephyr.h>
-#include <cache.h>
-#include <device.h>
-#include <sys/atomic.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/zephyr.h>
+#include <zephyr/cache.h>
+#include <zephyr/device.h>
+#include <zephyr/sys/atomic.h>
 
-#include <ipc/ipc_service_backend.h>
-#include <ipc/ipc_static_vrings.h>
-#include <ipc/ipc_rpmsg.h>
+#include <zephyr/ipc/ipc_service_backend.h>
+#include <zephyr/ipc/ipc_static_vrings.h>
+#include <zephyr/ipc/ipc_rpmsg.h>
 
-#include <drivers/mbox.h>
-#include <dt-bindings/ipc_service/static_vrings.h>
+#include <zephyr/drivers/mbox.h>
+#include <zephyr/dt-bindings/ipc_service/static_vrings.h>
 
 #include "ipc_rpmsg_static_vrings.h"
 
@@ -394,6 +394,7 @@ static int send(const struct device *instance, void *token,
 {
 	struct backend_data_t *data = instance->data;
 	struct ipc_rpmsg_ept *rpmsg_ept;
+	int ret;
 
 	/* Instance is not ready */
 	if (atomic_get(&data->state) != STATE_INITED) {
@@ -407,7 +408,14 @@ static int send(const struct device *instance, void *token,
 
 	rpmsg_ept = (struct ipc_rpmsg_ept *) token;
 
-	return rpmsg_send(&rpmsg_ept->ep, msg, len);
+	ret = rpmsg_send(&rpmsg_ept->ep, msg, len);
+
+	/* No buffers available */
+	if (ret == RPMSG_ERR_NO_BUFF) {
+		return -ENOMEM;
+	}
+
+	return ret;
 }
 
 static int send_nocopy(const struct device *instance, void *token,
@@ -610,7 +618,7 @@ static int backend_init(const struct device *instance)
 			   (0)),							\
 		.wq_prio_type = COND_CODE_1(DT_INST_NODE_HAS_PROP(i, zephyr_priority),	\
 			   (DT_INST_PROP_BY_IDX(i, zephyr_priority, 1)),		\
-			   (PRIO_PREEMPT)),						\
+			   (PRIO_COOP)),						\
 		.id = i,								\
 	};										\
 											\

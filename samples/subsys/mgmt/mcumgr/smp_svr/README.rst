@@ -130,7 +130,8 @@ Zephyr. The ``smp_svr`` sample comes in different flavours.
             -b nrf52840dk_nrf52840 \
             samples/subsys/mgmt/mcumgr/smp_svr \
             -- \
-            -DOVERLAY_CONFIG=overlay-cdc.conf
+            -DOVERLAY_CONFIG=overlay-cdc.conf \
+            -DDTC_OVERLAY_FILE=usb.overlay
 
    .. group-tab:: Shell
 
@@ -195,7 +196,7 @@ the image.
     west flash --bin-file build/zephyr/zephyr.signed.bin
 
 We need to explicitly specify the *signed* image file, otherwise the non-signed version
-will be used and the image wont be runnable.
+will be used and the image won't be runnable.
 
 Sample image: hello world!
 ==========================

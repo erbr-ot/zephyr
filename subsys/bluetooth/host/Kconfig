@@ -22,7 +22,7 @@ config BT_HCI_TX_STACK_SIZE
 	default 416 if BT_SPI
 	default 940 if BT_CTLR && BT_LL_SW_SPLIT && NO_OPTIMIZATIONS
 	default 1024 if BT_CTLR && BT_LL_SW_SPLIT && BT_CENTRAL
-	default 640 if BT_CTLR && BT_LL_SW_SPLIT
+	default 768 if BT_CTLR && BT_LL_SW_SPLIT
 	default 512 if BT_USERCHAN
 	default 640 if BT_STM32_IPM
 	# Even if no driver is selected the following default is still
@@ -215,10 +215,6 @@ config BT_SETTINGS_USE_PRINTK
 	  printk is enabled then the program memory footprint will be larger.
 endif # BT_SETTINGS
 
-config BT_WHITELIST
-	bool "DEPRECATED: Use BT_FILTER_ACCEPT_LIST instead"
-	select BT_FILTER_ACCEPT_LIST
-
 config BT_FILTER_ACCEPT_LIST
 	bool "Filter accept list support"
 	help
@@ -233,9 +229,6 @@ config BT_FILTER_ACCEPT_LIST
 	  A scanner can filter advertisers for which it will generate
 	  advertising reports.
 	  Connections can be established automatically for accepted peers.
-
-	  This options deprecates the bt_le_set_auto_conn API in favor of the
-	  bt_conn_create_auto_le API.
 
 config BT_LIM_ADV_TIMEOUT
 	int "Timeout for limited advertising in 1s units"

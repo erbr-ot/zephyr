@@ -27,15 +27,12 @@
 
 
 #if defined(CONFIG_BT_CTLR_ADV_ISO)
-#define IS_ADV_HANDLE(_handle) \
+#define IS_ADV_ISO_HANDLE(_handle) \
 	(((_handle) >= BT_CTLR_ADV_ISO_STREAM_HANDLE_BASE) && \
 	((_handle) <= (BT_CTLR_ADV_ISO_STREAM_HANDLE_BASE + BT_CTLR_ADV_ISO_STREAM_MAX - 1)))
 #else
-#define IS_ADV_HANDLE(_handle) 0
+#define IS_ADV_ISO_HANDLE(_handle) 0
 #endif /* CONFIG_BT_CTLR_ADV_ISO */
-
-/* ISO LL conformance tests require a PDU size of maximum 251 bytes */
-#define ISO_TX_BUFFER_SIZE 251
 
 /* Common members for ll_conn_iso_stream and ll_broadcast_iso_stream */
 struct ll_iso_stream_hdr {

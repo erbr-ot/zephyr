@@ -377,7 +377,7 @@ static void rp_cc_state_wait_rx_cis_ind(struct ll_conn *conn, struct proc_ctx *c
 			ctx->state = RP_CC_STATE_WAIT_INSTANT;
 
 			/* Clear procedure timeout */
-			ull_conn_prt_clear(conn);
+			llcp_lr_prt_stop(conn);
 
 			/* Fixme - Implement CIS Supervision timeout
 			 * Spec:

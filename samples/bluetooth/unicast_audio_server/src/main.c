@@ -7,14 +7,14 @@
 #include <zephyr/types.h>
 #include <stddef.h>
 #include <errno.h>
-#include <zephyr.h>
-#include <sys/printk.h>
+#include <zephyr/zephyr.h>
+#include <zephyr/sys/printk.h>
 
-#include <bluetooth/bluetooth.h>
-#include <bluetooth/conn.h>
-#include <bluetooth/audio/audio.h>
-#include <bluetooth/audio/capabilities.h>
-#include <sys/byteorder.h>
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/audio/audio.h>
+#include <zephyr/bluetooth/audio/capabilities.h>
+#include <zephyr/sys/byteorder.h>
 
 #define MAX_PAC 1
 
@@ -36,10 +36,8 @@ static struct bt_codec lc3_codec =
 		     1u, (BT_AUDIO_CONTEXT_TYPE_CONVERSATIONAL | BT_AUDIO_CONTEXT_TYPE_MEDIA),
 		     BT_AUDIO_CONTEXT_TYPE_UNSPECIFIED);
 
-NET_BUF_POOL_FIXED_DEFINE(tx_pool, 1, CONFIG_BT_ISO_TX_MTU, 8, NULL);
 static struct bt_conn *default_conn;
 static struct bt_audio_stream streams[MAX_PAC];
-
 
 static uint8_t unicast_server_addata[] = {
 	BT_UUID_16_ENCODE(BT_UUID_ASCS_VAL), /* ASCS UUID */
@@ -133,12 +131,12 @@ static void print_qos(struct bt_codec_qos *qos)
 
 static struct bt_audio_stream *lc3_config(struct bt_conn *conn,
 					  struct bt_audio_ep *ep,
-					  enum bt_audio_pac_type type,
+					  enum bt_audio_dir dir,
 					  struct bt_audio_capability *cap,
 					  struct bt_codec *codec)
 {
-	printk("ASE Codec Config: conn %p ep %p type %u, cap %p\n",
-	       conn, ep, type, cap);
+	printk("ASE Codec Config: conn %p ep %p dir %u, cap %p\n",
+	       conn, ep, dir, cap);
 
 	print_codec(codec);
 
@@ -276,23 +274,25 @@ static struct bt_audio_capability_ops lc3_ops = {
 
 #if defined(CONFIG_LIBLC3CODEC)
 
-static void stream_recv_lc3_codec(struct bt_audio_stream *stream, struct net_buf *buf)
+static void stream_recv_lc3_codec(struct bt_audio_stream *stream,
+				  const struct bt_iso_recv_info *info,
+				  struct net_buf *buf)
 {
+	const uint8_t *in_buf;
 	uint8_t err = -1;
-
-	/* TODO: If there is a way to know if the controller supports indicating errors in the
-	 *       payload one could feed that into bad-frame-indicator. The HCI layer allows to
-	 *       include this information, but currently there is no controller support.
-	 *       Here it is assumed that reveiving a zero-length payload means a lost frame -
-	 *       but actually it could just as well indicate a pause in the stream.
-	 */
-	const uint8_t bad_frame_indicator = buf->len == 0 ? 1 : 0;
-	uint8_t *in_buf = (bad_frame_indicator ? NULL : buf->data);
 	const int octets_per_frame = buf->len / frames_per_sdu;
 
 	if (lc3_decoder == NULL) {
 		printk("LC3 decoder not setup, cannot decode data.\n");
 		return;
+	}
+
+	if ((info->flags & BT_ISO_FLAGS_VALID) == 0) {
+		printk("Bad packet: 0x%02X\n", info->flags);
+
+		in_buf = NULL;
+	} else {
+		in_buf = buf->data;
 	}
 
 	/* This code is to demonstrate the use of the LC3 codec. On an actual implementation
@@ -325,7 +325,9 @@ static void stream_recv_lc3_codec(struct bt_audio_stream *stream, struct net_buf
 
 #else
 
-static void stream_recv(struct bt_audio_stream *stream, struct net_buf *buf)
+static void stream_recv(struct bt_audio_stream *stream,
+			const struct bt_iso_recv_info *info,
+			struct net_buf *buf)
 {
 	printk("Incoming audio on stream %p len %u\n", stream, buf->len);
 }
@@ -380,7 +382,7 @@ BT_CONN_CB_DEFINE(conn_callbacks) = {
 
 static struct bt_audio_capability caps[] = {
 	{
-		.type = BT_AUDIO_SINK,
+		.dir = BT_AUDIO_DIR_SINK,
 		.pref = BT_AUDIO_CAPABILITY_PREF(
 				BT_AUDIO_CAPABILITY_UNFRAMED_SUPPORTED,
 				BT_GAP_LE_PHY_2M, 0x02, 10, 40000, 40000,

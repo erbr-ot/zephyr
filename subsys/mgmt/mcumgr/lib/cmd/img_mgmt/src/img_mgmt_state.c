@@ -5,13 +5,14 @@
  */
 
 #include <assert.h>
-#include <sys/util_macro.h>
+#include <zephyr/sys/util_macro.h>
+#include <zephyr/toolchain.h>
 
 #include <string.h>
 #include <zcbor_common.h>
 #include <zcbor_decode.h>
 #include <zcbor_encode.h>
-#include <mgmt/mcumgr/buf.h>
+#include <zephyr/mgmt/mcumgr/buf.h>
 #include <mgmt/mgmt.h>
 #include "zcbor_bulk/zcbor_bulk_priv.h"
 #include "img_mgmt/img_mgmt.h"
@@ -229,13 +230,15 @@ img_mgmt_state_read(struct mgmt_ctxt *ctxt)
 		     zcbor_tstr_put_lit(zse, "version");
 
 		if (ok) {
-			img_mgmt_ver_str(&ver, vers_str);
-		} else {
-			break;
+			if (img_mgmt_ver_str(&ver, vers_str) < 0) {
+				ok = zcbor_tstr_put_lit(zse, "<\?\?\?>");
+			} else {
+				vers_str[sizeof(vers_str) - 1] = '\0';
+				ok = zcbor_tstr_put_term(zse, vers_str);
+			}
 		}
 
-		ok = zcbor_tstr_put_term(zse, vers_str)						&&
-		     zcbor_tstr_put_term(zse, "hash")						&&
+		ok = zcbor_tstr_put_term(zse, "hash")						&&
 		     zcbor_bstr_encode(zse, &zhash)						&&
 		     ZCBOR_ENCODE_FLAG(zse, "bootable", !(flags & IMAGE_F_NON_BOOTABLE))	&&
 		     ZCBOR_ENCODE_FLAG(zse, "pending",
@@ -256,7 +259,7 @@ img_mgmt_state_read(struct mgmt_ctxt *ctxt)
 		     zcbor_int32_put(zse, 0);
 	}
 
-	return ok ? MGMT_ERR_EOK : MGMT_ERR_ENOMEM;
+	return ok ? MGMT_ERR_EOK : MGMT_ERR_EMSGSIZE;
 }
 
 /**

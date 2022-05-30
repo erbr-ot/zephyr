@@ -5,8 +5,8 @@
  */
 
 #include <ztest.h>
-#include <sys/cbprintf.h>
-#include <linker/utils.h>
+#include <zephyr/sys/cbprintf.h>
+#include <zephyr/linker/utils.h>
 
 #define CBPRINTF_DEBUG 1
 
@@ -95,7 +95,7 @@ static void unpack(const char *desc, struct out_buffer *buf,
 	unpack("static", &st_buf, pkg, len); \
 } while (0)
 
-void test_cbprintf_package(void)
+ZTEST(cbprintf_package, test_cbprintf_package)
 {
 	volatile signed char sc = -11;
 	int i = 100;
@@ -155,7 +155,7 @@ void test_cbprintf_package(void)
 	}
 }
 
-void test_cbprintf_rw_str_indexes(void)
+ZTEST(cbprintf_package, test_cbprintf_rw_str_indexes)
 {
 	int len0, len1, len2;
 	static const char *test_str = "test %d %s";
@@ -240,7 +240,7 @@ void test_cbprintf_rw_str_indexes(void)
 	zassert_equal(addr, test_str1, NULL);
 }
 
-static void test_cbprintf_fsc_package(void)
+ZTEST(cbprintf_package, test_cbprintf_fsc_package)
 {
 	int len;
 	static const char *test_str = "test %d %s";
@@ -311,7 +311,7 @@ static void check_package(void *package, size_t len, const char *exp_str)
 	unpack(NULL, &out_buf, (uint8_t *)package, len);
 }
 
-static void test_cbprintf_ro_loc(void)
+ZTEST(cbprintf_package, test_cbprintf_ro_loc)
 {
 	static const char *test_str = "test %d";
 	uint32_t flags = CBPRINTF_PACKAGE_ADD_RO_STR_POS;
@@ -385,7 +385,7 @@ static void test_cbprintf_ro_loc(void)
 /* Store read-only string by index when read-write string is appended. This
  * is supported only by runtime packaging.
  */
-static void test_cbprintf_ro_loc_rw_present(void)
+ZTEST(cbprintf_package, test_cbprintf_ro_loc_rw_present)
 {
 	static const char *test_str = "test %d %s";
 	char test_str1[] = "test str1";
@@ -446,7 +446,7 @@ static void test_cbprintf_ro_loc_rw_present(void)
 #undef TEST_FMT
 }
 
-static void test_cbprintf_ro_rw_loc(void)
+ZTEST(cbprintf_package, test_cbprintf_ro_rw_loc)
 {
 	/* Strings does not need to be in read-only memory section, flag indicates
 	 * that n first strings are read only.
@@ -555,7 +555,7 @@ static void test_cbprintf_ro_rw_loc(void)
 #undef TEST_FMT
 }
 
-static void test_cbprintf_ro_rw_loc_const_char_ptr(void)
+ZTEST(cbprintf_package, test_cbprintf_ro_rw_loc_const_char_ptr)
 {
 	/* Strings does not need to be in read-only memory section, flag indicates
 	 * that n first strings are read only.
@@ -752,13 +752,13 @@ static void cbprintf_rw_loc_const_char_ptr(bool keep_ro_str)
 #undef TEST_FMT
 }
 
-static void test_cbprintf_rw_loc_const_char_ptr(void)
+ZTEST(cbprintf_package, test_cbprintf_rw_loc_const_char_ptr)
 {
 	cbprintf_rw_loc_const_char_ptr(true);
 	cbprintf_rw_loc_const_char_ptr(false);
 }
 
-static void test_cbprintf_must_runtime_package(void)
+ZTEST(cbprintf_package, test_cbprintf_must_runtime_package)
 {
 	int rv;
 
@@ -809,31 +809,94 @@ static void test_cbprintf_must_runtime_package(void)
 	zassert_equal(rv, 0, NULL);
 }
 
-void test_main(void)
+struct test_cbprintf_covert_ctx {
+	uint8_t buf[256];
+	size_t offset;
+	bool null;
+};
+
+static int convert_cb(const void *buf, size_t len, void *context)
+{
+	struct test_cbprintf_covert_ctx *ctx = (struct test_cbprintf_covert_ctx *)context;
+
+	zassert_false(ctx->null, NULL);
+	if (buf) {
+		zassert_false(ctx->null, NULL);
+		zassert_true(ctx->offset + len <= sizeof(ctx->buf), NULL);
+		memcpy(&ctx->buf[ctx->offset], buf, len);
+		ctx->offset += len;
+		return len;
+	}
+
+	/* At the end of conversion callback should be called with null
+	 * buffer to indicate the end.
+	 */
+	ctx->null = true;
+	return 0;
+}
+
+ZTEST(cbprintf_package, test_cbprintf_package_convert)
+{
+	int slen, clen;
+	static const char test_str[] = "test %s %d %s";
+	char test_str1[] = "test str1";
+	static const char test_str2[] = "test str2";
+	/* Store indexes of rw strings. */
+	uint32_t flags = CBPRINTF_PACKAGE_ADD_RW_STR_POS;
+	struct test_cbprintf_covert_ctx ctx;
+
+#define TEST_FMT test_str, test_str1, 100, test_str2
+	char exp_str[256];
+
+	snprintfcb(exp_str, sizeof(exp_str), TEST_FMT);
+
+	slen = cbprintf_package(NULL, 0, flags, TEST_FMT);
+	zassert_true(slen > 0, NULL);
+
+	uint8_t __aligned(CBPRINTF_PACKAGE_ALIGNMENT) spackage[slen];
+
+	memset(&ctx, 0, sizeof(ctx));
+	memset(spackage, 0, slen);
+
+	slen = cbprintf_package(spackage, slen, flags, TEST_FMT);
+	zassert_true(slen > 0, NULL);
+
+	uint32_t copy_flags = CBPRINTF_PACKAGE_COPY_RW_STR |
+			      CBPRINTF_PACKAGE_COPY_KEEP_RO_STR;
+
+	clen = cbprintf_package_convert(spackage, slen, NULL, 0, copy_flags, NULL, 0);
+	zassert_true(clen > 0, NULL);
+
+	clen = cbprintf_package_convert(spackage, slen, convert_cb, &ctx, copy_flags, NULL, 0);
+	zassert_true(clen > 0, NULL);
+	zassert_true(ctx.null, NULL);
+	zassert_equal(ctx.offset, clen, NULL);
+
+	check_package(ctx.buf, ctx.offset, exp_str);
+#undef TEST_FMT
+
+}
+
+/**
+ * @brief Log information about variable sizes and alignment.
+ *
+ * @return NULL as we are not supplying any fixture object.
+ */
+static void *print_size_and_alignment_info(void)
 {
 #ifdef __cplusplus
 	printk("C++\n");
 #else
 	printk("sizeof:  int=%zu long=%zu ptr=%zu long long=%zu double=%zu long double=%zu\n",
-	       sizeof(int), sizeof(long), sizeof(void *), sizeof(long long),
-	       sizeof(double), sizeof(long double));
+	       sizeof(int), sizeof(long), sizeof(void *), sizeof(long long), sizeof(double),
+	       sizeof(long double));
 	printk("alignof: int=%zu long=%zu ptr=%zu long long=%zu double=%zu long double=%zu\n",
-	       __alignof__(int), __alignof__(long), __alignof__(void *),
-	       __alignof__(long long), __alignof__(double), __alignof__(long double));
+	       __alignof__(int), __alignof__(long), __alignof__(void *), __alignof__(long long),
+	       __alignof__(double), __alignof__(long double));
 	printk("%s C11 _Generic\n", Z_C_GENERIC ? "With" : "Without");
 #endif
 
-	ztest_test_suite(cbprintf_package,
-			 ztest_unit_test(test_cbprintf_package),
-			 ztest_unit_test(test_cbprintf_rw_str_indexes),
-			 ztest_unit_test(test_cbprintf_fsc_package),
-			 ztest_unit_test(test_cbprintf_ro_loc),
-			 ztest_unit_test(test_cbprintf_ro_loc_rw_present),
-			 ztest_unit_test(test_cbprintf_ro_rw_loc),
-			 ztest_unit_test(test_cbprintf_ro_rw_loc_const_char_ptr),
-			 ztest_unit_test(test_cbprintf_rw_loc_const_char_ptr),
-			 ztest_unit_test(test_cbprintf_must_runtime_package)
-			 );
-
-	ztest_run_test_suite(cbprintf_package);
+	return NULL;
 }
+
+ZTEST_SUITE(cbprintf_package, NULL, print_size_and_alignment_info, NULL, NULL, NULL);
