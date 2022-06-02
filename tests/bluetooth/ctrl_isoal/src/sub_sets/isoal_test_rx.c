@@ -5019,7 +5019,7 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_pdu_err1)
 					sdu_interval, iso_interval_int,
 					stream_sync_delay, group_sync_delay);
 	sdu_timeoffset = group_sync_delay - 50;
-	sdu_timestamp = 0;
+	sdu_timestamp = (uint32_t)((int64_t)pdu_timestamp + latency);
 	seqn = 1;
 	testdata_indx = 0;
 	testdata_size = 23;
@@ -5181,7 +5181,7 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_pdu_err2)
 					sdu_interval, iso_interval_int,
 					stream_sync_delay, group_sync_delay);
 	sdu_timeoffset = group_sync_delay - 50;
-	sdu_timestamp = 0;
+	sdu_timestamp = (uint32_t)((int64_t)pdu_timestamp + latency);
 	seqn = 1;
 	testdata_indx = 0;
 	testdata_size = 23;
@@ -5524,7 +5524,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_err1)
 					sdu_interval, iso_interval_int,
 					stream_sync_delay, group_sync_delay);
 	sdu_timeoffset = group_sync_delay - 50;
-	sdu_timestamp = 0;
+	sdu_timestamp = (uint32_t)((int64_t)pdu_timestamp + latency);
 	seqn = 1;
 	testdata_indx = 0;
 	testdata_size = 13;
@@ -6613,7 +6613,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err1)
 					sdu_interval, iso_interval_int,
 					stream_sync_delay, group_sync_delay);
 	sdu_timeoffset = group_sync_delay - 50;
-	sdu_timestamp[0] = 0;
+	sdu_timestamp[0] = (uint32_t)((int64_t)pdu_timestamp + latency);
 	seqn[0] = 1;
 	testdata_indx = 0;
 	testdata_size = 13;
@@ -8064,6 +8064,494 @@ ZTEST(test_rx_framed, test_rx_framed_single_invalid_pdu_single_sdu_hdr_err)
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
 
 	zassert_equal(err, ISOAL_STATUS_ERR_UNSPECIFIED, "err = 0x%02x", err);
+
+	/* Test recombine (White Box) */
+	zassert_equal(isoal_global.sink_state[sink_hdl].sdu_production.fsm, ISOAL_START,
+		"FSM state %s should be %s!",
+		FSM_TO_STR(isoal_global.sink_state[sink_hdl].sdu_production.fsm),
+		FSM_TO_STR(ISOAL_START));
+}
+
+/**
+ * Test Suite  :   RX framed PDU recombination
+ *
+ * Tests recombination of two SDUs from three segmented PDUs where there is a
+ * length error in the first SDU's segments
+ *
+ * Qualification:
+ * IAL/CIS/FRA/PER/BI-01-C
+ * IAL/CIS/FRA/PER/BI-02-C
+ */
+ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seg_err1)
+{
+	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
+	struct rx_sdu_frag_buffer rx_sdu_frag_buf[2];
+	struct isoal_sdu_buffer sdu_buffer[2];
+	isoal_sink_handle_t sink_hdl;
+	uint32_t stream_sync_delay;
+	uint32_t group_sync_delay;
+	isoal_sdu_len_t sdu_size[2];
+	uint8_t iso_interval_int;
+	uint32_t sdu_timestamp[2];
+	uint16_t pdu_data_loc[5];
+	isoal_sdu_cnt_t seqn[2];
+	uint64_t payload_number;
+	uint32_t sdu_timeoffset;
+	uint32_t pdu_timestamp;
+	uint16_t testdata_indx;
+	uint16_t testdata_size;
+	uint32_t sdu_interval;
+	uint8_t testdata[63];
+	isoal_status_t err;
+	uint32_t latency;
+	uint8_t role;
+	uint8_t BN;
+	uint8_t FT;
+
+	/* Settings */
+	role = BT_CONN_ROLE_PERIPHERAL;
+	iso_interval_int = 1;
+	sdu_interval = ((iso_interval_int * CONN_INT_UNIT_US) / 3) + 5;
+	BN = 3;
+	FT = 1;
+	stream_sync_delay = (iso_interval_int * CONN_INT_UNIT_US) - 200;
+	group_sync_delay = (iso_interval_int * CONN_INT_UNIT_US) - 50;
+
+	/* PDU 1 -------------------------------------------------------------*/
+	isoal_test_init_rx_pdu_buffer(&rx_pdu_meta_buf);
+	isoal_test_init_rx_sdu_buffer(&rx_sdu_frag_buf[0]);
+	isoal_test_init_rx_sdu_buffer(&rx_sdu_frag_buf[1]);
+	init_test_data_buffer(testdata, 63);
+	memset(pdu_data_loc, 0, sizeof(pdu_data_loc));
+
+	sdu_buffer[0].dbuf = &rx_sdu_frag_buf[0];
+	sdu_buffer[1].dbuf = &rx_sdu_frag_buf[1];
+	sdu_buffer[0].size = TEST_RX_SDU_FRAG_PAYLOAD_MAX;
+	sdu_buffer[1].size = TEST_RX_SDU_FRAG_PAYLOAD_MAX;
+	payload_number = 1000 * BN;
+	pdu_timestamp = 9249;
+	latency = calc_rx_latency_by_role(role, true, FT,
+					sdu_interval, iso_interval_int,
+					stream_sync_delay, group_sync_delay);
+	sdu_timeoffset = group_sync_delay - 50;
+	sdu_timestamp[0] = (uint32_t)((int64_t)pdu_timestamp + latency);
+	seqn[0] = 1;
+	testdata_indx = 0;
+	testdata_size = 13;
+	sdu_size[0] = 0;
+
+	sink_hdl = basic_rx_test_setup(0xADAD,            /* Handle */
+				       role,              /* Role */
+				       true,              /* Framed */
+				       BN,                /* BN */
+				       FT,                /* FT */
+				       sdu_interval,      /* SDU Interval */
+				       iso_interval_int,  /* ISO Interval */
+				       stream_sync_delay, /* Stream Sync Delay */
+				       group_sync_delay); /* Group Sync Delay */
+
+	/* PDU with errors */
+	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
+		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
+	pdu_data_loc[0] = isoal_test_add_framed_pdu_start(&testdata[testdata_indx],
+				(testdata_size - testdata_indx),
+				sdu_timeoffset, &rx_pdu_meta_buf.pdu_meta);
+
+	/* Set an invalid length and incomplete header */
+	rx_pdu_meta_buf.pdu_meta.pdu->length = 3;
+
+	/* Test recombine (Black Box) */
+	ztest_expect_value(sink_sdu_alloc_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
+	ztest_expect_value(sink_sdu_alloc_test, valid_pdu, &rx_pdu_meta_buf.pdu_meta);
+	ztest_return_data(sink_sdu_alloc_test, sdu_buffer, &sdu_buffer[0]);
+	ztest_returns_value(sink_sdu_alloc_test, ISOAL_STATUS_OK);
+
+	/* SDU should not be written to */
+
+	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
+	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[0]);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_LOST_DATA);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[0]);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[0]);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[0].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[0].size);
+	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
+
+	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Test recombine (White Box) */
+	zassert_equal(isoal_global.sink_state[sink_hdl].sdu_production.fsm, ISOAL_ERR_SPOOL,
+		"FSM state %s should be %s!",
+		FSM_TO_STR(isoal_global.sink_state[sink_hdl].sdu_production.fsm),
+		FSM_TO_STR(ISOAL_ERR_SPOOL));
+
+	/* PDU 2 -------------------------------------------------------------*/
+	isoal_test_init_rx_pdu_buffer(&rx_pdu_meta_buf);
+
+	payload_number++;
+	pdu_timestamp += 200;
+	testdata_indx = testdata_size;
+	testdata_size += 10;
+	sdu_size[0] += 10;
+
+	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
+		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
+	pdu_data_loc[1] = isoal_test_add_framed_pdu_end(&testdata[testdata_indx],
+				(testdata_size - testdata_indx),
+				&rx_pdu_meta_buf.pdu_meta);
+
+	sdu_timeoffset = sdu_timeoffset - sdu_interval > 0 ? sdu_timeoffset - sdu_interval :
+		sdu_timeoffset + (iso_interval_int * CONN_INT_UNIT_US) - sdu_interval;
+	sdu_timestamp[1] = (uint32_t)((int64_t)pdu_timestamp + latency - sdu_timeoffset);
+	seqn[1] = seqn[0] + 1;
+	testdata_indx = testdata_size;
+	testdata_size += 17;
+	sdu_size[1] = 17;
+
+	pdu_data_loc[2] = isoal_test_add_framed_pdu_start(&testdata[testdata_indx],
+				(testdata_size - testdata_indx),
+				sdu_timeoffset, &rx_pdu_meta_buf.pdu_meta);
+
+	/* Test recombine (Black Box) */
+	/* SDU 1 */
+	/* SDU should not be written to */
+
+	/* SDU shold not be emitted */
+
+	/* SDU 2 */
+	ztest_expect_value(sink_sdu_alloc_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
+	ztest_expect_value(sink_sdu_alloc_test, valid_pdu, &rx_pdu_meta_buf.pdu_meta);
+	ztest_return_data(sink_sdu_alloc_test, sdu_buffer, &sdu_buffer[1]);
+	ztest_returns_value(sink_sdu_alloc_test, ISOAL_STATUS_OK);
+
+	ztest_expect_value(sink_sdu_write_test, dbuf, &rx_sdu_frag_buf[1]);
+	ztest_expect_value(sink_sdu_write_test, pdu_payload,
+		&rx_pdu_meta_buf.pdu[2+pdu_data_loc[2]]);
+	ztest_expect_value(sink_sdu_write_test, consume_len, (testdata_size - testdata_indx));
+	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
+
+	/* SDU 2 should not be emitted */
+
+	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Test recombine (White Box) */
+	zassert_equal(isoal_global.sink_state[sink_hdl].sdu_production.fsm, ISOAL_CONTINUE,
+		"FSM state %s should be %s!",
+		FSM_TO_STR(isoal_global.sink_state[sink_hdl].sdu_production.fsm),
+		FSM_TO_STR(ISOAL_CONTINUE));
+
+	/* PDU 3 -------------------------------------------------------------*/
+	isoal_test_init_rx_pdu_buffer(&rx_pdu_meta_buf);
+
+	payload_number++;
+	pdu_timestamp += 200;
+	testdata_indx = testdata_size;
+	testdata_size += 10;
+	sdu_size[1] += 10;
+
+	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
+		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
+	pdu_data_loc[3] = isoal_test_add_framed_pdu_end(&testdata[testdata_indx],
+				(testdata_size - testdata_indx),
+				&rx_pdu_meta_buf.pdu_meta);
+
+	/* Test recombine (Black Box) */
+	/* Should not allocate a new SDU */
+
+	ztest_expect_value(sink_sdu_write_test, dbuf, &rx_sdu_frag_buf[1]);
+	ztest_expect_value(sink_sdu_write_test, pdu_payload,
+		&rx_pdu_meta_buf.pdu[2+pdu_data_loc[3]]);
+	ztest_expect_value(sink_sdu_write_test, consume_len, (testdata_size - testdata_indx));
+	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
+
+	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
+	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[1]);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[1]);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[1]);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[1].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[1].size);
+	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
+
+	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Test recombine (White Box) */
+	zassert_equal(isoal_global.sink_state[sink_hdl].sdu_production.fsm, ISOAL_START,
+		"FSM state %s should be %s!",
+		FSM_TO_STR(isoal_global.sink_state[sink_hdl].sdu_production.fsm),
+		FSM_TO_STR(ISOAL_START));
+}
+
+/**
+ * Test Suite  :   RX framed PDU recombination
+ *
+ * Tests recombination of two SDUs from three segmented PDUs where there is a
+ * length error in the second SDU's segments
+ *
+ * Qualification:
+ * IAL/CIS/FRA/PER/BI-01-C
+ * IAL/CIS/FRA/PER/BI-02-C
+ */
+ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seg_err2)
+{
+	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
+	struct rx_sdu_frag_buffer rx_sdu_frag_buf[2];
+	struct isoal_sdu_buffer sdu_buffer[2];
+	isoal_sink_handle_t sink_hdl;
+	uint32_t stream_sync_delay;
+	uint32_t group_sync_delay;
+	isoal_sdu_len_t sdu_size[2];
+	uint8_t iso_interval_int;
+	uint32_t sdu_timestamp[2];
+	uint16_t pdu_data_loc[5];
+	isoal_sdu_cnt_t seqn[2];
+	uint64_t payload_number;
+	uint32_t sdu_timeoffset;
+	uint32_t pdu_timestamp;
+	uint16_t testdata_indx;
+	uint16_t testdata_size;
+	uint32_t sdu_interval;
+	uint8_t testdata[63];
+	isoal_status_t err;
+	uint32_t latency;
+	uint8_t role;
+	uint8_t BN;
+	uint8_t FT;
+
+	/* Settings */
+	role = BT_CONN_ROLE_PERIPHERAL;
+	iso_interval_int = 1;
+	sdu_interval = ((iso_interval_int * CONN_INT_UNIT_US) / 3) + 5;
+	BN = 3;
+	FT = 1;
+	stream_sync_delay = (iso_interval_int * CONN_INT_UNIT_US) - 200;
+	group_sync_delay = (iso_interval_int * CONN_INT_UNIT_US) - 50;
+
+	/* PDU 1 -------------------------------------------------------------*/
+	isoal_test_init_rx_pdu_buffer(&rx_pdu_meta_buf);
+	isoal_test_init_rx_sdu_buffer(&rx_sdu_frag_buf[0]);
+	isoal_test_init_rx_sdu_buffer(&rx_sdu_frag_buf[1]);
+	init_test_data_buffer(testdata, 63);
+	memset(pdu_data_loc, 0, sizeof(pdu_data_loc));
+
+	sdu_buffer[0].dbuf = &rx_sdu_frag_buf[0];
+	sdu_buffer[1].dbuf = &rx_sdu_frag_buf[1];
+	sdu_buffer[0].size = TEST_RX_SDU_FRAG_PAYLOAD_MAX;
+	sdu_buffer[1].size = TEST_RX_SDU_FRAG_PAYLOAD_MAX;
+	payload_number = 1000 * BN;
+	pdu_timestamp = 9249;
+	latency = calc_rx_latency_by_role(role, true, FT,
+					sdu_interval, iso_interval_int,
+					stream_sync_delay, group_sync_delay);
+	sdu_timeoffset = group_sync_delay - 50;
+	sdu_timestamp[0] = (uint32_t)((int64_t)pdu_timestamp + latency - sdu_timeoffset);
+	seqn[0] = 1;
+	testdata_indx = 0;
+	testdata_size = 13;
+	sdu_size[0] = 13;
+
+	sink_hdl = basic_rx_test_setup(0xADAD,            /* Handle */
+				       role,              /* Role */
+				       true,              /* Framed */
+				       BN,                /* BN */
+				       FT,                /* FT */
+				       sdu_interval,      /* SDU Interval */
+				       iso_interval_int,  /* ISO Interval */
+				       stream_sync_delay, /* Stream Sync Delay */
+				       group_sync_delay); /* Group Sync Delay */
+
+	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
+		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
+	pdu_data_loc[0] = isoal_test_add_framed_pdu_start(&testdata[testdata_indx],
+				(testdata_size - testdata_indx),
+				sdu_timeoffset, &rx_pdu_meta_buf.pdu_meta);
+
+	/* Test recombine (Black Box) */
+	ztest_expect_value(sink_sdu_alloc_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
+	ztest_expect_value(sink_sdu_alloc_test, valid_pdu, &rx_pdu_meta_buf.pdu_meta);
+	ztest_return_data(sink_sdu_alloc_test, sdu_buffer, &sdu_buffer[0]);
+	ztest_returns_value(sink_sdu_alloc_test, ISOAL_STATUS_OK);
+
+	ztest_expect_value(sink_sdu_write_test, dbuf, &rx_sdu_frag_buf[0]);
+	ztest_expect_value(sink_sdu_write_test, pdu_payload,
+		&rx_pdu_meta_buf.pdu[2+pdu_data_loc[0]]);
+	ztest_expect_value(sink_sdu_write_test, consume_len, (testdata_size - testdata_indx));
+	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
+
+	/* SDU should not be emitted */
+
+	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Test recombine (White Box) */
+	zassert_equal(isoal_global.sink_state[sink_hdl].sdu_production.fsm, ISOAL_CONTINUE,
+		"FSM state %s should be %s!",
+		FSM_TO_STR(isoal_global.sink_state[sink_hdl].sdu_production.fsm),
+		FSM_TO_STR(ISOAL_CONTINUE));
+
+	/* PDU 2 -------------------------------------------------------------*/
+	isoal_test_init_rx_pdu_buffer(&rx_pdu_meta_buf);
+
+	payload_number++;
+	pdu_timestamp += 200;
+	testdata_indx = testdata_size;
+	testdata_size += 10;
+	sdu_size[0] += 10;
+
+	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
+		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
+	pdu_data_loc[1] = isoal_test_add_framed_pdu_end(&testdata[testdata_indx],
+				(testdata_size - testdata_indx),
+				&rx_pdu_meta_buf.pdu_meta);
+
+	sdu_timeoffset = sdu_timeoffset - sdu_interval > 0 ? sdu_timeoffset - sdu_interval :
+		sdu_timeoffset + (iso_interval_int * CONN_INT_UNIT_US) - sdu_interval;
+	sdu_timestamp[1] = sdu_timestamp[0] + sdu_interval;
+	seqn[1] = seqn[0] + 1;
+	testdata_indx = testdata_size;
+	testdata_size += 17;
+	sdu_size[1] = 0;
+
+	pdu_data_loc[2] = isoal_test_add_framed_pdu_start(&testdata[testdata_indx],
+				(testdata_size - testdata_indx),
+				sdu_timeoffset, &rx_pdu_meta_buf.pdu_meta);
+
+	/* Set an invalid length */
+	rx_pdu_meta_buf.pdu_meta.pdu->length -= 5;
+
+	/* Test recombine (Black Box) */
+	/* SDU 1 */
+	ztest_expect_value(sink_sdu_write_test, dbuf, &rx_sdu_frag_buf[0]);
+	ztest_expect_value(sink_sdu_write_test, pdu_payload,
+		&rx_pdu_meta_buf.pdu[2+pdu_data_loc[1]]);
+	ztest_expect_value(sink_sdu_write_test, consume_len, 10);
+	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
+
+	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
+	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[0]);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[0]);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[0]);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[0].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[0].size);
+	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
+
+	/* SDU 2 */
+	ztest_expect_value(sink_sdu_alloc_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
+	ztest_expect_value(sink_sdu_alloc_test, valid_pdu, &rx_pdu_meta_buf.pdu_meta);
+	ztest_return_data(sink_sdu_alloc_test, sdu_buffer, &sdu_buffer[1]);
+	ztest_returns_value(sink_sdu_alloc_test, ISOAL_STATUS_OK);
+
+	/* SDU should not be written to */
+
+	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
+	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[1]);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_LOST_DATA);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[1]);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[1]);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[1].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[1].size);
+	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
+
+	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Test recombine (White Box) */
+	zassert_equal(isoal_global.sink_state[sink_hdl].sdu_production.fsm, ISOAL_ERR_SPOOL,
+		"FSM state %s should be %s!",
+		FSM_TO_STR(isoal_global.sink_state[sink_hdl].sdu_production.fsm),
+		FSM_TO_STR(ISOAL_ERR_SPOOL));
+
+	/* PDU 3 -------------------------------------------------------------*/
+	isoal_test_init_rx_pdu_buffer(&rx_pdu_meta_buf);
+
+	payload_number++;
+	pdu_timestamp += 200;
+	testdata_indx = testdata_size;
+	testdata_size += 10;
+	/* SDU size does not change */
+
+	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
+		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
+	pdu_data_loc[3] = isoal_test_add_framed_pdu_end(&testdata[testdata_indx],
+				(testdata_size - testdata_indx),
+				&rx_pdu_meta_buf.pdu_meta);
+
+	/* Test recombine (Black Box) */
+	/* Should not allocate a new SDU */
+
+	/* SDU should not be written to */
+
+	/* SDU should not be emitted */
+
+	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Test recombine (White Box) */
+	zassert_equal(isoal_global.sink_state[sink_hdl].sdu_production.fsm, ISOAL_ERR_SPOOL,
+		"FSM state %s should be %s!",
+		FSM_TO_STR(isoal_global.sink_state[sink_hdl].sdu_production.fsm),
+		FSM_TO_STR(ISOAL_ERR_SPOOL));
+
+	/* PDU 4 -------------------------------------------------------------*/
+	isoal_test_init_rx_pdu_buffer(&rx_pdu_meta_buf);
+	isoal_test_init_rx_sdu_buffer(&rx_sdu_frag_buf[0]);
+
+	payload_number++;
+	pdu_timestamp = 9249 + (iso_interval_int * CONN_INT_UNIT_US);
+
+	sdu_timeoffset = sdu_timeoffset - sdu_interval > 0 ? sdu_timeoffset - sdu_interval :
+		sdu_timeoffset + (iso_interval_int * CONN_INT_UNIT_US) - sdu_interval;
+	sdu_timestamp[0] = (uint32_t)((int64_t)pdu_timestamp + latency - sdu_timeoffset);
+	seqn[0] = seqn[1] + 1;
+	testdata_indx = testdata_size;
+	testdata_size += 13;
+	sdu_size[0] = 13;
+
+	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
+		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
+	pdu_data_loc[4] = isoal_test_add_framed_pdu_single(&testdata[testdata_indx],
+				(testdata_size - testdata_indx),
+				sdu_timeoffset, &rx_pdu_meta_buf.pdu_meta);
+
+	/* Test recombine (Black Box) */
+	ztest_expect_value(sink_sdu_alloc_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
+	ztest_expect_value(sink_sdu_alloc_test, valid_pdu, &rx_pdu_meta_buf.pdu_meta);
+	ztest_return_data(sink_sdu_alloc_test, sdu_buffer, &sdu_buffer[0]);
+	ztest_returns_value(sink_sdu_alloc_test, ISOAL_STATUS_OK);
+
+	ztest_expect_value(sink_sdu_write_test, dbuf, &rx_sdu_frag_buf);
+	ztest_expect_value(sink_sdu_write_test, pdu_payload,
+		&rx_pdu_meta_buf.pdu[2+pdu_data_loc[4]]);
+	ztest_expect_value(sink_sdu_write_test, consume_len, (testdata_size - testdata_indx));
+	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
+
+	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
+	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[0]);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[0]);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[0]);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[0].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[0].size);
+	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
+
+	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
 
 	/* Test recombine (White Box) */
 	zassert_equal(isoal_global.sink_state[sink_hdl].sdu_production.fsm, ISOAL_START,
