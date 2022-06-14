@@ -45,6 +45,18 @@
 	op t0, __z_arch_esf_t_t0_OFFSET(sp)		;\
 	op t1, __z_arch_esf_t_t1_OFFSET(sp)
 
+#if defined(CONFIG_RISCV_ISA_RV32E)
+#define DO_CALLER_SAVED_REST(op) \
+	op t2, __z_arch_esf_t_t2_OFFSET(sp)		;\
+	op a0, __z_arch_esf_t_a0_OFFSET(sp)		;\
+	op a1, __z_arch_esf_t_a1_OFFSET(sp)		;\
+	op a2, __z_arch_esf_t_a2_OFFSET(sp)		;\
+	op a3, __z_arch_esf_t_a3_OFFSET(sp)		;\
+	op a4, __z_arch_esf_t_a4_OFFSET(sp)		;\
+	op a5, __z_arch_esf_t_a5_OFFSET(sp)		;\
+	op tp, __z_arch_esf_t_tp_OFFSET(sp)             ;\
+	op ra, __z_arch_esf_t_ra_OFFSET(sp)
+#else
 #define DO_CALLER_SAVED_REST(op) \
 	op t2, __z_arch_esf_t_t2_OFFSET(sp)		;\
 	op t3, __z_arch_esf_t_t3_OFFSET(sp)		;\
@@ -61,6 +73,7 @@
 	op a7, __z_arch_esf_t_a7_OFFSET(sp)		;\
 	op tp, __z_arch_esf_t_tp_OFFSET(sp)             ;\
 	op ra, __z_arch_esf_t_ra_OFFSET(sp)
+#endif /* CONFIG_RISCV_ISA_RV32E */
 
 #ifdef CONFIG_SMP
 #define GET_CURRENT_CPU(dst, tmp) \
@@ -212,13 +225,13 @@ SECTION_FUNC(exception.entry, __irq_wrapper)
 	sr t0, __z_arch_esf_t_mepc_OFFSET(sp)
 
 	/* Save MSTATUS register */
-	csrr t4, mstatus
-	sr t4, __z_arch_esf_t_mstatus_OFFSET(sp)
+	csrr t2, mstatus
+	sr t2, __z_arch_esf_t_mstatus_OFFSET(sp)
 
 #if defined(CONFIG_FPU) && defined(CONFIG_FPU_SHARING)
 	/* Assess whether floating-point registers need to be saved. */
 	li t1, MSTATUS_FS_INIT
-	and t0, t4, t1
+	and t0, t2, t1
 	beqz t0, skip_store_fp_caller_saved
 	DO_FP_CALLER_SAVED(fsr, sp)
 skip_store_fp_caller_saved:
@@ -303,16 +316,16 @@ is_kernel_syscall:
 	csrs mstatus, t1
 #endif
 
-	/* Determine what to do. Operation code is in a7. */
-	lr a7, __z_arch_esf_t_a7_OFFSET(sp)
+	/* Determine what to do. Operation code is in t0. */
+	lr t0, __z_arch_esf_t_t0_OFFSET(sp)
 
 	ASSUME_EQUAL(RV_ECALL_RUNTIME_EXCEPT, 0)
-	beqz a7, do_fault
+	beqz t0, do_fault
 
 #if defined(CONFIG_IRQ_OFFLOAD)
-	addi a7, a7, -1
+	addi t0, t0, -1
 	ASSUME_EQUAL(RV_ECALL_IRQ_OFFLOAD, 1)
-	beqz a7, do_irq_offload
+	beqz t0, do_irq_offload
 #endif
 
 	/* default fault code is K_ERR_KERNEL_OOPS */
@@ -336,10 +349,10 @@ do_irq_offload:
 	lr a0, __z_arch_esf_t_a1_OFFSET(sp)
 
 	/* Increment _current_cpu->nested */
-	lw t3, ___cpu_t_nested_OFFSET(s0)
-	addi t4, t3, 1
-	sw t4, ___cpu_t_nested_OFFSET(s0)
-	bnez t3, 1f
+	lw t1, ___cpu_t_nested_OFFSET(s0)
+	addi t2, t1, 1
+	sw t2, ___cpu_t_nested_OFFSET(s0)
+	bnez t1, 1f
 
 	/* Switch to interrupt stack */
 	mv t0, sp
@@ -386,27 +399,38 @@ is_user_syscall:
 	lr a3, __z_arch_esf_t_a3_OFFSET(sp)
 	lr a4, __z_arch_esf_t_a4_OFFSET(sp)
 	lr a5, __z_arch_esf_t_a5_OFFSET(sp)
+	lr t0, __z_arch_esf_t_t0_OFFSET(sp)
+#if defined(CONFIG_RISCV_ISA_RV32E)
+	/* Stack alignment for RV32E is 4 bytes */
+	addi sp, sp, -4
+	mv t1, sp
+	sw t1, 0(sp)
+#else
 	mv a6, sp
-	lr a7, __z_arch_esf_t_a7_OFFSET(sp)
+#endif /* CONFIG_RISCV_ISA_RV32E */
 
 	/* validate syscall limit */
-	li t0, K_SYSCALL_LIMIT
-	bltu a7, t0, valid_syscall_id
+	li t1, K_SYSCALL_LIMIT
+	bltu t0, t1, valid_syscall_id
 
 	/* bad syscall id.  Set arg1 to bad id and set call_id to SYSCALL_BAD */
-	mv a0, a7
-	li a7, K_SYSCALL_BAD
+	mv a0, t0
+	li t0, K_SYSCALL_BAD
 
 valid_syscall_id:
 
-	la t0, _k_syscall_table
+	la t2, _k_syscall_table
 
-	slli t1, a7, RV_REGSHIFT	# Determine offset from indice value
-	add t0, t0, t1			# Table addr + offset = function addr
-	lr t3, 0(t0)			# Load function address
+	slli t1, t0, RV_REGSHIFT	# Determine offset from indice value
+	add t2, t2, t1			# Table addr + offset = function addr
+	lr t2, 0(t2)			# Load function address
 
 	/* Execute syscall function */
-	jalr ra, t3, 0
+	jalr ra, t2, 0
+
+#if defined(CONFIG_RISCV_ISA_RV32E)
+	addi sp, sp, 4
+#endif /* CONFIG_RISCV_ISA_RV32E */
 
 	/* Update a0 (return value) on the stack */
 	sr a0, __z_arch_esf_t_a0_OFFSET(sp)
@@ -441,10 +465,10 @@ is_interrupt:
 #endif
 
 	/* Increment _current_cpu->nested */
-	lw t3, ___cpu_t_nested_OFFSET(s0)
-	addi t4, t3, 1
-	sw t4, ___cpu_t_nested_OFFSET(s0)
-	bnez t3, on_irq_stack
+	lw t1, ___cpu_t_nested_OFFSET(s0)
+	addi t2, t1, 1
+	sw t2, ___cpu_t_nested_OFFSET(s0)
+	bnez t1, on_irq_stack
 
 	/* Switch to interrupt stack */
 	mv t0, sp
@@ -554,16 +578,16 @@ no_reschedule:
 	csrw mepc, t0
 
 	/* Restore MSTATUS register */
-	lr t4, __z_arch_esf_t_mstatus_OFFSET(sp)
-	csrrw t5, mstatus, t4
+	lr t2, __z_arch_esf_t_mstatus_OFFSET(sp)
+	csrrw t0, mstatus, t2
 
 #if defined(CONFIG_FPU) && defined(CONFIG_FPU_SHARING)
 	/*
 	 * Determine if we need to restore FP regs based on the previous
-	 * (before the csr above) mstatus value available in t5.
+	 * (before the csr above) mstatus value available in t0.
 	 */
 	li t1, MSTATUS_FS_INIT
-	and t0, t5, t1
+	and t0, t0, t1
 	beqz t0, no_fp
 
 	/* make sure FP is enabled in the restored mstatus */
@@ -583,7 +607,7 @@ no_fp:	/* make sure this is reflected in the restored mstatus */
 	 * the stack pointer to be used with the next exception to come.
 	 */
 	li t1, MSTATUS_MPP
-	and t0, t4, t1
+	and t0, t2, t1
 	bnez t0, 1f
 
 #ifdef CONFIG_PMP_STACK_GUARD

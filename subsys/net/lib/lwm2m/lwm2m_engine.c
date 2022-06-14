@@ -177,6 +177,8 @@ static int do_composite_observe_read_path_op(struct lwm2m_message *msg, uint16_t
 					     sys_slist_t *lwm2m_path_list,
 					     sys_slist_t *lwm2m_path_free_list);
 static void lwm2m_engine_free_list(sys_slist_t *path_list, sys_slist_t *free_list);
+static int do_composite_read_op_for_parsed_list(struct lwm2m_message *msg, uint16_t content_format,
+						sys_slist_t *path_list);
 
 /* for debugging: to print IP addresses */
 char *lwm2m_sprint_ip_addr(const struct sockaddr *addr)
@@ -289,9 +291,6 @@ static int init_block_ctx(const uint8_t *token, uint8_t tkl,
 	(*ctx)->timestamp = timestamp;
 	(*ctx)->expected = 0;
 	(*ctx)->last_block = false;
-#if defined(CONFIG_LWM2M_RW_SENML_JSON_SUPPORT)
-	lwm2m_senml_json_context_init(&(*ctx)->senml_json_ctx);
-#endif
 	memset(&(*ctx)->opaque, 0, sizeof((*ctx)->opaque));
 
 	return 0;
@@ -915,7 +914,7 @@ static int engine_add_composite_observer(struct lwm2m_message *msg,
 		LOG_DBG("OBSERVER Composite DUPLICATE [%s]",
 			log_strdup(lwm2m_sprint_ip_addr(&msg->ctx->remote_addr)));
 
-		return 0;
+		return do_composite_read_op_for_parsed_list(msg, format, &lwm2m_path_list);
 	}
 
 	ret = engine_observe_attribute_list_get(&lwm2m_path_list, &attrs, msg->ctx->srv_obj_inst);
@@ -928,7 +927,7 @@ static int engine_add_composite_observer(struct lwm2m_message *msg,
 		return -ENOMEM;
 	}
 	engine_observe_node_init(obs, token, msg->ctx, tkl, format, attrs.pmax);
-	return 0;
+	return do_composite_read_op_for_parsed_list(msg, format, &lwm2m_path_list);
 }
 
 static void remove_observer_from_list(struct lwm2m_ctx *ctx, sys_snode_t *prev_node,
@@ -1002,7 +1001,8 @@ static int engine_remove_composite_observer(struct lwm2m_message *msg, const uin
 
 	LOG_DBG("observer '%s' removed", log_strdup(sprint_token(token, tkl)));
 
-	return 0;
+	return do_composite_read_op_for_parsed_list(msg, format, &lwm2m_path_list);
+
 }
 
 #if defined(CONFIG_LOG)
@@ -1800,7 +1800,12 @@ static int path_to_objs(const struct lwm2m_obj_path *path,
 	}
 
 	if (!r) {
-		LOG_ERR("resource %d not found", path->res_id);
+		if (LWM2M_HAS_PERM(of, BIT(LWM2M_FLAG_OPTIONAL))) {
+			LOG_DBG("resource %d not found", path->res_id);
+		} else {
+			LOG_ERR("resource %d not found", path->res_id);
+		}
+
 		return -ENOENT;
 	}
 
@@ -1924,9 +1929,8 @@ int lwm2m_engine_delete_obj_inst(const char *pathstr)
 	return 0;
 }
 
-
-int lwm2m_engine_set_res_data(const char *pathstr, void *data_ptr, uint16_t data_len,
-			      uint8_t data_flags)
+int lwm2m_engine_set_res_buf(const char *pathstr, void *buffer_ptr,
+				  uint16_t buffer_len, uint16_t data_len, uint8_t data_flags)
 {
 	struct lwm2m_obj_path path;
 	struct lwm2m_engine_res_inst *res_inst = NULL;
@@ -1955,12 +1959,18 @@ int lwm2m_engine_set_res_data(const char *pathstr, void *data_ptr, uint16_t data
 	}
 
 	/* assign data elements */
-	res_inst->data_ptr = data_ptr;
+	res_inst->data_ptr = buffer_ptr;
 	res_inst->data_len = data_len;
-	res_inst->max_data_len = data_len;
+	res_inst->max_data_len = buffer_len;
 	res_inst->data_flags = data_flags;
 
 	return ret;
+}
+
+int lwm2m_engine_set_res_data(const char *pathstr, void *data_ptr, uint16_t data_len,
+			      uint8_t data_flags)
+{
+	return lwm2m_engine_set_res_buf(pathstr, data_ptr, data_len, data_len, data_flags);
 }
 
 static int lwm2m_engine_set(const char *pathstr, void *value, uint16_t len)
@@ -2188,10 +2198,25 @@ int lwm2m_engine_set_objlnk(const char *pathstr, struct lwm2m_objlnk *value)
 	return lwm2m_engine_set(pathstr, value, sizeof(struct lwm2m_objlnk));
 }
 
+int lwm2m_engine_set_res_data_len(const char *pathstr, uint16_t data_len)
+{
+	int ret;
+	void *buffer_ptr;
+	uint16_t buffer_len;
+	uint16_t old_len;
+	uint8_t data_flags;
+
+	ret = lwm2m_engine_get_res_buf(pathstr, &buffer_ptr, &buffer_len, &old_len, &data_flags);
+	if (ret) {
+		return ret;
+	}
+	return lwm2m_engine_set_res_buf(pathstr, buffer_ptr, buffer_len, data_len, data_flags);
+}
+
 /* user data getter functions */
 
-int lwm2m_engine_get_res_data(const char *pathstr, void **data_ptr, uint16_t *data_len,
-			      uint8_t *data_flags)
+int lwm2m_engine_get_res_buf(const char *pathstr, void **buffer_ptr, uint16_t *buffer_len,
+				  uint16_t *data_len, uint8_t *data_flags)
 {
 	struct lwm2m_obj_path path;
 	struct lwm2m_engine_res_inst *res_inst = NULL;
@@ -2219,12 +2244,28 @@ int lwm2m_engine_get_res_data(const char *pathstr, void **data_ptr, uint16_t *da
 		return -ENOENT;
 	}
 
-	*data_ptr = res_inst->data_ptr;
-	*data_len = res_inst->data_len;
-	*data_flags = res_inst->data_flags;
+	if (buffer_ptr) {
+		*buffer_ptr = res_inst->data_ptr;
+	}
+	if (buffer_len) {
+		*buffer_len = res_inst->max_data_len;
+	}
+	if (data_len) {
+		*data_len = res_inst->data_len;
+	}
+	if (data_flags) {
+		*data_flags = res_inst->data_flags;
+	}
 
 	return 0;
 }
+
+int lwm2m_engine_get_res_data(const char *pathstr, void **data_ptr, uint16_t *data_len,
+			      uint8_t *data_flags)
+{
+	return lwm2m_engine_get_res_buf(pathstr, data_ptr, NULL, data_len, data_flags);
+}
+
 
 static int lwm2m_engine_get(const char *pathstr, void *buf, uint16_t buflen)
 {
@@ -3850,6 +3891,28 @@ static int do_composite_read_op(struct lwm2m_message *msg, uint16_t content_form
 	}
 }
 
+static int do_composite_read_op_for_parsed_list(struct lwm2m_message *msg, uint16_t content_format,
+						sys_slist_t *path_list)
+{
+	switch (content_format) {
+
+#if defined(CONFIG_LWM2M_RW_SENML_JSON_SUPPORT)
+	case LWM2M_FORMAT_APP_SEML_JSON:
+		return do_composite_read_op_for_parsed_list_senml_json(msg, path_list);
+#endif
+
+#if defined(CONFIG_LWM2M_RW_SENML_CBOR_SUPPORT)
+	case LWM2M_FORMAT_APP_SENML_CBOR:
+		return do_composite_read_op_for_parsed_path_senml_cbor(msg, path_list);
+#endif
+
+	default:
+		LOG_ERR("Unsupported content-format: %u", content_format);
+		return -ENOMSG;
+
+	}
+}
+
 static int do_composite_observe_read_path_op(struct lwm2m_message *msg, uint16_t content_format,
 					     sys_slist_t *lwm2m_path_list,
 					     sys_slist_t *lwm2m_path_free_list)
@@ -4893,7 +4956,6 @@ static int handle_request(struct coap_packet *request,
 					if (r < 0) {
 						goto error;
 					}
-					r = do_composite_read_op(msg, accept);
 				}
 			} else {
 				if ((code & COAP_REQUEST_MASK) == COAP_METHOD_GET) {
@@ -5308,6 +5370,7 @@ static int generate_notify_message(struct lwm2m_ctx *ctx,
 		if (!path) {
 			LOG_ERR("Observation node not include path");
 			ret = -EINVAL;
+			goto cleanup;
 		}
 		/* copy path */
 		memcpy(&msg->path, path, sizeof(struct lwm2m_obj_path));
@@ -5791,11 +5854,16 @@ static int load_tls_credential(struct lwm2m_ctx *client_ctx, uint16_t res_id,
 	snprintk(pathstr, sizeof(pathstr), "0/%d/%u", client_ctx->sec_obj_inst,
 		 res_id);
 
-	ret = lwm2m_engine_get_res_data(pathstr, &cred, &cred_len, &cred_flags);
+	ret = lwm2m_engine_get_res_buf(pathstr, &cred, NULL, &cred_len, &cred_flags);
 	if (ret < 0) {
 		LOG_ERR("Unable to get resource data for '%s'",
 			log_strdup(pathstr));
 		return ret;
+	}
+
+	if (cred_len == 0) {
+		LOG_ERR("Credential data is empty");
+		return -EINVAL;
 	}
 
 	ret = tls_credential_add(client_ctx->tls_tag, type, cred, cred_len);
@@ -6071,7 +6139,7 @@ int lwm2m_engine_start(struct lwm2m_ctx *client_ctx)
 
 	/* get the server URL */
 	snprintk(pathstr, sizeof(pathstr), "0/%d/0", client_ctx->sec_obj_inst);
-	ret = lwm2m_engine_get_res_data(pathstr, (void **)&url, &url_len,
+	ret = lwm2m_engine_get_res_buf(pathstr, (void **)&url, NULL, &url_len,
 					&url_data_flags);
 	if (ret < 0) {
 		return ret;

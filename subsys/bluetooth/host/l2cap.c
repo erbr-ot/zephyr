@@ -1847,43 +1847,53 @@ static void l2cap_chan_tx_resume(struct bt_l2cap_le_chan *ch)
 	k_work_submit(&ch->tx_work);
 }
 
-static void l2cap_chan_sdu_sent(struct bt_conn *conn, void *user_data)
+static void l2cap_chan_sdu_sent(struct bt_conn *conn, void *user_data, int err)
 {
 	struct l2cap_tx_meta_data *data = user_data;
 	struct bt_l2cap_chan *chan;
-	bt_conn_tx_cb_t cb;
-	void *cb_user_data;
+	bt_conn_tx_cb_t cb = data->cb;
+	void *cb_user_data = data->user_data;
+	uint16_t cid = data->cid;
 
-	BT_DBG("conn %p CID 0x%04x", conn, data->cid);
+	BT_DBG("conn %p CID 0x%04x err %d", conn, cid, err);
 
-	chan = bt_l2cap_le_lookup_tx_cid(conn, data->cid);
+	free_tx_meta_data(data);
+
+	if (err) {
+		if (cb) {
+			cb(conn, cb_user_data, err);
+		}
+
+		return;
+	}
+
+	chan = bt_l2cap_le_lookup_tx_cid(conn, cid);
 	if (!chan) {
 		/* Received SDU sent callback for disconnected channel */
 		return;
 	}
-
-	cb = data->cb;
-	cb_user_data = data->user_data;
-
-	free_tx_meta_data(data);
 
 	if (chan->ops->sent) {
 		chan->ops->sent(chan);
 	}
 
 	if (cb) {
-		cb(conn, cb_user_data);
+		cb(conn, cb_user_data, 0);
 	}
 
 	l2cap_chan_tx_resume(BT_L2CAP_LE_CHAN(chan));
 }
 
-static void l2cap_chan_seg_sent(struct bt_conn *conn, void *user_data)
+static void l2cap_chan_seg_sent(struct bt_conn *conn, void *user_data, int err)
 {
 	struct l2cap_tx_meta_data *data = user_data;
 	struct bt_l2cap_chan *chan;
 
-	BT_DBG("conn %p CID 0x%04x", conn, data->cid);
+	BT_DBG("conn %p CID 0x%04x err %d", conn, data->cid, err);
+
+	if (err) {
+		return;
+	}
 
 	chan = bt_l2cap_le_lookup_tx_cid(conn, data->cid);
 	if (!chan) {
@@ -1946,10 +1956,8 @@ static int l2cap_chan_le_send(struct bt_l2cap_le_chan *ch,
 
 	len = seg->len - sdu_hdr_len;
 
-	/* Set a callback if there is no data left in the buffer and sent
-	 * callback has been set.
-	 */
-	if ((buf == seg || !buf->len) && ch->chan.ops->sent) {
+	/* Set a callback if there is no data left in the buffer */
+	if (buf == seg || !buf->len) {
 		err = bt_l2cap_send_cb(ch->chan.conn, ch->tx.cid, seg,
 				       l2cap_chan_sdu_sent,
 				       l2cap_tx_meta_data(buf));

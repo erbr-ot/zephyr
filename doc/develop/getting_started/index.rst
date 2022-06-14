@@ -234,6 +234,12 @@ reason it is suggested to use `Python virtual environments`_.
 
          .. group-tab:: Install within virtual environment
 
+            #. Use ``apt`` to install Python ``venv`` package:
+
+               .. code-block:: bash
+
+                  sudo apt install python3-venv
+
             #. Create a new virtual environment:
 
                .. code-block:: bash
@@ -465,15 +471,16 @@ reason it is suggested to use `Python virtual environments`_.
 
 .. rst-class:: numbered-step
 
-Install a Toolchain
-*******************
+Install Zephyr SDK
+******************
 
-A toolchain provides a compiler, assembler, linker, and other programs required
-to build Zephyr applications.
+The :ref:`Zephyr Software Development Kit (SDK) <toolchain_zephyr_sdk>`
+contains toolchains for each of Zephyr's supported architectures, which
+include a compiler, assembler, linker and other programs required to build
+Zephyr applications.
 
-The Zephyr Software Development Kit (SDK) contains toolchains for each of
-Zephyr's supported architectures. It also includes additional host tools, such
-as custom QEMU and OpenOCD builds.
+It also contains additional host tools, such as custom QEMU and OpenOCD builds
+that are used to emulate, flash and debug Zephyr applications.
 
 .. tabs::
 
@@ -619,6 +626,12 @@ as custom QEMU and OpenOCD builds.
 
             You must rerun the setup script if you relocate the Zephyr SDK bundle directory after
             the initial setup.
+
+.. note::
+
+   You might need to set the :envvar:`ZEPHYR_TOOLCHAIN_VARIANT` and
+   :envvar:`ZEPHYR_SDK_INSTALL_DIR` environment variables. See the
+   :ref:`toolchain_zephyr_sdk` section for details.
 
 .. _getting_started_run_sample:
 
