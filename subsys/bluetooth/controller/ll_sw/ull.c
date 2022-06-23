@@ -2463,23 +2463,19 @@ static uint8_t tx_cmplt_get(uint16_t *handle, uint8_t *first, uint8_t last)
 			   IS_ADV_ISO_HANDLE(tx->handle)) {
 			struct node_tx_iso *tx_node_iso;
 			struct pdu_data *p;
-			uint8_t fragments;
 
 			tx_node_iso = tx->node;
 			p = (void *)tx_node_iso->pdu;
 
-			/* We count each SDU fragment completed by this PDU */
-			fragments = tx_node_iso->sdu_fragments;
-			if (fragments == 0) {
-				/* FIXME: If ISOAL is not used for TX,
-				 * sdu_fragments is not incremented. In
-				 * that case we assume unfragmented for
-				 * now.
+			if (IS_ADV_ISO_HANDLE(tx->handle)) {
+				/* FIXME: ADV_ISO shall be updated to use ISOAL for
+				 * TX. Until then, assume 1 node equals 1 fragment.
 				 */
-				fragments = 1;
+				cmplt += 1;
+			} else {
+				/* We count each SDU fragment completed by this PDU */
+				cmplt += tx_node_iso->sdu_fragments;
 			}
-
-			cmplt += fragments;
 
 			ll_iso_link_tx_release(tx_node_iso->link);
 			ll_iso_tx_mem_release (tx_node_iso);
