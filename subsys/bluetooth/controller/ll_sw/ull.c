@@ -743,15 +743,15 @@ void ll_reset(void)
 	LL_ASSERT(!err);
 #endif /* CONFIG_BT_OBSERVER */
 
-#if defined(CONFIG_BT_CTLR_CONN_ISO)
-	err = ull_conn_iso_reset();
-	LL_ASSERT(!err);
-#endif /* CONFIG_BT_CTLR_CONN_ISO */
-
 #if defined(CONFIG_BT_CTLR_ISO)
 	err = ull_iso_reset();
 	LL_ASSERT(!err);
 #endif /* CONFIG_BT_CTLR_ISO */
+
+#if defined(CONFIG_BT_CTLR_CONN_ISO)
+	err = ull_conn_iso_reset();
+	LL_ASSERT(!err);
+#endif /* CONFIG_BT_CTLR_CONN_ISO */
 
 #if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
 	err = ull_peripheral_iso_reset();
@@ -2456,7 +2456,7 @@ static uint8_t tx_cmplt_get(uint16_t *handle, uint8_t *first, uint8_t last)
 	*handle = tx->handle;
 	cmplt = 0U;
 	do {
-		if (0) {
+		if (false) {
 #if defined(CONFIG_BT_CTLR_ADV_ISO) || \
 	defined(CONFIG_BT_CTLR_CONN_ISO)
 		} else if (IS_CIS_HANDLE(tx->handle) ||
@@ -2478,8 +2478,7 @@ static uint8_t tx_cmplt_get(uint16_t *handle, uint8_t *first, uint8_t last)
 			}
 
 			ll_iso_link_tx_release(tx_node_iso->link);
-			ll_iso_tx_mem_release (tx_node_iso);
-
+			ll_iso_tx_mem_release(tx_node_iso);
 			goto next_ack;
 #endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
 

@@ -128,8 +128,8 @@ static struct {
 	void *free;
 	uint8_t pool[sizeof(memq_link_t) * CONFIG_BT_CTLR_ISO_TX_BUFFERS];
 } mem_link_iso_tx;
-#endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
 
+#endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
 
 /* Must be implemented by vendor */
 __weak bool ll_data_path_configured(uint8_t data_path_dir,
@@ -179,6 +179,7 @@ __weak bool ll_data_path_source_create(uint16_t handle,
 	ARG_UNUSED(datapath);
 	ARG_UNUSED(pdu_alloc);
 	ARG_UNUSED(pdu_write);
+	ARG_UNUSED(pdu_emit);
 	ARG_UNUSED(pdu_release);
 
 	return false;
@@ -1029,7 +1030,7 @@ static isoal_status_t ll_iso_pdu_release(struct node_tx_iso *node_tx,
 
 	return ISOAL_STATUS_OK;
 }
-#endif /* CONFIG_BT_CTLR_ISO */
+#endif /* CONFIG_BT_CTLR_CONN_ISO */
 
 static int init_reset(void)
 {

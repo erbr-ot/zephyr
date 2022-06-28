@@ -179,6 +179,19 @@ static uint8_t force_md_cnt_calc(struct lll_conn *lll_conn, uint32_t tx_rate);
 				(LL_LENGTH_OCTETS_TX_MAX + \
 				BT_CTLR_USER_TX_BUFFER_OVERHEAD))
 
+/* Encryption request is enqueued in thread context from the Tx buffer pool,
+ * so that it is serialized alongwith the already enqueued data buffers ensuring
+ * they are transmitted out to peer before encryption is setup.
+ * Allocate additional Tx buffers to accommodate simultaneous encryption setup
+ * across active connections.
+ */
+#if defined(CONFIG_BT_CTLR_LE_ENC)
+#define CONN_ENC_REQ_BUFFERS CONFIG_BT_CTLR_LLCP_CONN
+#else
+#define CONN_ENC_REQ_BUFFERS 0
+#endif
+#define CONN_DATA_BUFFERS (CONFIG_BT_BUF_ACL_TX_COUNT + CONN_ENC_REQ_BUFFERS)
+
 /**
  * One connection may take up to 4 TX buffers for procedures
  * simultaneously, for example 2 for encryption, 1 for termination,
@@ -196,13 +209,14 @@ static uint8_t force_md_cnt_calc(struct lll_conn *lll_conn, uint32_t tx_rate);
 /* CIS Establishment procedure state values */
 #define CIS_REQUEST_AWAIT_HOST 2
 
-static MFIFO_DEFINE(conn_tx, sizeof(struct lll_tx), CONFIG_BT_BUF_ACL_TX_COUNT);
+static MFIFO_DEFINE(conn_tx, sizeof(struct lll_tx), CONN_DATA_BUFFERS);
 static MFIFO_DEFINE(conn_ack, sizeof(struct lll_tx),
-		    (CONFIG_BT_BUF_ACL_TX_COUNT + CONN_TX_CTRL_BUFFERS));
+		    (CONN_DATA_BUFFERS +
+		     CONN_TX_CTRL_BUFFERS));
 
 static struct {
 	void *free;
-	uint8_t pool[CONN_TX_BUF_SIZE * CONFIG_BT_BUF_ACL_TX_COUNT];
+	uint8_t pool[CONN_TX_BUF_SIZE * CONN_DATA_BUFFERS];
 } mem_conn_tx;
 
 static struct {
@@ -213,7 +227,8 @@ static struct {
 static struct {
 	void *free;
 	uint8_t pool[sizeof(memq_link_t) *
-		  (CONFIG_BT_BUF_ACL_TX_COUNT + CONN_TX_CTRL_BUFFERS)];
+		     (CONN_DATA_BUFFERS +
+		      CONN_TX_CTRL_BUFFERS)];
 } mem_link_tx;
 
 #if defined(CONFIG_BT_CTLR_DATA_LENGTH)
@@ -1182,7 +1197,7 @@ int ull_conn_llcp(struct ll_conn *conn, uint32_t ticks_at_expire, uint16_t lazy)
 #if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
 		} else if (conn->llcp_cis.req != conn->llcp_cis.ack) {
 			if (conn->llcp_cis.state == LLCP_CIS_STATE_RSP_WAIT) {
-				struct lll_conn *lll = &conn->lll;
+				const struct lll_conn *lll = &conn->lll;
 				uint16_t event_counter;
 
 				/* Calculate current event counter */
@@ -1412,7 +1427,7 @@ int ull_conn_llcp(struct ll_conn *conn, uint32_t ticks_at_expire, uint16_t lazy)
 	 * instant.
 	 */
 	if (conn->llcp_cis.state == LLCP_CIS_STATE_INST_WAIT) {
-		struct lll_conn *lll = &conn->lll;
+		const struct lll_conn *lll = &conn->lll;
 		uint16_t event_counter;
 
 		/* Calculate current event counter */
@@ -2225,7 +2240,7 @@ static int init_reset(void)
 		 sizeof(conn_pool) / sizeof(struct ll_conn), &conn_free);
 
 	/* Initialize tx pool. */
-	mem_init(mem_conn_tx.pool, CONN_TX_BUF_SIZE, CONFIG_BT_BUF_ACL_TX_COUNT,
+	mem_init(mem_conn_tx.pool, CONN_TX_BUF_SIZE, CONN_DATA_BUFFERS,
 		 &mem_conn_tx.free);
 
 	/* Initialize tx ctrl pool. */
@@ -2234,7 +2249,8 @@ static int init_reset(void)
 
 	/* Initialize tx link pool. */
 	mem_init(mem_link_tx.pool, sizeof(memq_link_t),
-		 CONFIG_BT_BUF_ACL_TX_COUNT + CONN_TX_CTRL_BUFFERS,
+		 (CONN_DATA_BUFFERS +
+		  CONN_TX_CTRL_BUFFERS),
 		 &mem_link_tx.free);
 
 #if !defined(CONFIG_BT_LL_SW_LLCP_LEGACY)

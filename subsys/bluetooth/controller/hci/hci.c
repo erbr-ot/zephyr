@@ -5314,6 +5314,7 @@ int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 #endif /* CONFIG_BT_CTLR_CONN_ISO */
 
 #if defined(CONFIG_BT_CTLR_ADV_ISO)
+	if (IS_ADV_ISO_HANDLE(handle)) {
 		/* FIXME: Use ISOAL */
 		struct node_tx_iso *tx;
 		uint16_t stream_handle;

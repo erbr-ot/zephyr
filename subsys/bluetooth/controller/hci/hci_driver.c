@@ -182,16 +182,6 @@ isoal_status_t sink_sdu_emit_hci(const struct isoal_sink         *sink_ctx,
 
 		if (ts) {
 			data_hdr = net_buf_push(buf, BT_HCI_ISO_TS_DATA_HDR_SIZE);
-			packet_status_flag = valid_sdu->status;
-
-			/* TODO: Validity of length might need to be reconsidered here. Not handled
-			 * in ISO-AL.
-			 * BT Core V5.3 : Vol 4 HCI I/F : Part G HCI Func. Spec.:
-			 * 5.4.5 HCI ISO Data packets
-			 * If Packet_Status_Flag equals 0b10 then PB_Flag shall equal 0b10.
-			 * When Packet_Status_Flag is set to 0b10 in packets from the Controller to
-			 * the Host, there is no data and ISO_SDU_Length shall be set to zero.
-			 */
 			slen_packed = bt_iso_pkt_len_pack(len, packet_status_flag);
 
 			data_hdr->ts = sys_cpu_to_le32((uint32_t) valid_sdu->timestamp);
@@ -415,7 +405,7 @@ static inline struct net_buf *encode_node(struct node_rx_pdu *node_rx,
 
 			/* Pass the ISO PDU through ISO-AL */
 			isoal_status_t err =
-				isoal_rx_pdu_recombine(sink, &pckt_meta);
+				isoal_rx_pdu_recombine(dp->sink_hdl, &pckt_meta);
 
 			LL_ASSERT(err == ISOAL_STATUS_OK); /* TODO handle err */
 		}

@@ -152,7 +152,7 @@ isoal_status_t isoal_sink_create(
 	/* ISO interval in units of time requires the integer (iso_interval)
 	 * to be multiplied by 1250us.
 	 */
-	iso_interval_us = iso_interval * CONN_INT_UNIT_US;
+	iso_interval_us = iso_interval * ISO_INT_UNIT_US;
 
 	/* Allocate a new sink */
 	err = isoal_sink_allocate(hdl);
@@ -171,7 +171,6 @@ isoal_status_t isoal_sink_create(
 	 * a connection is active.
 	 */
 
-	/* Note: sdu_interval unit is uS, iso_interval is a multiple of 1.25mS */
 	session->pdus_per_sdu = (burst_number * sdu_interval) /
 		iso_interval_us;
 
@@ -202,11 +201,6 @@ isoal_status_t isoal_sink_create(
 	 * BIS: SDU_Synchronization_Reference =
 	 *   BIG reference anchor point +
 	 *   BIG_Sync_Delay + SDU_interval + ISO_Interval - Time_Offset.
-	 */
-	/* TODO: This needs to be rechecked.
-	 * Latency should be in us but flush_timeout and iso_interval are
-	 * integers.
-	 * (i.e. Correct calculation should require iso_interval x 1250us)
 	 */
 	if (role == BT_CONN_ROLE_PERIPHERAL) {
 		isoal_global.sink_state[*hdl].session.latency_unframed =
@@ -440,7 +434,7 @@ static isoal_status_t isoal_rx_append_to_sdu(struct isoal_sink *sink,
 		);
 
 		if (consume_len > 0) {
-			struct isoal_sink_session *session = &sink->session;
+			const struct isoal_sink_session *session = &sink->session;
 
 			err |= session->sdu_write(sdu->contents.dbuf,
 						  pdu_payload,
@@ -453,6 +447,7 @@ static isoal_status_t isoal_rx_append_to_sdu(struct isoal_sink *sink,
 		bool end_of_sdu = (packet_available == 0) && is_end_fragment;
 
 		isoal_status_t err_emit = ISOAL_STATUS_OK;
+
 		if (sp->sdu_allocated) {
 			/* SDU should be emitted only if it was allocated */
 			err_emit = isoal_rx_try_emit_sdu(sink, end_of_sdu);
@@ -519,7 +514,7 @@ static isoal_status_t isoal_rx_unframed_consume(struct isoal_sink *sink,
 	 * count and as a result the last_pdu detection is no longer reliable.
 	 */
 	if (sp->fsm == ISOAL_ERR_SPOOL) {
-	 	if ((!pdu_err && !seq_err &&
+		if ((!pdu_err && !seq_err &&
 			/* Previous sequence error should have move to the
 			 * ISOAL_ERR_SPOOL state and emitted the SDU in production. No
 			 * PDU error so LLID and length are reliable and no sequence
@@ -641,20 +636,6 @@ static isoal_status_t isoal_rx_unframed_consume(struct isoal_sink *sink,
 				(sp->fsm  != ISOAL_ERR_SPOOL)) {
 		/* END fragment never seen */
 		sp->sdu_status |= ISOAL_SDU_STATUS_ERRORS;
-	}
-
-	/* BT Core V5.3 : Vol 4 HCI I/F : Part G HCI Func. Spec.:
-	 * 5.4.5 HCI ISO Data packets
-	 * If Packet_Status_Flag equals 0b10 then PB_Flag shall equal 0b10.
-	 * When Packet_Status_Flag is set to 0b10 in packets from the Controller to the
-	 * Host, there is no data and ISO_SDU_Length shall be set to zero.
-	 *
-	 * TODO: Move to hci_driver to allow vendor path to have dedicated handling.
-	 */
-	if (sp->sdu_status == ISOAL_SDU_STATUS_LOST_DATA) {
-		sp->sdu_written = 0;
-		end_of_packet = 1;
-		length = 0;
 	}
 
 	/* Append valid PDU to SDU */
@@ -1066,7 +1047,7 @@ isoal_status_t isoal_source_create(
 
 	/* Note: sdu_interval unit is uS, iso_interval is a multiple of 1.25mS */
 	session->pdus_per_sdu = (burst_number * sdu_interval) /
-		((uint32_t)iso_interval * CONN_INT_UNIT_US);
+		((uint32_t)iso_interval * ISO_INT_UNIT_US);
 	/* Set maximum PDU size */
 	session->max_pdu_size = max_octets;
 
@@ -1340,8 +1321,6 @@ static isoal_status_t isoal_tx_unframed_produce(struct isoal_source *source,
 		 */
 		pp->sdu_fragments = 0;
 	}
-
-	pp->sdu_fragments++;
 
 	/* PDUs should be created until the SDU fragment has been fragmented or
 	 * if this is the last fragment of the SDU, until the required padding
@@ -1621,7 +1600,7 @@ static isoal_status_t isoal_tx_framed_produce(struct isoal_source *source,
 		if (actual_event > tx_sdu->target_event) {
 			actual_cig_ref_point = tx_sdu->cig_ref_point +
 				((actual_event - tx_sdu->target_event) * session->iso_interval *
-					CONN_INT_UNIT_US);
+					ISO_INT_UNIT_US);
 		}
 
 		/* Check if time stamp on packet is later than the CIG reference
@@ -1635,7 +1614,7 @@ static isoal_status_t isoal_tx_framed_produce(struct isoal_source *source,
 		if (actual_cig_ref_point <= tx_sdu->time_stamp) {
 			/* Advance target to next event */
 			actual_event++;
-			actual_cig_ref_point += session->iso_interval * CONN_INT_UNIT_US;
+			actual_cig_ref_point += session->iso_interval * ISO_INT_UNIT_US;
 
 			/* Set payload number */
 			pp->payload_number = actual_event * session->burst_number;
