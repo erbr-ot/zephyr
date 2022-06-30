@@ -341,8 +341,6 @@ struct ll_conn {
 		uint8_t  cig_id;
 		uint16_t cis_handle;
 		uint8_t  cis_id;
-		uint16_t c_max_sdu:12;
-		uint16_t p_max_sdu:12;
 		uint32_t cis_offset_min;
 		uint32_t cis_offset_max;
 		uint16_t conn_event_count;

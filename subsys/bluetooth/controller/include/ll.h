@@ -192,6 +192,7 @@ uint8_t ll_iso_test_end(uint16_t handle, uint32_t *received_cnt,
 uint8_t ll_iso_read_test_counters(uint16_t handle, uint32_t *received_cnt,
 				  uint32_t *missed_cnt,
 				  uint32_t *failed_cnt);
+void ll_iso_transmit_test_cig_interval(uint16_t handle, uint32_t ticks_at_expire);
 
 uint8_t ll_cig_remove(uint8_t cig_id);
 

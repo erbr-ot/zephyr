@@ -118,8 +118,7 @@ struct ll_conn_iso_stream *ll_conn_iso_stream_acquire(void)
 	struct ll_conn_iso_stream *cis = mem_acquire(&cis_free);
 
 	if (cis) {
-		cis->hdr.datapath_in = NULL;
-		cis->hdr.datapath_out = NULL;
+		memset(&cis->hdr, 0, sizeof(cis->hdr));
 	}
 	return cis;
 }
