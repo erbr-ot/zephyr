@@ -461,16 +461,17 @@ static void pdu_b2b_aux_ptr_update(struct pdu_adv *pdu, uint8_t phy, uint8_t fla
 	}
 	offset_us = offset_us / OFFS_UNIT_30_US;
 	if (!!(offset_us >> OFFS_UNIT_BITS)) {
-		aux_ptr->offs = offset_us / (OFFS_UNIT_300_US / OFFS_UNIT_30_US);
+		offset_us = offset_us / (OFFS_UNIT_300_US / OFFS_UNIT_30_US);
 		aux_ptr->offs_units = OFFS_UNIT_VALUE_300_US;
 	} else {
-		aux_ptr->offs = offset_us;
 		aux_ptr->offs_units = OFFS_UNIT_VALUE_30_US;
 	}
 	aux_ptr->chan_idx = chan_idx;
 	aux_ptr->ca = (lll_clock_ppm_local_get() <= SCA_50_PPM) ?
 		      SCA_VALUE_50_PPM : SCA_VALUE_500_PPM;
-	aux_ptr->phy = find_lsb_set(phy) - 1;
+
+	aux_ptr->offs_phy_packed[0] = offset_us & 0xFF;
+	aux_ptr->offs_phy_packed[1] = ((offset_us>>8) & 0x1F) + ((find_lsb_set(phy) - 1) << 5);
 }
 
 static void switch_radio_complete_and_b2b_tx(const struct lll_adv_sync *lll, uint8_t phy_s)
