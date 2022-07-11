@@ -32,18 +32,3 @@
 ZTEST_SUITE(test_rx_basics, NULL, NULL, NULL, NULL, NULL);
 ZTEST_SUITE(test_rx_unframed, NULL, NULL, NULL, NULL, NULL);
 ZTEST_SUITE(test_rx_framed, NULL, NULL, NULL, NULL, NULL);
-
-ZTEST_SUITE(test_tx_basics, NULL, NULL, NULL, NULL, NULL);
-ZTEST_SUITE(test_tx_unframed, NULL, NULL, NULL, NULL, NULL);
-ZTEST_SUITE(test_tx_framed, NULL, NULL, NULL, NULL, NULL);
-
-void test_main(void)
-{
-	ztest_run_test_suite(test_rx_basics);
-	ztest_run_test_suite(test_rx_unframed);
-	ztest_run_test_suite(test_rx_framed);
-
-	ztest_run_test_suite(test_tx_basics);
-	ztest_run_test_suite(test_tx_unframed);
-	ztest_run_test_suite(test_tx_framed);
-}

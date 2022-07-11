@@ -597,7 +597,7 @@ static void cis_disabled_cb(void *param)
 #if !defined(CONFIG_BT_LL_SW_LLCP_LEGACY)
 			/* CIS terminated, triggers completion of CIS_TERMINATE_IND procedure */
 			/* Only used by local procedure, ignored for remote procedure */
-			conn->llcp.cis.terminate_ack = 1;
+			conn->llcp.cis.terminate_ack = 1U;
 #endif /* defined(CONFIG_BT_LL_SW_LLCP_LEGACY) */
 
 			/* Check if removed CIS has an ACL disassociation callback. Invoke

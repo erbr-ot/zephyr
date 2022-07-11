@@ -162,6 +162,11 @@ helper_pdu_ntf_verify_func_t *const helper_pdu_ntf_verify[] = {
 	[LL_CIS_IND] = NULL,
 	[LL_CIS_TERMINATE_IND] = NULL,
 	[LL_CTE_RSP] = helper_pdu_ntf_verify_cte_rsp,
+	[LL_CTE_RSP] = NULL,
+	[LL_CIS_REQ] = NULL,
+	[LL_CIS_RSP] = NULL,
+	[LL_CIS_IND] = NULL,
+	[LL_CIS_TERMINATE_IND] = NULL,
 };
 
 helper_node_encode_func_t *const helper_node_encode[] = {

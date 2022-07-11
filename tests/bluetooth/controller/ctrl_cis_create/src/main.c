@@ -1,6 +1,5 @@
 /*
- * Copyright (c) 2020 Demant
- * Copyright (c) 2020 Nordic Semiconductor ASA
+ * Copyright (c) 2022 Demant
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -59,9 +58,8 @@ static struct pdu_data_llctrl_cis_req remote_cis_req = {
 	.cis_id           =   0x02,
 	.c_phy            =   0x01,
 	.p_phy            =   0x01,
-	.framed           =   0,
-	.c_max_sdu        =   160,
-	.p_max_sdu        =   160,
+	.c_max_sdu_packed =   { 0, 160},
+	.p_max_sdu        =   { 0, 160},
 	.c_max_pdu        =   160,
 	.p_max_pdu        =   160,
 	.nse              =   2,
@@ -86,6 +84,7 @@ static struct pdu_data_llctrl_cis_ind remote_cis_ind = {
 	.conn_event_count = 12
 };
 
+#define ERROR_CODE 0x17
 /*
  * Central-initiated CIS Create procedure.
  * Central requests CIS, peripheral Host rejects.
@@ -218,7 +217,7 @@ static void test_cc_create_periph_rem_host_accept(void)
 	/* Done */
 	event_done(&conn);
 
-	zassert_equal(ctx_buffers_free(), CONFIG_BT_CTLR_LLCP_PROC_CTX_BUF_NUM,
+	zassert_equal(ctx_buffers_free(), test_ctx_buffers_cnt(),
 		      "Free CTX buffers %d", ctx_buffers_free());
 }
 
@@ -253,7 +252,7 @@ static void test_cc_create_periph_rem_host_reject(void)
 		.cis_id = 0x02
 	};
 	struct pdu_data_llctrl_reject_ext_ind local_reject = {
-		.error_code = 0x17,
+		.error_code = ERROR_CODE,
 		.reject_opcode = PDU_DATA_LLCTRL_TYPE_CIS_REQ
 	};
 
@@ -277,7 +276,7 @@ static void test_cc_create_periph_rem_host_reject(void)
 	ut_rx_q_is_empty();
 
 	/* Decline request */
-	ull_cp_cc_reject(&conn, 0x17);
+	ull_cp_cc_reject(&conn, ERROR_CODE);
 
 	/* Prepare */
 	event_prepare(&conn);
@@ -289,7 +288,7 @@ static void test_cc_create_periph_rem_host_reject(void)
 	/* Done */
 	event_done(&conn);
 
-	zassert_equal(ctx_buffers_free(), CONFIG_BT_CTLR_LLCP_PROC_CTX_BUF_NUM,
+	zassert_equal(ctx_buffers_free(), test_ctx_buffers_cnt(),
 		      "Free CTX buffers %d", ctx_buffers_free());
 }
 
@@ -309,7 +308,7 @@ static void test_cc_create_periph_rem_host_reject(void)
  *    |                           |                           |
  *
  *
- *    			Let time pass ......
+ *			Let time pass ......
  *
  *
  *    |                           |                           |
@@ -369,7 +368,7 @@ static void test_cc_create_periph_rem_host_accept_to(void)
 	/* Done */
 	event_done(&conn);
 
-	zassert_equal(ctx_buffers_free(), CONFIG_BT_CTLR_LLCP_PROC_CTX_BUF_NUM,
+	zassert_equal(ctx_buffers_free(), test_ctx_buffers_cnt(),
 		      "Free CTX buffers %d", ctx_buffers_free());
 }
 
@@ -380,7 +379,7 @@ static void test_cc_create_periph_rem_host_accept_to(void)
  * +-----+          +-------+                       +-----+
  * | UT  |          | LL_S  |                       | LT  |
  * +-----+          +-------+                       +-----+
- *    |                 |                           	|
+ *    |                 |                               |
  *    |                 |   LL_CIS_REQ  (w. invald PHY) |
  *    |                 |<------------------------------|
  *    |                 |                               |
@@ -400,9 +399,8 @@ static void test_cc_create_periph_rem_invalid_phy(void)
 		.cis_id           =   0x02,
 		.c_phy            =   0x03,
 		.p_phy            =   0x01,
-		.framed           =   0,
-		.c_max_sdu        =   160,
-		.p_max_sdu        =   160,
+		.c_max_sdu_packed =   { 0, 160},
+		.p_max_sdu        =   { 0, 160},
 		.c_max_pdu        =   160,
 		.p_max_pdu        =   160,
 		.nse              =   2,
@@ -449,7 +447,7 @@ static void test_cc_create_periph_rem_invalid_phy(void)
 	/* Done */
 	event_done(&conn);
 
-	zassert_equal(ctx_buffers_free(), CONFIG_BT_CTLR_LLCP_PROC_CTX_BUF_NUM,
+	zassert_equal(ctx_buffers_free(), test_ctx_buffers_cnt(),
 		      "Free CTX buffers %d", ctx_buffers_free());
 }
 

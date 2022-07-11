@@ -469,6 +469,8 @@ static void reset(struct net_buf *buf, struct net_buf **evt)
 	k_sem_give(process_sem);
 	k_poll_signal_raise(reset_signal, 0x0);
 #endif
+
+	hci_recv_fifo_reset();
 }
 
 #if defined(CONFIG_BT_HCI_ACL_FLOW_CONTROL)
@@ -4008,8 +4010,9 @@ static void le_ext_create_connection(struct net_buf *buf, struct net_buf **evt)
 			uint8_t type;
 
 			type = (phy << 1);
-			/* NOTE: Pass invalid interval value to not start
-			 *       scanning using this scan instance.
+			/* NOTE: Pass invalid interval value to reset the PHY
+			 *       value in the scan instance so not to start
+			 *       scanning on the unselected PHY.
 			 */
 			status = ll_scan_params_set(type, 0, 0, 0, 0);
 		}

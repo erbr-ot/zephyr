@@ -1095,9 +1095,6 @@ void test_conn_update_central_loc_unsupp_w_feat_exch(void)
 	pdu = (struct pdu_data *)tx->pdu;
 	instant = sys_le16_to_cpu(pdu->llctrl.conn_update_ind.instant);
 
-	/* Release Tx */
-	ull_cp_release_tx(&conn, tx);
-
 	/* */
 	while (!is_instant_reached(&conn, instant)) {
 		/* Prepare */
@@ -2496,7 +2493,7 @@ void test_conn_update_periph_loc_collision_reject_2nd_cpr(void)
 	struct ll_conn conn_2nd;
 	struct ll_conn conn_3rd;
 	uint8_t err;
-	struct node_tx *tx;
+	struct node_tx *tx, *tx1;
 	struct node_rx_pdu *ntf;
 	uint16_t instant;
 
@@ -2537,7 +2534,7 @@ void test_conn_update_periph_loc_collision_reject_2nd_cpr(void)
 	event_prepare(&conn);
 
 	/* (A) Tx Queue should have one LL Control PDU */
-	lt_rx(LL_CONNECTION_PARAM_REQ, &conn, &tx, &conn_param_req);
+	lt_rx(LL_CONNECTION_PARAM_REQ, &conn, &tx1, &conn_param_req);
 	lt_rx_q_is_empty(&conn);
 
 	/* (B) Rx */
@@ -2616,7 +2613,7 @@ void test_conn_update_periph_loc_collision_reject_2nd_cpr(void)
 
 
 	/* Release Tx */
-	ull_cp_release_tx(&conn, tx);
+	ull_cp_release_tx(&conn, tx1);
 
 	/*******************/
 
@@ -3672,9 +3669,6 @@ void test_conn_update_central_loc_accept_no_param_req(void)
 		/* Save Instant */
 		pdu = (struct pdu_data *)tx->pdu;
 		instant = sys_le16_to_cpu(pdu->llctrl.conn_update_ind.instant);
-
-		/* Release Tx */
-		ull_cp_release_tx(&conn, tx);
 
 		/* */
 		while (!is_instant_reached(&conn, instant)) {

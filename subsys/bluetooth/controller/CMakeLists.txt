@@ -79,7 +79,7 @@ if(CONFIG_BT_LL_SW_SPLIT)
         ll_sw/ull_llcp_enc.c
         )
       if (CONFIG_BT_CTLR_PERIPHERAL_ISO OR
-        CONFIG_BT_CTLR_CENTRAL_ISO)
+          CONFIG_BT_CTLR_CENTRAL_ISO)
         zephyr_library_sources(
           ll_sw/ull_llcp_cc.c
         )
@@ -114,8 +114,7 @@ if(CONFIG_BT_LL_SW_SPLIT)
       )
     endif()
   endif()
-  if(CONFIG_BT_CTLR_SCHED_ADVANCED AND
-     (CONFIG_BT_CONN OR CONFIG_BT_CTLR_ADV_ISO))
+  if(CONFIG_BT_CTLR_SCHED_ADVANCED)
     zephyr_library_sources(
       ll_sw/ull_sched.c
     )

@@ -835,31 +835,7 @@ void llcp_pdu_encode_cte_rsp(const struct proc_ctx *ctx, struct pdu_data *pdu)
 }
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_RSP */
 
-void llcp_pdu_encode_cis_req(struct proc_ctx *ctx, struct pdu_data *pdu)
-{
-	pdu->ll_id = PDU_DATA_LLID_CTRL;
-	pdu->len =
-		offsetof(struct pdu_data_llctrl, cis_req) + sizeof(struct pdu_data_llctrl_cis_req);
-	pdu->llctrl.opcode = PDU_DATA_LLCTRL_TYPE_CIS_RSP;
-
-	/* TODO fill in proper data for cis create (CENTRAL) */
-}
-
-void llcp_pdu_decode_cis_rsp(struct proc_ctx *ctx, struct pdu_data *pdu)
-{
-	/* TODO extract data for cis response (CENTRAL)*/
-}
-
-void llcp_pdu_encode_cis_ind(struct proc_ctx *ctx, struct pdu_data *pdu)
-{
-	pdu->ll_id = PDU_DATA_LLID_CTRL;
-	pdu->len =
-		offsetof(struct pdu_data_llctrl, cis_ind) + sizeof(struct pdu_data_llctrl_cis_ind);
-	pdu->llctrl.opcode = PDU_DATA_LLCTRL_TYPE_CIS_IND;
-
-	/* TODO fill in proper data for cis indication (CENTRAL) */
-}
-
+#if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
 void llcp_pdu_decode_cis_req(struct proc_ctx *ctx, struct pdu_data *pdu)
 {
 	ctx->data.cis_create.cig_id	= pdu->llctrl.cis_req.cig_id;
@@ -903,7 +879,7 @@ void llcp_pdu_encode_cis_rsp(struct proc_ctx *ctx, struct pdu_data *pdu)
 	sys_put_le24(ctx->data.cis_create.cis_offset_min, p->cis_offset_min);
 	p->conn_event_count = sys_cpu_to_le16(ctx->data.cis_create.conn_event_count);
 }
-
+#endif /* defined(CONFIG_BT_CTLR_PERIPHERAL_ISO) */
 #if defined(CONFIG_BT_CTLR_CENTRAL_ISO) || defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
 void llcp_pdu_encode_cis_terminate_ind(struct proc_ctx *ctx, struct pdu_data *pdu)
 {

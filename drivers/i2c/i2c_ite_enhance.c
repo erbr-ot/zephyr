@@ -240,7 +240,7 @@ static int i2c_enhance_configure(const struct device *dev,
 	const struct i2c_enhance_config *config = dev->config;
 	struct i2c_enhance_data *const data = dev->data;
 
-	if (!(I2C_MODE_MASTER & dev_config_raw)) {
+	if (!(I2C_MODE_CONTROLLER & dev_config_raw)) {
 		return -EINVAL;
 	}
 
@@ -276,7 +276,7 @@ static int i2c_enhance_get_config(const struct device *dev, uint32_t *dev_config
 		return -ERANGE;
 	}
 
-	*dev_config = (I2C_MODE_MASTER | speed);
+	*dev_config = (I2C_MODE_CONTROLLER | speed);
 
 	return 0;
 }
@@ -292,8 +292,9 @@ static int enhanced_i2c_error(const struct device *dev)
 		data->err = i2c_str & E_HOSTA_ANY_ERROR;
 	/* device does not respond ACK */
 	} else if ((i2c_str & E_HOSTA_BDS_AND_ACK) == E_HOSTA_BDS) {
-		if (IT8XXX2_I2C_CTR(base) & E_ACK)
+		if (IT8XXX2_I2C_CTR(base) & E_ACK) {
 			data->err = E_HOSTA_ACK;
+		}
 	}
 
 	return data->err;
@@ -624,7 +625,7 @@ static int i2c_enhance_init(const struct device *dev)
 		bitrate_cfg = I2C_SPEED_DT << I2C_SPEED_SHIFT;
 	}
 
-	error = i2c_enhance_configure(dev, I2C_MODE_MASTER | bitrate_cfg);
+	error = i2c_enhance_configure(dev, I2C_MODE_CONTROLLER | bitrate_cfg);
 	data->i2ccs = I2C_CH_NORMAL;
 
 	if (error) {

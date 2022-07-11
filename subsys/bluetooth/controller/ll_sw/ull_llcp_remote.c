@@ -92,8 +92,8 @@ static bool proc_with_instant(struct proc_ctx *ctx)
 	case PROC_TERMINATE:
 	case PROC_DATA_LENGTH_UPDATE:
 	case PROC_CTE_REQ:
-	case PROC_CIS_CREATE:
 	case PROC_CIS_TERMINATE:
+	case PROC_CIS_CREATE:
 		return 0U;
 	case PROC_PHY_UPDATE:
 	case PROC_CONN_UPDATE:
@@ -272,12 +272,12 @@ void llcp_rr_rx(struct ll_conn *conn, struct proc_ctx *ctx, struct node_rx_pdu *
 	case PROC_CIS_CREATE:
 		llcp_rp_cc_rx(conn, ctx, rx);
 		break;
-#endif /* defined(CONFIG_BT_PERIPHERAL) && defined(CONFIG_BT_CTLR_PERIPHERAL_ISO) */
+#endif /* CONFIG_BT_PERIPHERAL && CONFIG_BT_CTLR_PERIPHERAL_ISO */
 #if defined(CONFIG_BT_CTLR_CENTRAL_ISO) || defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
 	case PROC_CIS_TERMINATE:
 		llcp_rp_comm_rx(conn, ctx, rx);
 		break;
-#endif /* defined(CONFIG_BT_CTLR_CENTRAL_ISO) || defined(CONFIG_BT_CTLR_PERIPHERAL_ISO) */
+#endif /* CONFIG_BT_CTLR_CENTRAL_ISO || CONFIG_BT_CTLR_PERIPHERAL_ISO */
 	default:
 		/* Unknown procedure */
 		LL_ASSERT(0);
@@ -372,12 +372,12 @@ static void rr_act_run(struct ll_conn *conn)
 	case PROC_CIS_CREATE:
 		llcp_rp_cc_run(conn, ctx, NULL);
 		break;
-#endif /* defined(CONFIG_BT_PERIPHERAL) && defined(CONFIG_BT_CTLR_PERIPHERAL_ISO) */
+#endif /* CONFIG_BT_PERIPHERAL && CONFIG_BT_CTLR_PERIPHERAL_ISO */
 #if defined(CONFIG_BT_CTLR_CENTRAL_ISO) || defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
 	case PROC_CIS_TERMINATE:
 		llcp_rp_comm_run(conn, ctx, NULL);
 		break;
-#endif /* defined(CONFIG_BT_CTLR_CENTRAL_ISO) || defined(CONFIG_BT_CTLR_PERIPHERAL_ISO) */
+#endif /* CONFIG_BT_CTLR_CENTRAL_ISO || CONFIG_BT_CTLR_PERIPHERAL_ISO */
 	default:
 		/* Unknown procedure */
 		LL_ASSERT(0);
@@ -796,6 +796,13 @@ static const struct proc_role new_proc_lut[] = {
 #if defined(CONFIG_BT_CTLR_DF_CONN_CTE_RSP)
 	[PDU_DATA_LLCTRL_TYPE_CTE_REQ] = { PROC_CTE_REQ, ACCEPT_ROLE_BOTH },
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_RSP */
+	[PDU_DATA_LLCTRL_TYPE_CTE_RSP] = { PROC_UNKNOWN, ACCEPT_ROLE_NONE },
+#if defined(CONFIG_BT_CTLR_CENTRAL_ISO) || defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
+	[PDU_DATA_LLCTRL_TYPE_CIS_TERMINATE_IND] = { PROC_CIS_TERMINATE, ACCEPT_ROLE_BOTH },
+#endif /* CONFIG_BT_CTLR_CENTRAL_ISO || CONFIG_BT_CTLR_PERIPHERAL_ISO */
+#if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
+	[PDU_DATA_LLCTRL_TYPE_CIS_REQ] = { PROC_CIS_CREATE, ACCEPT_ROLE_PERIPHERAL },
+#endif /* CONFIG_BT_CTLR_CENTRAL_ISO */
 };
 
 void llcp_rr_new(struct ll_conn *conn, struct node_rx_pdu *rx, bool valid_pdu)
@@ -805,7 +812,6 @@ void llcp_rr_new(struct ll_conn *conn, struct node_rx_pdu *rx, bool valid_pdu)
 	uint8_t proc = PROC_UNKNOWN;
 
 	pdu = (struct pdu_data *)rx->pdu;
-
 
 	/* Is this a valid opcode */
 	if (valid_pdu && pdu->llctrl.opcode < ARRAY_SIZE(new_proc_lut)) {

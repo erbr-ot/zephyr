@@ -130,7 +130,7 @@ static inline bool feature_cte_req(struct ll_conn *conn)
  * for asymmetric features we can check either if we support it
  * or if the peer supports it
  */
-static inline bool feature_smi_rx(struct ll_conn *conn)
+static inline bool feature_smi_rx(void)
 {
 	return LL_FEAT_BIT_SMI_RX != 0;
 }
@@ -140,7 +140,7 @@ static inline bool feature_peer_smi_rx(struct ll_conn *conn)
 	return (conn->llcp.fex.features_peer & BIT64(BT_LE_FEAT_BIT_SMI_RX)) != 0;
 }
 
-static inline bool feature_smi_tx(struct ll_conn *conn)
+static inline bool feature_smi_tx(void)
 {
 	return LL_FEAT_BIT_SMI_TX != 0;
 }

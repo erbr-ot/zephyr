@@ -59,6 +59,11 @@ void helper_pdu_encode_cis_terminate_ind(struct pdu_data *pdu, void *param);
 
 void helper_pdu_encode_zero(struct pdu_data *pdu, void *param);
 
+void helper_pdu_encode_cis_req(struct pdu_data *pdu, void *param);
+void helper_pdu_encode_cis_rsp(struct pdu_data *pdu, void *param);
+void helper_pdu_encode_cis_ind(struct pdu_data *pdu, void *param);
+void helper_pdu_encode_cis_terminate_ind(struct pdu_data *pdu, void *param);
+
 void helper_pdu_verify_ping_req(const char *file, uint32_t line, struct pdu_data *pdu, void *param);
 void helper_pdu_verify_ping_rsp(const char *file, uint32_t line, struct pdu_data *pdu, void *param);
 

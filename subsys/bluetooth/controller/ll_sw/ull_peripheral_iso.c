@@ -48,7 +48,7 @@
 #include "common/log.h"
 #include "hal/debug.h"
 
-static struct ll_conn *ll_cis_reply_ok(uint16_t handle, uint8_t *error)
+static struct ll_conn *ll_cis_get_acl_awaiting_reply(uint16_t handle, uint8_t *error)
 {
 	struct ll_conn *acl_conn = NULL;
 
@@ -95,7 +95,7 @@ static struct ll_conn *ll_cis_reply_ok(uint16_t handle, uint8_t *error)
 uint8_t ll_cis_accept(uint16_t handle)
 {
 	uint8_t status = BT_HCI_ERR_SUCCESS;
-	struct ll_conn *acl_conn = ll_cis_reply_ok(handle, &status);
+	struct ll_conn *acl_conn = ll_cis_get_acl_awaiting_reply(handle, &status);
 
 	if (acl_conn) {
 		/* Accept request */
@@ -116,7 +116,7 @@ uint8_t ll_cis_reject(uint16_t handle, uint8_t reason)
 #if defined(CONFIG_BT_LL_SW_LLCP_LEGACY)
 	status = BT_HCI_ERR_CMD_DISALLOWED;
 #else
-	struct ll_conn *acl_conn = ll_cis_reply_ok(handle, &status);
+	struct ll_conn *acl_conn = ll_cis_get_acl_awaiting_reply(handle, &status);
 
 	if (acl_conn) {
 		/* Accept request */

@@ -80,7 +80,10 @@ static void unicast_client_ep_iso_recv(struct bt_iso_chan *chan,
 
 	ops = ep->stream->ops;
 
-	BT_DBG("stream %p ep %p len %zu", chan, ep, net_buf_frags_len(buf));
+	if (IS_ENABLED(CONFIG_BT_AUDIO_DEBUG_STREAM_DATA)) {
+		BT_DBG("stream %p ep %p len %zu",
+		       chan, ep, net_buf_frags_len(buf));
+	}
 
 	if (ops != NULL && ops->recv != NULL) {
 		ops->recv(ep->stream, info, buf);
@@ -123,8 +126,6 @@ static void unicast_client_ep_iso_connected(struct bt_iso_chan *chan)
 	}
 
 	BT_DBG("stream %p ep %p dir %u", chan, ep, ep != NULL ? ep->dir : 0);
-
-	ep->seq_num = 0U;
 
 	if (ep->status.state != BT_AUDIO_EP_STATE_ENABLING) {
 		BT_DBG("endpoint not in enabling state: %s",

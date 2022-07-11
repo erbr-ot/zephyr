@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2020 Demant
+ * Copyright (c) 2022 Demant
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -83,7 +83,7 @@ enum {
 	RP_CC_STATE_WAIT_NTF,
 };
 
-/* LLCP Remote Procedure Encryption FSM events */
+/* LLCP Remote Procedure FSM events */
 enum {
 	/* Procedure prepared */
 	RP_CC_EVT_RUN,
@@ -108,10 +108,9 @@ enum {
 
 	/* Unknown response received */
 	RP_CC_EVT_UNKNOWN,
-
 };
 /*
- * LLCP Remote Procedure Encryption FSM
+ * LLCP Remote Procedure FSM
  */
 
 static void llcp_rp_cc_tx_rsp(struct ll_conn *conn, struct proc_ctx *ctx)
@@ -245,13 +244,12 @@ static void rp_cc_send_reject_ind(struct ll_conn *conn, struct proc_ctx *ctx, ui
 
 		if (ctx->data.cis_create.error == BT_HCI_ERR_CONN_ACCEPT_TIMEOUT) {
 			/* We reject due to an accept timeout, so we should generate NTF */
-			rp_cc_complete(conn,ctx,evt,param);
+			rp_cc_complete(conn, ctx, evt, param);
 		} else {
 			/* Otherwise we quietly complete the procedure */
 			llcp_rr_complete(conn);
 			ctx->state = RP_CC_STATE_IDLE;
 		}
-
 	}
 }
 
@@ -272,14 +270,15 @@ static inline bool phy_valid(uint8_t phy)
 {
 	/* This is equivalent to:
 	 * exactly one bit set, and no bit set is rfu's
-	*/
-	return (phy == 1 || phy == 2 || phy == 4);
+	 */
+	return (phy == PHY_1M || phy == PHY_2M || phy == PHY_CODED);
 }
 
 static uint8_t rp_cc_check_phy(struct ll_conn *conn, struct proc_ctx *ctx,
 					    struct pdu_data *pdu)
 {
-	if (!phy_valid(pdu->llctrl.cis_req.c_phy) || !phy_valid(pdu->llctrl.cis_req.p_phy)) {
+	if (!phy_valid(pdu->llctrl.cis_req.c_phy) ||
+	    !phy_valid(pdu->llctrl.cis_req.p_phy)) {
 		/* zero, more than one or any rfu bit selected in either phy */
 		return BT_HCI_ERR_UNSUPP_FEATURE_PARAM_VAL;
 	}
@@ -296,10 +295,10 @@ static uint8_t rp_cc_check_phy(struct ll_conn *conn, struct proc_ctx *ctx,
 	return BT_HCI_ERR_SUCCESS;
 }
 
-static bool rp_cc_check_cis_established_lll(struct ll_conn *conn, struct proc_ctx *ctx,
-					    struct pdu_data *pdu)
+static bool rp_cc_check_cis_established_lll(struct proc_ctx *ctx)
 {
-	struct ll_conn_iso_stream *cis = ll_conn_iso_stream_get(ctx->data.cis_create.cis_handle);
+	const struct ll_conn_iso_stream *cis =
+		ll_conn_iso_stream_get(ctx->data.cis_create.cis_handle);
 
 	return cis->established;
 }
@@ -315,7 +314,7 @@ static void rp_cc_state_wait_rx_cis_req(struct ll_conn *conn, struct proc_ctx *c
 		llcp_pdu_decode_cis_req(ctx, pdu);
 
 		/* Check PHY */
-		ctx->data.cis_create.error = rp_cc_check_phy(conn,ctx,pdu);
+		ctx->data.cis_create.error = rp_cc_check_phy(conn, ctx, pdu);
 
 		if (ctx->data.cis_create.error == BT_HCI_ERR_SUCCESS) {
 			ctx->data.cis_create.error =
@@ -376,20 +375,17 @@ static void rp_cc_state_wait_rx_cis_ind(struct ll_conn *conn, struct proc_ctx *c
 			/* CIS has been setup, go wait for 'instant' before starting */
 			ctx->state = RP_CC_STATE_WAIT_INSTANT;
 
-			/* Clear procedure timeout */
-			llcp_lr_prt_stop(conn);
-
 			/* Fixme - Implement CIS Supervision timeout
 			 * Spec:
-			 * When establishing a CIS, the Peripheral shall start the CIS supervision timer at
-			 * the start of the next CIS event after receiving the LL_CIS_IND. If the CIS
-			 * supervision timer reaches 6 * ISO_Interval before the CIS is established, the
-			 * CIS shall be considered lost.
+			 * When establishing a CIS, the Peripheral shall start the CIS supervision
+			 * timer at the start of the next CIS event after receiving the LL_CIS_IND.
+			 * If the CIS supervision timer reaches 6 * ISO_Interval before the CIS is
+			 * established, the CIS shall be considered lost.
 			 */
 
 			break;
 		}
-		/* If we get to here the CIG_ID refered in req/acquire has become void/invalid */
+		/* If we get to here the CIG_ID referred in req/acquire has become void/invalid */
 		/* This cannot happen unless the universe has started to deflate */
 		LL_ASSERT(0);
 	case RP_CC_EVT_REJECT:
@@ -504,12 +500,10 @@ static void rp_cc_state_wait_instant(struct ll_conn *conn, struct proc_ctx *ctx,
 static void rp_cc_state_wait_cis_established(struct ll_conn *conn, struct proc_ctx *ctx,
 					     uint8_t evt, void *param)
 {
-	struct pdu_data *pdu = (struct pdu_data *)param;
-
 	switch (evt) {
 	case RP_CC_EVT_RUN:
 		/* Check for CIS state */
-		if (rp_cc_check_cis_established_lll(conn, ctx, pdu)) {
+		if (rp_cc_check_cis_established_lll(ctx)) {
 			/* CIS was established, so let's got ahead and complete procedure */
 			rp_cc_complete(conn, ctx, evt, param);
 		}
@@ -518,7 +512,6 @@ static void rp_cc_state_wait_cis_established(struct ll_conn *conn, struct proc_c
 		/* Ignore other evts */
 		break;
 	}
-
 }
 
 

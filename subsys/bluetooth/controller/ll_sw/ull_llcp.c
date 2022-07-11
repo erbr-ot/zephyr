@@ -99,6 +99,18 @@ void llcp_proc_ctx_release(struct proc_ctx *ctx)
 
 #if defined(LLCP_TX_CTRL_BUF_QUEUE_ENABLE)
 /*
+ * @brief Update 'global' tx buffer allowance
+ */
+void ull_cp_update_tx_buffer_queue(struct ll_conn *conn)
+{
+	if (conn->llcp.tx_buffer_alloc > CONFIG_BT_CTLR_LLCP_PER_CONN_TX_CTRL_BUF_NUM) {
+		common_tx_buffer_alloc -= (conn->llcp.tx_buffer_alloc -
+					   CONFIG_BT_CTLR_LLCP_PER_CONN_TX_CTRL_BUF_NUM);
+	}
+}
+
+
+/*
  * @brief Check for per conn pre-allocated tx buffer allowance
  * @return true if buffer is available
  */
@@ -165,8 +177,8 @@ void llcp_tx_alloc_unpeek(struct proc_ctx *ctx)
  */
 struct node_tx *llcp_tx_alloc(struct ll_conn *conn, struct proc_ctx *ctx)
 {
-#if (CONFIG_BT_CTLR_LLCP_PER_CONN_TX_CTRL_BUF_NUM > 0)
 	conn->llcp.tx_buffer_alloc++;
+#if (CONFIG_BT_CTLR_LLCP_PER_CONN_TX_CTRL_BUF_NUM > 0)
 	if (conn->llcp.tx_buffer_alloc > CONFIG_BT_CTLR_LLCP_PER_CONN_TX_CTRL_BUF_NUM) {
 		common_tx_buffer_alloc++;
 		/* global buffer allocated, so we're at the head and should just pop head */
@@ -245,16 +257,21 @@ void llcp_tx_enqueue(struct ll_conn *conn, struct node_tx *tx)
 
 void llcp_tx_pause_data(struct ll_conn *conn, enum llcp_tx_q_pause_data_mask pause_mask)
 {
-	if ((conn->llcp.tx_q_pause_data_mask & pause_mask) == 0) {
-		conn->llcp.tx_q_pause_data_mask |= pause_mask;
+	/* Only pause the TX Q if we have not already paused it (by any procedure) */
+	if (conn->llcp.tx_q_pause_data_mask == 0) {
 		ull_tx_q_pause_data(&conn->tx_q);
 	}
+
+	/* Add the procedure that paused data */
+	conn->llcp.tx_q_pause_data_mask |= pause_mask;
 }
 
 void llcp_tx_resume_data(struct ll_conn *conn, enum llcp_tx_q_pause_data_mask resume_mask)
 {
+	/* Remove the procedure that paused data */
 	conn->llcp.tx_q_pause_data_mask &= ~resume_mask;
 
+	/* Only resume the TX Q if we have removed all procedures that paused data */
 	if (conn->llcp.tx_q_pause_data_mask == 0) {
 		ull_tx_q_resume_data(&conn->tx_q);
 	}
@@ -516,9 +533,7 @@ void ull_llcp_init(struct ll_conn *conn)
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_RSP */
 
 #if defined(LLCP_TX_CTRL_BUF_QUEUE_ENABLE)
-#if (CONFIG_BT_CTLR_LLCP_PER_CONN_TX_CTRL_BUF_NUM > 0)
 	conn->llcp.tx_buffer_alloc = 0;
-#endif /* (CONFIG_BT_CTLR_LLCP_PER_CONN_TX_CTRL_BUF_NUM > 0) */
 #endif /* LLCP_TX_CTRL_BUF_QUEUE_ENABLE */
 
 	conn->llcp.tx_q_pause_data_mask = 0;
@@ -528,15 +543,13 @@ void ull_llcp_init(struct ll_conn *conn)
 void ull_cp_release_tx(struct ll_conn *conn, struct node_tx *tx)
 {
 #if defined(LLCP_TX_CTRL_BUF_QUEUE_ENABLE)
-#if (CONFIG_BT_CTLR_LLCP_PER_CONN_TX_CTRL_BUF_NUM > 0)
-	if (conn->llcp.tx_buffer_alloc > CONFIG_BT_CTLR_LLCP_PER_CONN_TX_CTRL_BUF_NUM) {
-		common_tx_buffer_alloc--;
+	if (conn) {
+		LL_ASSERT(conn->llcp.tx_buffer_alloc > 0);
+		if (conn->llcp.tx_buffer_alloc > CONFIG_BT_CTLR_LLCP_PER_CONN_TX_CTRL_BUF_NUM) {
+			common_tx_buffer_alloc--;
+		}
+		conn->llcp.tx_buffer_alloc--;
 	}
-	conn->llcp.tx_buffer_alloc--;
-#else /* CONFIG_BT_CTLR_LLCP_PER_CONN_TX_CTRL_BUF_NUM > 0 */
-	ARG_UNUSED(conn);
-	common_tx_buffer_alloc--;
-#endif /* CONFIG_BT_CTLR_LLCP_PER_CONN_TX_CTRL_BUF_NUM > 0 */
 #else /* LLCP_TX_CTRL_BUF_QUEUE_ENABLE */
 	ARG_UNUSED(conn);
 #endif /* LLCP_TX_CTRL_BUF_QUEUE_ENABLE */
@@ -811,14 +824,12 @@ uint8_t ull_cp_terminate(struct ll_conn *conn, uint8_t error_code)
 	return BT_HCI_ERR_SUCCESS;
 }
 #if defined(CONFIG_BT_CTLR_CENTRAL_ISO) || defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
-uint8_t ull_cp_cis_terminate(struct ll_conn *conn, struct ll_conn_iso_stream *cis,
+uint8_t ull_cp_cis_terminate(struct ll_conn *conn,
+			     struct ll_conn_iso_stream *cis,
 			     uint8_t error_code)
 {
 	struct proc_ctx *ctx;
 
-	/* TODO
-	 * Check for allowance and parameters
-	*/
 	if (conn->lll.handle != cis->lll.acl_handle) {
 		return BT_HCI_ERR_CMD_DISALLOWED;
 	}
@@ -1709,6 +1720,13 @@ uint16_t ctx_buffers_free(void)
 {
 	return local_ctx_buffers_free() + remote_ctx_buffers_free();
 }
+
+#if defined(LLCP_TX_CTRL_BUF_QUEUE_ENABLE)
+uint8_t common_tx_buffer_alloc_count(void)
+{
+	return common_tx_buffer_alloc;
+}
+#endif /* LLCP_TX_CTRL_BUF_QUEUE_ENABLE */
 
 void test_int_mem_proc_ctx(void)
 {

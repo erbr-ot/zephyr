@@ -28,7 +28,7 @@ enum llcp_proc {
 	PROC_CTE_REQ,
 	PROC_CIS_CREATE,
 	PROC_CIS_TERMINATE,
-	/* A helper enum entry, to use in pause prcedure context */
+	/* A helper enum entry, to use in pause procedure context */
 	PROC_NONE = 0x0,
 };
 
@@ -36,6 +36,7 @@ enum llcp_tx_q_pause_data_mask {
 	LLCP_TX_QUEUE_PAUSE_DATA_ENCRYPTION = 0x01,
 	LLCP_TX_QUEUE_PAUSE_DATA_PHY_UPDATE = 0x02,
 	LLCP_TX_QUEUE_PAUSE_DATA_DATA_LENGTH = 0x04,
+	LLCP_TX_QUEUE_PAUSE_DATA_TERMINATE = 0x08,
 };
 
 #if ((CONFIG_BT_CTLR_LLCP_COMMON_TX_CTRL_BUF_NUM <\
@@ -268,6 +269,7 @@ struct proc_ctx {
 			uint8_t  p_phy;
 			uint16_t c_max_sdu;
 			uint16_t p_max_sdu;
+			uint8_t  framed;
 			uint32_t c_sdu_interval;
 			uint32_t p_sdu_interval;
 			uint8_t  nse;
@@ -686,11 +688,8 @@ bool llcp_rp_cc_awaiting_reply(struct proc_ctx *ctx);
 void llcp_rp_cc_accept(struct ll_conn *conn, struct proc_ctx *ctx);
 void llcp_rp_cc_reject(struct ll_conn *conn, struct proc_ctx *ctx);
 
-void llcp_pdu_encode_cis_req(struct proc_ctx *ctx, struct pdu_data *pdu);
 void llcp_pdu_decode_cis_req(struct proc_ctx *ctx, struct pdu_data *pdu);
 void llcp_pdu_encode_cis_rsp(struct proc_ctx *ctx, struct pdu_data *pdu);
-void llcp_pdu_decode_cis_rsp(struct proc_ctx *ctx, struct pdu_data *pdu);
-void llcp_pdu_encode_cis_ind(struct proc_ctx *ctx, struct pdu_data *pdu);
 void llcp_pdu_encode_cis_terminate_ind(struct proc_ctx *ctx, struct pdu_data *pdu);
 void llcp_pdu_decode_cis_terminate_ind(struct proc_ctx *ctx, struct pdu_data *pdu);
 
@@ -700,4 +699,5 @@ bool lr_is_idle(struct ll_conn *conn);
 bool rr_is_disconnected(struct ll_conn *conn);
 bool rr_is_idle(struct ll_conn *conn);
 uint16_t ctx_buffers_free(void);
+uint8_t common_tx_buffer_alloc_count(void);
 #endif

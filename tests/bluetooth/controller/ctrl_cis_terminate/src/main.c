@@ -1,6 +1,5 @@
 /*
- * Copyright (c) 2020 Demant
- * Copyright (c) 2020 Nordic Semiconductor ASA
+ * Copyright (c) 2022 Demant
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -51,11 +50,7 @@ static void setup(void)
 
 static void test_cis_terminate_rem(uint8_t role)
 {
-	struct pdu_data_llctrl_cis_terminate_ind remote_cis_terminate_ind = {
-		.cig_id = 0x01,
-		.cis_id = 0x02,
-		.error_code = 0x05,
-	};
+	struct pdu_data_llctrl_cis_terminate_ind remote_cis_terminate_ind;
 
 	/* Role */
 	test_set_role(&conn, role);
@@ -75,16 +70,16 @@ static void test_cis_terminate_rem(uint8_t role)
 	/* There should be no host notification */
 	ut_rx_q_is_empty();
 
-	zassert_equal(ctx_buffers_free(), CONFIG_BT_CTLR_LLCP_PROC_CTX_BUF_NUM,
+	zassert_equal(ctx_buffers_free(), test_ctx_buffers_cnt(),
 		      "Free CTX buffers %d", ctx_buffers_free());
 }
 
-void test_cis_terminate_mas_rem(void)
+void test_cis_terminate_cen_rem(void)
 {
 	test_cis_terminate_rem(BT_HCI_ROLE_CENTRAL);
 }
 
-void test_cis_terminate_sla_rem(void)
+void test_cis_terminate_per_rem(void)
 {
 	test_cis_terminate_rem(BT_HCI_ROLE_PERIPHERAL);
 }
@@ -110,12 +105,12 @@ void test_cis_terminate_loc(uint8_t role)
 
 	/* Mock CIS/ACL */
 	cis.lll.acl_handle = conn.lll.handle;
-	group.cig_id = 0x03;
-	cis.cis_id = 0x04;
+	group.cig_id = local_cis_terminate_ind.cig_id;
+	cis.cis_id = local_cis_terminate_ind.cis_id;
 	cis.group = &group;
 
-	/* Initiate an LE Ping Procedure */
-	err = ull_cp_cis_terminate(&conn, &cis, 0x06);
+	/* Initiate an CIS Terminate Procedure */
+	err = ull_cp_cis_terminate(&conn, &cis, local_cis_terminate_ind.error_code);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS, NULL);
 
 	/* Prepare */
@@ -148,16 +143,16 @@ void test_cis_terminate_loc(uint8_t role)
 	/* There should be no host notification */
 	ut_rx_q_is_empty();
 
-	zassert_equal(ctx_buffers_free(), CONFIG_BT_CTLR_LLCP_PROC_CTX_BUF_NUM,
+	zassert_equal(ctx_buffers_free(), test_ctx_buffers_cnt(),
 		      "Free CTX buffers %d", ctx_buffers_free());
 }
 
-void test_cis_terminate_mas_loc(void)
+void test_cis_terminate_cen_loc(void)
 {
 	test_cis_terminate_loc(BT_HCI_ROLE_CENTRAL);
 }
 
-void test_cis_terminate_sla_loc(void)
+void test_cis_terminate_per_loc(void)
 {
 	test_cis_terminate_loc(BT_HCI_ROLE_PERIPHERAL);
 }
@@ -166,10 +161,10 @@ void test_main(void)
 {
 	ztest_test_suite(
 		cis_term,
-		ztest_unit_test_setup_teardown(test_cis_terminate_mas_rem, setup, unit_test_noop),
-		ztest_unit_test_setup_teardown(test_cis_terminate_sla_rem, setup, unit_test_noop),
-		ztest_unit_test_setup_teardown(test_cis_terminate_mas_loc, setup, unit_test_noop),
-		ztest_unit_test_setup_teardown(test_cis_terminate_sla_loc, setup, unit_test_noop));
+		ztest_unit_test_setup_teardown(test_cis_terminate_cen_rem, setup, unit_test_noop),
+		ztest_unit_test_setup_teardown(test_cis_terminate_per_rem, setup, unit_test_noop),
+		ztest_unit_test_setup_teardown(test_cis_terminate_cen_loc, setup, unit_test_noop),
+		ztest_unit_test_setup_teardown(test_cis_terminate_per_loc, setup, unit_test_noop));
 
 	ztest_run_test_suite(cis_term);
 }

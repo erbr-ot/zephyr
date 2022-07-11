@@ -42,7 +42,7 @@
 #include "common/log.h"
 #include "hal/debug.h"
 
-static struct ll_conn_iso_group cig = { .started = 1 };
+static struct ll_conn_iso_group cig = { 0 };
 static struct ll_conn_iso_stream cis = { .established = 1};
 
 struct ll_conn_iso_stream *ll_conn_iso_stream_get_by_acl(struct ll_conn *conn, uint16_t *cis_iter)
@@ -77,4 +77,3 @@ void ull_conn_iso_cis_stop_by_id(uint8_t cig_id, uint8_t cis_id, uint8_t reason)
 {
 
 }
-
