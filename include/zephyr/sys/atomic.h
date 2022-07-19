@@ -249,6 +249,14 @@ static inline void atomic_set_bit_to(atomic_t *target, int bit, bool val)
  * @}
  */
 
+#if defined(__chess__)
+// ****** HACK - DO NOT UPSTREAM ******
+//
+// Temporary chess compiler bug workaround - explicitly convert to bool values when calling atomic_set_bit_to, the implicit conversion doesn't work correctly with high bit values
+// See more in JIRA: https://jira.kitenet.com/browse/CSFW-14986
+#define atomic_set_bit_to(target, bit, val) atomic_set_bit_to((target), (bit), !!(val))
+#endif
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif
