@@ -4405,13 +4405,8 @@ ZTEST(test_tx_framed, test_tx_framed_1_zero_sdu_1_frag_1_pdu_maxPDU)
 	ztest_expect_value(source_pdu_write_test, consume_len, PDU_ISO_SEG_HDR_SIZE);
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
-	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
-	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
-	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
-	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
-	ztest_expect_value(source_pdu_emit_test, handle,
-		bt_iso_handle(isoal_global.source_state[source_hdl].session.handle));
+	/* PDU should not be emitted */
+
 	ztest_returns_value(source_pdu_emit_test, ISOAL_STATUS_OK);
 
 	/* PDU release not expected (No Error) */
@@ -4419,6 +4414,17 @@ ZTEST(test_tx_framed, test_tx_framed_1_zero_sdu_1_frag_1_pdu_maxPDU)
 	err = isoal_tx_sdu_fragment(source_hdl, &tx_sdu_frag_buf.sdu_tx);
 
 	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Send Event Timeout ----------------------------------------------- */
+	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
+	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
+	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
+	ztest_expect_value(source_pdu_emit_test, handle,
+		bt_iso_handle(isoal_global.source_state[source_hdl].session.handle));
+
+	isoal_tx_event_prepare(source_hdl, event_number);
 }
 
 /**
@@ -4681,4 +4687,564 @@ ZTEST(test_tx_framed, test_tx_framed_1_sdu_1_frag_pdu_emit_err)
 	err = isoal_tx_sdu_fragment(source_hdl, &tx_sdu_frag_buf.sdu_tx);
 
 	zassert_equal(err, ISOAL_STATUS_ERR_PDU_EMIT, "err = 0x%02x", err);
+}
+
+/**
+ * Test Suite  :   TX framed SDU segmentation
+ *
+ * Tests segmentation of a single SDU contained in a single fragment
+ * into a single PDU where Max PDU is less than the PDU buffer size,
+ * where PDU emit fails
+ */
+ZTEST(test_tx_framed, test_tx_framed_2_sdu_1_frag_pdu_timeout)
+{
+	uint8_t testdata[40];
+	struct tx_pdu_meta_buffer tx_pdu_meta_buf;
+	struct tx_sdu_frag_buffer tx_sdu_frag_buf;
+	struct isoal_pdu_buffer pdu_buffer;
+	isoal_source_handle_t source_hdl;
+	struct pdu_iso_sdu_sh seg_hdr[2];
+	isoal_sdu_len_t sdu_total_size;
+	isoal_pdu_len_t pdu_write_size;
+	uint32_t stream_sync_delay;
+	uint64_t sdu_packet_number;
+	uint32_t group_sync_delay;
+	uint16_t iso_interval_int;
+	uint64_t payload_number;
+	uint32_t sdu_timestamp;
+	uint16_t testdata_indx;
+	uint16_t testdata_size;
+	uint16_t pdu_write_loc;
+	uint16_t sdu_read_loc;
+	uint64_t event_number;
+	uint32_t sdu_interval;
+	uint8_t sdu_fragments;
+	uint16_t pdu_hdr_loc;
+	uint32_t ref_point;
+	isoal_status_t err;
+	uint8_t max_octets;
+	uint8_t role;
+	uint8_t BN;
+	uint8_t FT;
+
+	/* Settings */
+	role = BT_CONN_ROLE_PERIPHERAL;
+	iso_interval_int = 800;
+	sdu_interval = 500000;
+	max_octets = TEST_TX_PDU_PAYLOAD_MAX+5;
+	BN = 1;
+	FT = 1;
+	stream_sync_delay = (iso_interval_int * CONN_INT_UNIT_US) - 200;
+	group_sync_delay = (iso_interval_int * CONN_INT_UNIT_US) - 50;
+
+	/* SDU 1 Frag 1 ------------------------------------------------------*/
+	isoal_test_init_tx_pdu_buffer(&tx_pdu_meta_buf);
+	isoal_test_init_tx_sdu_buffer(&tx_sdu_frag_buf);
+	init_test_data_buffer(testdata,40);
+	memset(seg_hdr, 0, sizeof(seg_hdr));
+	pdu_buffer.handle = (void *)&tx_pdu_meta_buf.node_tx;
+	pdu_buffer.pdu = (struct pdu_iso *)tx_pdu_meta_buf.node_tx.pdu;
+	pdu_buffer.size = TEST_TX_PDU_PAYLOAD_MAX;
+	sdu_packet_number = 0;
+	event_number = 2000;
+	sdu_timestamp = 9249;
+	ref_point = sdu_timestamp + (iso_interval_int * CONN_INT_UNIT_US) - 50;
+	sdu_total_size = TEST_TX_PDU_PAYLOAD_MAX -
+		(PDU_ISO_SEG_HDR_SIZE + PDU_ISO_SEG_TIMEOFFSET_SIZE);
+	testdata_indx = 0;
+	testdata_size = 10;
+	payload_number = event_number * BN;
+
+	source_hdl = basic_tx_test_setup(0xADAD,           /* Handle */
+					 role,             /* Role */
+					 true,             /* Framed */
+					 BN,               /* BN */
+					 FT,               /* FT */
+					 max_octets,       /* max_octets */
+					 sdu_interval,     /* SDU Interval */
+					 iso_interval_int, /* ISO Interval */
+					 stream_sync_delay,/* Stream Sync Delay */
+					 group_sync_delay);/* Group Sync Delay */
+
+	isoal_test_create_sdu_fagment(BT_ISO_SINGLE,
+				&testdata[testdata_indx], (testdata_size - testdata_indx),
+				sdu_total_size, sdu_packet_number,
+				sdu_timestamp, ref_point, event_number,
+				&tx_sdu_frag_buf.sdu_tx);
+
+	/* Test segmentation (Black Box) */
+	/* Valid PDUs */
+	/* PDU 1 */
+	seg_hdr[0].sc = 0;
+	seg_hdr[0].cmplt = 0;
+	seg_hdr[0].timeoffset = ref_point - sdu_timestamp;
+	seg_hdr[0].length = PDU_ISO_SEG_TIMEOFFSET_SIZE;
+	pdu_hdr_loc = 0;
+	pdu_write_loc = PDU_ISO_SEG_HDR_SIZE + PDU_ISO_SEG_TIMEOFFSET_SIZE;
+	sdu_read_loc = 0;
+	pdu_write_size = pdu_write_loc + testdata_size;
+	sdu_fragments = 1;
+
+	ztest_return_data(source_pdu_alloc_test, pdu_buffer, &pdu_buffer);
+	ztest_returns_value(source_pdu_alloc_test, ISOAL_STATUS_OK);
+
+	ztest_expect_data(source_pdu_write_test, pdu_buffer, &pdu_buffer);
+	ztest_expect_value(source_pdu_write_test, pdu_offset, pdu_hdr_loc);
+	ztest_expect_data(source_pdu_write_test, sdu_payload, &seg_hdr[0]);
+	ztest_expect_value(source_pdu_write_test, consume_len,
+				PDU_ISO_SEG_HDR_SIZE + PDU_ISO_SEG_TIMEOFFSET_SIZE);
+	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
+
+	ztest_expect_data(source_pdu_write_test, pdu_buffer, &pdu_buffer);
+	ztest_expect_value(source_pdu_write_test, pdu_offset, pdu_write_loc);
+	ztest_expect_data(source_pdu_write_test, sdu_payload, &testdata[sdu_read_loc]);
+	ztest_expect_value(source_pdu_write_test, consume_len, (pdu_write_size - pdu_write_loc));
+	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
+
+	seg_hdr[1] = seg_hdr[0];
+	seg_hdr[1].cmplt = 1;
+	seg_hdr[1].length += (pdu_write_size - pdu_write_loc);
+	ztest_expect_data(source_pdu_write_test, pdu_buffer, &pdu_buffer);
+	ztest_expect_value(source_pdu_write_test, pdu_offset, pdu_hdr_loc);
+	ztest_expect_data(source_pdu_write_test, sdu_payload, &seg_hdr[1]);
+	ztest_expect_value(source_pdu_write_test, consume_len, PDU_ISO_SEG_HDR_SIZE);
+	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
+
+	/* PDU should not be  emitted */
+
+	/* PDU release not expected (No Error) */
+
+	err = isoal_tx_sdu_fragment(source_hdl, &tx_sdu_frag_buf.sdu_tx);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Test PDU release */
+	/* Simulate interleaving by setting context active flag */
+	isoal_global.source_state[source_hdl].context_active = true;
+	isoal_tx_event_prepare(source_hdl, event_number);
+	isoal_global.source_state[source_hdl].context_active = false;
+
+	/* SDU 2 Frag 1 ------------------------------------------------------*/
+	isoal_test_init_tx_sdu_buffer(&tx_sdu_frag_buf);
+	memset(seg_hdr, 0, sizeof(seg_hdr));
+	sdu_packet_number++;
+	sdu_timestamp = 9249 + sdu_interval;
+	sdu_total_size = 10;
+	testdata_indx = testdata_size;
+	testdata_size += 10;
+
+	isoal_test_create_sdu_fagment(BT_ISO_SINGLE,
+				&testdata[testdata_indx], (testdata_size - testdata_indx),
+				sdu_total_size, sdu_packet_number,
+				sdu_timestamp, ref_point, event_number,
+				&tx_sdu_frag_buf.sdu_tx);
+
+	/* Test segmentation (Black Box) */
+	/* Valid PDUs */
+	/* PDU 1 - Seg 2 */
+	seg_hdr[0].sc = 0;
+	seg_hdr[0].cmplt = 0;
+	seg_hdr[0].timeoffset = ref_point - sdu_timestamp;
+	seg_hdr[0].length = PDU_ISO_SEG_TIMEOFFSET_SIZE;
+	pdu_hdr_loc = 10 + PDU_ISO_SEG_HDR_SIZE + PDU_ISO_SEG_TIMEOFFSET_SIZE;
+	pdu_write_loc = pdu_hdr_loc + PDU_ISO_SEG_HDR_SIZE + PDU_ISO_SEG_TIMEOFFSET_SIZE;
+	sdu_read_loc = testdata_indx;
+	pdu_write_size = pdu_write_loc + 10;
+	sdu_fragments++;
+
+	/* PDU should not be allocated */
+
+	ztest_expect_data(source_pdu_write_test, pdu_buffer, &pdu_buffer);
+	ztest_expect_value(source_pdu_write_test, pdu_offset, pdu_hdr_loc);
+	ztest_expect_data(source_pdu_write_test, sdu_payload, &seg_hdr[0]);
+	ztest_expect_value(source_pdu_write_test, consume_len,
+				PDU_ISO_SEG_HDR_SIZE + PDU_ISO_SEG_TIMEOFFSET_SIZE);
+	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
+
+	ztest_expect_data(source_pdu_write_test, pdu_buffer, &pdu_buffer);
+	ztest_expect_value(source_pdu_write_test, pdu_offset, pdu_write_loc);
+	ztest_expect_data(source_pdu_write_test, sdu_payload, &testdata[sdu_read_loc]);
+	ztest_expect_value(source_pdu_write_test, consume_len, (pdu_write_size - pdu_write_loc));
+	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
+
+	seg_hdr[1] = seg_hdr[0];
+	seg_hdr[1].cmplt = 1;
+	seg_hdr[1].length += (pdu_write_size - pdu_write_loc);
+	ztest_expect_data(source_pdu_write_test, pdu_buffer, &pdu_buffer);
+	ztest_expect_value(source_pdu_write_test, pdu_offset, pdu_hdr_loc);
+	ztest_expect_data(source_pdu_write_test, sdu_payload, &seg_hdr[1]);
+	ztest_expect_value(source_pdu_write_test, consume_len, PDU_ISO_SEG_HDR_SIZE);
+	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
+
+	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
+	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
+	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
+	ztest_expect_value(source_pdu_emit_test, handle,
+		bt_iso_handle(isoal_global.source_state[source_hdl].session.handle));
+	ztest_returns_value(source_pdu_emit_test, ISOAL_STATUS_OK);
+
+	/* PDU release not expected (No Error) */
+
+	err = isoal_tx_sdu_fragment(source_hdl, &tx_sdu_frag_buf.sdu_tx);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* SDU 3 Frag 1 ------------------------------------------------------*/
+	isoal_test_init_tx_pdu_buffer(&tx_pdu_meta_buf);
+	isoal_test_init_tx_sdu_buffer(&tx_sdu_frag_buf);
+	memset(seg_hdr, 0, sizeof(seg_hdr));
+	event_number++;
+	sdu_packet_number++;
+	sdu_timestamp = sdu_timestamp + sdu_interval;
+	ref_point = ref_point + (iso_interval_int * CONN_INT_UNIT_US);
+	sdu_total_size = 20;
+	testdata_indx = testdata_size;
+	testdata_size += 20;
+
+	isoal_test_create_sdu_fagment(BT_ISO_SINGLE,
+				&testdata[testdata_indx], (testdata_size - testdata_indx),
+				sdu_total_size, sdu_packet_number,
+				sdu_timestamp, ref_point, event_number,
+				&tx_sdu_frag_buf.sdu_tx);
+
+	/* Test segmentation (Black Box) */
+	/* Valid PDUs */
+	/* PDU 1 - Seg 2 */
+	seg_hdr[0].sc = 0;
+	seg_hdr[0].cmplt = 0;
+	seg_hdr[0].timeoffset = ref_point - sdu_timestamp;
+	seg_hdr[0].length = PDU_ISO_SEG_TIMEOFFSET_SIZE;
+	pdu_hdr_loc = 0;
+	pdu_write_loc = PDU_ISO_SEG_HDR_SIZE + PDU_ISO_SEG_TIMEOFFSET_SIZE;
+	sdu_read_loc = testdata_indx;
+	pdu_write_size = pdu_write_loc + sdu_total_size;
+	sdu_fragments = 1;
+	payload_number++;
+
+	ztest_return_data(source_pdu_alloc_test, pdu_buffer, &pdu_buffer);
+	ztest_returns_value(source_pdu_alloc_test, ISOAL_STATUS_OK);
+
+	ztest_expect_data(source_pdu_write_test, pdu_buffer, &pdu_buffer);
+	ztest_expect_value(source_pdu_write_test, pdu_offset, pdu_hdr_loc);
+	ztest_expect_data(source_pdu_write_test, sdu_payload, &seg_hdr[0]);
+	ztest_expect_value(source_pdu_write_test, consume_len,
+				PDU_ISO_SEG_HDR_SIZE + PDU_ISO_SEG_TIMEOFFSET_SIZE);
+	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
+
+	ztest_expect_data(source_pdu_write_test, pdu_buffer, &pdu_buffer);
+	ztest_expect_value(source_pdu_write_test, pdu_offset, pdu_write_loc);
+	ztest_expect_data(source_pdu_write_test, sdu_payload, &testdata[sdu_read_loc]);
+	ztest_expect_value(source_pdu_write_test, consume_len, (pdu_write_size - pdu_write_loc));
+	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
+
+	seg_hdr[1] = seg_hdr[0];
+	seg_hdr[1].cmplt = 1;
+	seg_hdr[1].length += (pdu_write_size - pdu_write_loc);
+	ztest_expect_data(source_pdu_write_test, pdu_buffer, &pdu_buffer);
+	ztest_expect_value(source_pdu_write_test, pdu_offset, pdu_hdr_loc);
+	ztest_expect_data(source_pdu_write_test, sdu_payload, &seg_hdr[1]);
+	ztest_expect_value(source_pdu_write_test, consume_len, PDU_ISO_SEG_HDR_SIZE);
+	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
+
+	/* PDU emit not expected */
+
+	/* PDU release not expected (No Error) */
+
+	err = isoal_tx_sdu_fragment(source_hdl, &tx_sdu_frag_buf.sdu_tx);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Test PDU release */
+
+	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
+	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
+	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
+	ztest_expect_value(source_pdu_emit_test, handle,
+		bt_iso_handle(isoal_global.source_state[source_hdl].session.handle));
+	ztest_returns_value(source_pdu_emit_test, ISOAL_STATUS_OK);
+
+	isoal_tx_event_prepare(source_hdl, event_number);
+}
+
+/**
+ * Test Suite  :   TX framed EBQ test IAL-CIS-FRA-PER-BV07C
+ *
+ * Tests packing multiple SDU segments into the same PDU and release on event
+ * timeout.
+ */
+ZTEST(test_tx_framed_ebq, test_tx_framed_cis_fra_per_bv07c)
+{
+	uint8_t testdata[40];
+	struct tx_pdu_meta_buffer tx_pdu_meta_buf;
+	struct tx_sdu_frag_buffer tx_sdu_frag_buf;
+	struct isoal_pdu_buffer pdu_buffer;
+	isoal_source_handle_t source_hdl;
+	struct pdu_iso_sdu_sh seg_hdr[2];
+	isoal_sdu_len_t sdu_total_size;
+	isoal_pdu_len_t pdu_write_size;
+	uint32_t stream_sync_delay;
+	uint64_t sdu_packet_number;
+	uint32_t group_sync_delay;
+	uint16_t iso_interval_int;
+	uint64_t payload_number;
+	uint32_t sdu_timestamp;
+	uint16_t testdata_indx;
+	uint16_t testdata_size;
+	uint16_t pdu_write_loc;
+	uint16_t sdu_read_loc;
+	uint64_t event_number;
+	uint32_t sdu_interval;
+	uint8_t sdu_fragments;
+	uint16_t pdu_hdr_loc;
+	uint32_t ref_point;
+	isoal_status_t err;
+	uint8_t max_octets;
+	uint8_t role;
+	uint8_t BN;
+	uint8_t FT;
+
+	/* Settings */
+	role = BT_CONN_ROLE_PERIPHERAL;
+	iso_interval_int = 800;
+	sdu_interval = 500000;
+	max_octets = TEST_TX_PDU_PAYLOAD_MAX+5;
+	BN = 1;
+	FT = 1;
+	stream_sync_delay = (iso_interval_int * CONN_INT_UNIT_US) - 200;
+	group_sync_delay = (iso_interval_int * CONN_INT_UNIT_US) - 50;
+
+	/* SDU 1 Frag 1 ------------------------------------------------------*/
+	isoal_test_init_tx_pdu_buffer(&tx_pdu_meta_buf);
+	isoal_test_init_tx_sdu_buffer(&tx_sdu_frag_buf);
+	init_test_data_buffer(testdata,40);
+	memset(seg_hdr, 0, sizeof(seg_hdr));
+	pdu_buffer.handle = (void *)&tx_pdu_meta_buf.node_tx;
+	pdu_buffer.pdu = (struct pdu_iso *)tx_pdu_meta_buf.node_tx.pdu;
+	pdu_buffer.size = TEST_TX_PDU_PAYLOAD_MAX;
+	sdu_packet_number = 0;
+	event_number = 0;
+	sdu_timestamp = 9249;
+	ref_point = sdu_timestamp + (iso_interval_int * CONN_INT_UNIT_US) - 50;
+	sdu_total_size = 10;
+	testdata_indx = 0;
+	testdata_size = 10;
+	payload_number = event_number * BN;
+
+	source_hdl = basic_tx_test_setup(0xADAD,           /* Handle */
+					 role,             /* Role */
+					 true,             /* Framed */
+					 BN,               /* BN */
+					 FT,               /* FT */
+					 max_octets,       /* max_octets */
+					 sdu_interval,     /* SDU Interval */
+					 iso_interval_int, /* ISO Interval */
+					 stream_sync_delay,/* Stream Sync Delay */
+					 group_sync_delay);/* Group Sync Delay */
+
+	isoal_test_create_sdu_fagment(BT_ISO_SINGLE,
+				&testdata[testdata_indx], (testdata_size - testdata_indx),
+				sdu_total_size, sdu_packet_number,
+				sdu_timestamp, ref_point, event_number,
+				&tx_sdu_frag_buf.sdu_tx);
+
+	/* Test segmentation (Black Box) */
+	/* Valid PDUs */
+	/* PDU 1 */
+	seg_hdr[0].sc = 0;
+	seg_hdr[0].cmplt = 0;
+	seg_hdr[0].timeoffset = ref_point - sdu_timestamp;
+	seg_hdr[0].length = PDU_ISO_SEG_TIMEOFFSET_SIZE;
+	pdu_hdr_loc = 0;
+	pdu_write_loc = PDU_ISO_SEG_HDR_SIZE + PDU_ISO_SEG_TIMEOFFSET_SIZE;
+	sdu_read_loc = 0;
+	pdu_write_size = pdu_write_loc + testdata_size;
+	sdu_fragments = 1;
+
+	ztest_return_data(source_pdu_alloc_test, pdu_buffer, &pdu_buffer);
+	ztest_returns_value(source_pdu_alloc_test, ISOAL_STATUS_OK);
+
+	ztest_expect_data(source_pdu_write_test, pdu_buffer, &pdu_buffer);
+	ztest_expect_value(source_pdu_write_test, pdu_offset, pdu_hdr_loc);
+	ztest_expect_data(source_pdu_write_test, sdu_payload, &seg_hdr[0]);
+	ztest_expect_value(source_pdu_write_test, consume_len,
+				PDU_ISO_SEG_HDR_SIZE + PDU_ISO_SEG_TIMEOFFSET_SIZE);
+	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
+
+	ztest_expect_data(source_pdu_write_test, pdu_buffer, &pdu_buffer);
+	ztest_expect_value(source_pdu_write_test, pdu_offset, pdu_write_loc);
+	ztest_expect_data(source_pdu_write_test, sdu_payload, &testdata[sdu_read_loc]);
+	ztest_expect_value(source_pdu_write_test, consume_len, (pdu_write_size - pdu_write_loc));
+	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
+
+	seg_hdr[1] = seg_hdr[0];
+	seg_hdr[1].cmplt = 1;
+	seg_hdr[1].length += (pdu_write_size - pdu_write_loc);
+	ztest_expect_data(source_pdu_write_test, pdu_buffer, &pdu_buffer);
+	ztest_expect_value(source_pdu_write_test, pdu_offset, pdu_hdr_loc);
+	ztest_expect_data(source_pdu_write_test, sdu_payload, &seg_hdr[1]);
+	ztest_expect_value(source_pdu_write_test, consume_len, PDU_ISO_SEG_HDR_SIZE);
+	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
+
+	/* PDU should not be  emitted */
+
+	/* PDU release not expected (No Error) */
+
+	err = isoal_tx_sdu_fragment(source_hdl, &tx_sdu_frag_buf.sdu_tx);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* SDU 2 Frag 1 ------------------------------------------------------*/
+	isoal_test_init_tx_sdu_buffer(&tx_sdu_frag_buf);
+	memset(seg_hdr, 0, sizeof(seg_hdr));
+	sdu_packet_number++;
+	sdu_timestamp = sdu_timestamp + sdu_interval;
+	sdu_total_size = 10;
+	testdata_indx = testdata_size;
+	testdata_size += 10;
+
+	isoal_test_create_sdu_fagment(BT_ISO_SINGLE,
+				&testdata[testdata_indx], (testdata_size - testdata_indx),
+				sdu_total_size, sdu_packet_number,
+				sdu_timestamp, ref_point, event_number,
+				&tx_sdu_frag_buf.sdu_tx);
+
+	/* Test segmentation (Black Box) */
+	/* Valid PDUs */
+	/* PDU 1 - Seg 2 */
+	seg_hdr[0].sc = 0;
+	seg_hdr[0].cmplt = 0;
+	seg_hdr[0].timeoffset = ref_point - sdu_timestamp;
+	seg_hdr[0].length = PDU_ISO_SEG_TIMEOFFSET_SIZE;
+	pdu_hdr_loc = 10 + PDU_ISO_SEG_HDR_SIZE + PDU_ISO_SEG_TIMEOFFSET_SIZE;
+	pdu_write_loc = pdu_hdr_loc + PDU_ISO_SEG_HDR_SIZE + PDU_ISO_SEG_TIMEOFFSET_SIZE;
+	sdu_read_loc = testdata_indx;
+	pdu_write_size = pdu_write_loc + 10;
+	sdu_fragments++;
+
+	/* PDU should not be allocated */
+
+	ztest_expect_data(source_pdu_write_test, pdu_buffer, &pdu_buffer);
+	ztest_expect_value(source_pdu_write_test, pdu_offset, pdu_hdr_loc);
+	ztest_expect_data(source_pdu_write_test, sdu_payload, &seg_hdr[0]);
+	ztest_expect_value(source_pdu_write_test, consume_len,
+				PDU_ISO_SEG_HDR_SIZE + PDU_ISO_SEG_TIMEOFFSET_SIZE);
+	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
+
+	ztest_expect_data(source_pdu_write_test, pdu_buffer, &pdu_buffer);
+	ztest_expect_value(source_pdu_write_test, pdu_offset, pdu_write_loc);
+	ztest_expect_data(source_pdu_write_test, sdu_payload, &testdata[sdu_read_loc]);
+	ztest_expect_value(source_pdu_write_test, consume_len, (pdu_write_size - pdu_write_loc));
+	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
+
+	seg_hdr[1] = seg_hdr[0];
+	seg_hdr[1].cmplt = 1;
+	seg_hdr[1].length += (pdu_write_size - pdu_write_loc);
+	ztest_expect_data(source_pdu_write_test, pdu_buffer, &pdu_buffer);
+	ztest_expect_value(source_pdu_write_test, pdu_offset, pdu_hdr_loc);
+	ztest_expect_data(source_pdu_write_test, sdu_payload, &seg_hdr[1]);
+	ztest_expect_value(source_pdu_write_test, consume_len, PDU_ISO_SEG_HDR_SIZE);
+	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
+
+	/* PDU emit not expected */
+
+	/* PDU release not expected (No Error) */
+
+	err = isoal_tx_sdu_fragment(source_hdl, &tx_sdu_frag_buf.sdu_tx);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Test PDU release */
+
+	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
+	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
+	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
+	ztest_expect_value(source_pdu_emit_test, handle,
+		bt_iso_handle(isoal_global.source_state[source_hdl].session.handle));
+	ztest_returns_value(source_pdu_emit_test, ISOAL_STATUS_OK);
+
+	isoal_tx_event_prepare(source_hdl, event_number);
+
+	/* SDU 3 Frag 1 ------------------------------------------------------*/
+	isoal_test_init_tx_pdu_buffer(&tx_pdu_meta_buf);
+	isoal_test_init_tx_sdu_buffer(&tx_sdu_frag_buf);
+	memset(seg_hdr, 0, sizeof(seg_hdr));
+	event_number++;
+	sdu_packet_number++;
+	sdu_timestamp = sdu_timestamp + sdu_interval;
+	ref_point = ref_point + (iso_interval_int * CONN_INT_UNIT_US);
+	sdu_total_size = 20;
+	testdata_indx = testdata_size;
+	testdata_size += 20;
+
+	isoal_test_create_sdu_fagment(BT_ISO_SINGLE,
+				&testdata[testdata_indx], (testdata_size - testdata_indx),
+				sdu_total_size, sdu_packet_number,
+				sdu_timestamp, ref_point, event_number,
+				&tx_sdu_frag_buf.sdu_tx);
+
+	/* Test segmentation (Black Box) */
+	/* Valid PDUs */
+	/* PDU 1 - Seg 2 */
+	seg_hdr[0].sc = 0;
+	seg_hdr[0].cmplt = 0;
+	seg_hdr[0].timeoffset = ref_point - sdu_timestamp;
+	seg_hdr[0].length = PDU_ISO_SEG_TIMEOFFSET_SIZE;
+	pdu_hdr_loc = 0;
+	pdu_write_loc = PDU_ISO_SEG_HDR_SIZE + PDU_ISO_SEG_TIMEOFFSET_SIZE;
+	sdu_read_loc = testdata_indx;
+	pdu_write_size = pdu_write_loc + sdu_total_size;
+	sdu_fragments = 1;
+	payload_number++;
+
+	ztest_return_data(source_pdu_alloc_test, pdu_buffer, &pdu_buffer);
+	ztest_returns_value(source_pdu_alloc_test, ISOAL_STATUS_OK);
+
+	ztest_expect_data(source_pdu_write_test, pdu_buffer, &pdu_buffer);
+	ztest_expect_value(source_pdu_write_test, pdu_offset, pdu_hdr_loc);
+	ztest_expect_data(source_pdu_write_test, sdu_payload, &seg_hdr[0]);
+	ztest_expect_value(source_pdu_write_test, consume_len,
+				PDU_ISO_SEG_HDR_SIZE + PDU_ISO_SEG_TIMEOFFSET_SIZE);
+	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
+
+	ztest_expect_data(source_pdu_write_test, pdu_buffer, &pdu_buffer);
+	ztest_expect_value(source_pdu_write_test, pdu_offset, pdu_write_loc);
+	ztest_expect_data(source_pdu_write_test, sdu_payload, &testdata[sdu_read_loc]);
+	ztest_expect_value(source_pdu_write_test, consume_len, (pdu_write_size - pdu_write_loc));
+	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
+
+	seg_hdr[1] = seg_hdr[0];
+	seg_hdr[1].cmplt = 1;
+	seg_hdr[1].length += (pdu_write_size - pdu_write_loc);
+	ztest_expect_data(source_pdu_write_test, pdu_buffer, &pdu_buffer);
+	ztest_expect_value(source_pdu_write_test, pdu_offset, pdu_hdr_loc);
+	ztest_expect_data(source_pdu_write_test, sdu_payload, &seg_hdr[1]);
+	ztest_expect_value(source_pdu_write_test, consume_len, PDU_ISO_SEG_HDR_SIZE);
+	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
+
+	/* PDU emit not expected */
+
+	/* PDU release not expected (No Error) */
+
+	err = isoal_tx_sdu_fragment(source_hdl, &tx_sdu_frag_buf.sdu_tx);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Test PDU release */
+
+	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
+	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
+	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
+	ztest_expect_value(source_pdu_emit_test, handle,
+		bt_iso_handle(isoal_global.source_state[source_hdl].session.handle));
+	ztest_returns_value(source_pdu_emit_test, ISOAL_STATUS_OK);
+
+	isoal_tx_event_prepare(source_hdl, event_number);
 }
