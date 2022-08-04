@@ -198,7 +198,7 @@ static void isoal_test_create_sdu_fagment(uint8_t sdu_state,
 	sdu_tx->packet_sn = packet_number;
 	sdu_tx->iso_sdu_length = sdu_total_length;
 	sdu_tx->time_stamp = timestamp;
-	sdu_tx->cig_ref_point = ref_point;
+	sdu_tx->grp_ref_point = ref_point;
 	sdu_tx->target_event = target_event;
 	memcpy(sdu_tx->dbuf, dataptr, length);
 	sdu_tx->size = length;

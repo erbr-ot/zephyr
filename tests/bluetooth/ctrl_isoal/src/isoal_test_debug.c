@@ -176,7 +176,7 @@ void isoal_test_debug_print_tx_sdu(struct isoal_sdu_tx *tx_sdu)
 		PRINT("%02x ", buf[i]);
 	}
 	PRINT("\n");
-	PRINT("    Ref. <%10u>\n", tx_sdu->cig_ref_point);
+	PRINT("    Ref. <%10u>\n", tx_sdu->grp_ref_point);
 	PRINT("   Event <%10u>\n", (uint32_t)tx_sdu->target_event);
 	PRINT("\n");
 }
