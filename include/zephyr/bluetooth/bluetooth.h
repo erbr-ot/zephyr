@@ -664,6 +664,13 @@ enum {
 	 * @note Requires @ref BT_LE_ADV_OPT_EXT_ADV
 	 */
 	BT_LE_PER_ADV_OPT_USE_TX_POWER = BIT(1),
+
+	/**
+	 * @brief Advertise with included AdvDataInfo (ADI).
+	 *
+	 * @note Requires @ref BT_LE_ADV_OPT_EXT_ADV
+	 */
+	BT_LE_PER_ADV_OPT_INCLUDE_ADI = BIT(2),
 };
 
 struct bt_le_per_adv_param {
@@ -2048,6 +2055,9 @@ int bt_le_set_rpa_timeout(uint16_t new_rpa_timeout);
  * Response (EIR), Advertising Data (AD), and OOB data blocks. The most
  * common scenario is to call this helper on the advertising data
  * received in the callback that was given to bt_le_scan_start().
+ *
+ * @warning This helper function will consume `ad` when parsing. The user should
+ *          make a copy if the original data is to be used afterwards
  *
  * @param ad        Advertising data as given to the bt_le_scan_cb_t callback.
  * @param func      Callback function which will be called for each element

@@ -39,11 +39,11 @@
 LOG_MODULE_REGISTER(uart_stm32, CONFIG_UART_LOG_LEVEL);
 
 /* This symbol takes the value 1 if one of the device instances */
-/* is configured in dts with an optional clock */
-#if STM32_DT_INST_DEV_OPT_CLOCK_SUPPORT
-#define STM32_UART_OPT_CLOCK_SUPPORT 1
+/* is configured in dts with a domain clock */
+#if STM32_DT_INST_DEV_DOMAIN_CLOCK_SUPPORT
+#define STM32_UART_DOMAIN_CLOCK_SUPPORT 1
 #else
-#define STM32_UART_OPT_CLOCK_SUPPORT 0
+#define STM32_UART_DOMAIN_CLOCK_SUPPORT 0
 #endif
 
 #define HAS_LPUART_1 (DT_NODE_HAS_COMPAT_STATUS(DT_NODELABEL(lpuart1), \
@@ -107,7 +107,7 @@ static inline void uart_stm32_set_baudrate(const struct device *dev, uint32_t ba
 	uint32_t clock_rate;
 
 	/* Get clock rate */
-	if (IS_ENABLED(STM32_UART_OPT_CLOCK_SUPPORT) && (config->pclk_len > 1)) {
+	if (IS_ENABLED(STM32_UART_DOMAIN_CLOCK_SUPPORT) && (config->pclk_len > 1)) {
 		if (clock_control_get_rate(data->clock,
 					   (clock_control_subsys_t)&config->pclken[1],
 					   &clock_rate) < 0) {
@@ -537,7 +537,7 @@ static void uart_stm32_poll_out(const struct device *dev,
 #ifdef CONFIG_PM
 	struct uart_stm32_data *data = dev->data;
 #endif
-	int key;
+	unsigned int key;
 
 	/* Wait for TXE flag to be raised
 	 * When TXE flag is raised, we lock interrupts to prevent interrupts (notably that of usart)
@@ -649,7 +649,7 @@ static int uart_stm32_fifo_fill(const struct device *dev,
 {
 	const struct uart_stm32_config *config = dev->config;
 	uint8_t num_tx = 0U;
-	int key;
+	unsigned int key;
 
 	if (!LL_USART_IsActiveFlag_TXE(config->usart)) {
 		return num_tx;
@@ -702,7 +702,7 @@ static void uart_stm32_irq_tx_enable(const struct device *dev)
 	const struct uart_stm32_config *config = dev->config;
 #ifdef CONFIG_PM
 	struct uart_stm32_data *data = dev->data;
-	int key;
+	unsigned int key;
 #endif
 
 #ifdef CONFIG_PM
@@ -723,7 +723,7 @@ static void uart_stm32_irq_tx_disable(const struct device *dev)
 	const struct uart_stm32_config *config = dev->config;
 #ifdef CONFIG_PM
 	struct uart_stm32_data *data = dev->data;
-	int key;
+	unsigned int key;
 
 	key = irq_lock();
 #endif
@@ -1570,12 +1570,12 @@ static int uart_stm32_init(const struct device *dev)
 		return err;
 	}
 
-	if (IS_ENABLED(STM32_UART_OPT_CLOCK_SUPPORT) && (config->pclk_len > 1)) {
+	if (IS_ENABLED(STM32_UART_DOMAIN_CLOCK_SUPPORT) && (config->pclk_len > 1)) {
 		err = clock_control_configure(DEVICE_DT_GET(STM32_CLOCK_CONTROL_NODE),
 					      (clock_control_subsys_t) &config->pclken[1],
 					      NULL);
 		if (err != 0) {
-			LOG_ERR("Could not select UART source clock");
+			LOG_ERR("Could not select UART domain clock");
 			return err;
 		}
 	}

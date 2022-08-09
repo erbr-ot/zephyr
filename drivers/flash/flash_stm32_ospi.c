@@ -1052,6 +1052,7 @@ static void flash_stm32_ospi_isr(const struct device *dev)
 	HAL_OSPI_IRQHandler(&dev_data->hospi);
 }
 
+#if !defined(CONFIG_SOC_SERIES_STM32H7X)
 /* weak function required for HAL compilation */
 __weak HAL_StatusTypeDef HAL_DMA_Abort_IT(DMA_HandleTypeDef *hdma)
 {
@@ -1063,7 +1064,7 @@ __weak HAL_StatusTypeDef HAL_DMA_Abort(DMA_HandleTypeDef *hdma)
 {
 	return HAL_OK;
 }
-
+#endif /* !CONFIG_SOC_SERIES_STM32H7X */
 /*
  * Transfer Error callback.
  */
@@ -1580,7 +1581,7 @@ static int flash_stm32_ospi_init(const struct device *dev)
 		if (clock_control_configure(DEVICE_DT_GET(STM32_CLOCK_CONTROL_NODE),
 					(clock_control_subsys_t) &dev_cfg->pclken[1],
 					NULL) != 0) {
-			LOG_ERR("Could not select OSPI source clock pclk[1]");
+			LOG_ERR("Could not select OSPI domain clock pclk[1]");
 			return -EIO;
 		}
 		if (clock_control_get_rate(DEVICE_DT_GET(STM32_CLOCK_CONTROL_NODE),

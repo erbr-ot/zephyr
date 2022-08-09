@@ -1891,10 +1891,37 @@
  */
 
 /**
+ * @brief Invokes "fn" for every node in the tree.
+ *
+ * The macro "fn" must take one parameter, which will be a node
+ * identifier. The macro is expanded once for each node in the tree.
+ * The order that nodes are visited in is not specified.
+ *
+ * @param fn macro to invoke
+ */
+#define DT_FOREACH_NODE(fn) DT_FOREACH_HELPER(fn)
+
+/**
+ * @brief Invokes "fn" for every status "okay" node in the tree.
+ *
+ * The macro "fn" must take one parameter, which will be a node
+ * identifier. The macro is expanded once for each node in the tree
+ * with status "okay" (as usual, a missing status property is treated
+ * as status "okay"). The order that nodes are visited in is not
+ * specified.
+ *
+ * @param fn macro to invoke
+ */
+#define DT_FOREACH_STATUS_OKAY_NODE(fn) DT_FOREACH_OKAY_HELPER(fn)
+
+/**
  * @brief Invokes "fn" for each child of "node_id"
  *
  * The macro "fn" must take one parameter, which will be the node
  * identifier of a child node of "node_id".
+ *
+ * The children will be iterated over in the same order as they
+ * appear in the final devicetree.
  *
  * Example devicetree fragment:
  *
@@ -1933,6 +1960,9 @@
  * The macro "fn" takes multiple arguments. The first should be the node
  * identifier for the child node. The remaining are passed-in by the caller.
  *
+ * The children will be iterated over in the same order as they
+ * appear in the final devicetree.
+ *
  * @param node_id node identifier
  * @param fn macro to invoke
  * @param ... variable number of arguments to pass to fn
@@ -1951,6 +1981,9 @@
  * As usual, both a missing status and an "ok" status are
  * treated as "okay".
  *
+ * The children will be iterated over in the same order as they
+ * appear in the final devicetree.
+ *
  * @param node_id node identifier
  * @param fn macro to invoke
  */
@@ -1966,6 +1999,9 @@
  *
  * As usual, both a missing status and an "ok" status are
  * treated as "okay".
+ *
+ * The children will be iterated over in the same order as they
+ * appear in the final devicetree.
  *
  * @param node_id node identifier
  * @param fn macro to invoke
@@ -2350,11 +2386,14 @@
 #define DT_BUS(node_id) DT_CAT(node_id, _BUS)
 
 /**
+ * @deprecated If used to obtain a device instance with device_get_binding,
+ * consider using @c DEVICE_DT_GET(DT_BUS(node)).
+ *
  * @brief Node's bus controller's label property
  * @param node_id node identifier
  * @return the label property of the node's bus controller DT_BUS(node)
  */
-#define DT_BUS_LABEL(node_id) DT_PROP(DT_BUS(node_id), label)
+#define DT_BUS_LABEL(node_id) DT_PROP(DT_BUS(node_id), label) __DEPRECATED_MACRO
 
 /**
  * @brief Is a node on a bus of a given type?
@@ -2406,6 +2445,9 @@
  * The macro "fn" should take one argument, which is the node
  * identifier for the child node.
  *
+ * The children will be iterated over in the same order as they
+ * appear in the final devicetree.
+ *
  * @param inst instance number
  * @param fn macro to invoke on each child node identifier
  *
@@ -2419,6 +2461,9 @@
  *
  * The macro "fn" takes multiple arguments. The first should be the node
  * identifier for the child node. The remaining are passed-in by the caller.
+ *
+ * The children will be iterated over in the same order as they
+ * appear in the final devicetree.
  *
  * @param inst instance number
  * @param fn macro to invoke on each child node identifier
@@ -2764,11 +2809,14 @@
 #define DT_INST_BUS(inst) DT_BUS(DT_DRV_INST(inst))
 
 /**
+ * @deprecated If used to obtain a device instance with device_get_binding,
+ * consider using @c DEVICE_DT_GET(DT_INST_BUS(inst)).
+ *
  * @brief Get a DT_DRV_COMPAT's bus node's label property
  * @param inst instance number
  * @return the label property of the instance's bus controller
  */
-#define DT_INST_BUS_LABEL(inst) DT_BUS_LABEL(DT_DRV_INST(inst))
+#define DT_INST_BUS_LABEL(inst) DT_BUS_LABEL(DT_DRV_INST(inst)) __DEPRECATED_MACRO
 
 /**
  * @brief Test if a DT_DRV_COMPAT's bus type is a given type

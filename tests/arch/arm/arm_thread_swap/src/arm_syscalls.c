@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <ztest.h>
+#include <zephyr/ztest.h>
 #include <zephyr/arch/cpu.h>
 #include <zephyr/arch/arm/aarch32/cortex_m/cmsis.h>
 #include <zephyr/kernel_structs.h>
@@ -114,6 +114,7 @@ void arm_isr_handler(const void *args)
 		zassert_true(__get_MSPLIM() == (uint32_t)z_interrupt_stacks,
 		"MSPLIM not guarding the interrupt stack\n");
 #endif
+		NVIC_DisableIRQ((uint32_t)args);
 	}
 }
 
@@ -212,7 +213,7 @@ ZTEST(arm_thread_swap, test_arm_syscalls)
 
 	arch_irq_connect_dynamic(i, 0 /* highest priority */,
 		arm_isr_handler,
-		NULL,
+		(uint32_t *)i,
 		0);
 
 	NVIC_ClearPendingIRQ(i);

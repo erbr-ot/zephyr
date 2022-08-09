@@ -37,6 +37,8 @@ static struct bt_audio_unicast_group *default_unicast_group;
 static struct bt_codec *rcodecs[2][CONFIG_BT_AUDIO_UNICAST_CLIENT_PAC_COUNT];
 static struct bt_audio_ep *snks[CONFIG_BT_AUDIO_UNICAST_CLIENT_ASE_SNK_COUNT];
 static struct bt_audio_ep *srcs[CONFIG_BT_AUDIO_UNICAST_CLIENT_ASE_SNK_COUNT];
+
+static uint8_t stream_dir(const struct bt_audio_stream *stream);
 #endif /* CONFIG_BT_AUDIO_UNICAST_CLIENT */
 #endif /* CONFIG_BT_AUDIO_UNICAST */
 
@@ -588,9 +590,29 @@ static void discover_all(struct bt_conn *conn, struct bt_codec *codec,
 	}
 }
 
+static void unicast_client_location_cb(struct bt_conn *conn,
+				      enum bt_audio_dir dir,
+				      enum bt_audio_location loc)
+{
+	shell_print(ctx_shell, "dir %u loc %X\n", dir, loc);
+}
+
+static void available_contexts_cb(struct bt_conn *conn,
+				  enum bt_audio_context snk_ctx,
+				  enum bt_audio_context src_ctx)
+{
+	shell_print(ctx_shell, "snk ctx %u src ctx %u\n", snk_ctx, src_ctx);
+}
+
+const struct bt_audio_unicast_client_cb unicast_client_cbs = {
+	.location = unicast_client_location_cb,
+	.available_contexts = available_contexts_cb,
+};
+
 static int cmd_discover(const struct shell *sh, size_t argc, char *argv[])
 {
 	static struct bt_audio_discover_params params;
+	static bool cbs_registered;
 
 	if (!default_conn) {
 		shell_error(sh, "Not connected");
@@ -600,6 +622,17 @@ static int cmd_discover(const struct shell *sh, size_t argc, char *argv[])
 	if (params.func) {
 		shell_error(sh, "Discover in progress");
 		return -ENOEXEC;
+	}
+
+	if (!cbs_registered) {
+		int err = bt_audio_unicast_client_register_cb(&unicast_client_cbs);
+
+		if (err != 0) {
+			shell_error(sh, "Failed to register unicast client callbacks: %d", err);
+			return err;
+		}
+
+		cbs_registered = true;
 	}
 
 	params.func = discover_all;
@@ -758,15 +791,20 @@ static int cmd_qos(const struct shell *sh, size_t argc, char *argv[])
 	}
 
 	if (default_unicast_group == NULL) {
-		err = bt_audio_unicast_group_create(&default_stream, 1, &default_unicast_group);
+		struct bt_audio_unicast_group_param params = {
+			.stream = default_stream,
+			.qos = &default_preset->preset.qos,
+			.dir = stream_dir(default_stream)
+		};
+
+		err = bt_audio_unicast_group_create(&params, 1, &default_unicast_group);
 		if (err != 0) {
 			shell_error(sh, "Unable to create default unicast group: %d", err);
 			return -ENOEXEC;
 		}
 	}
 
-	err = bt_audio_stream_qos(default_conn, default_unicast_group,
-				  &named_preset->preset.qos);
+	err = bt_audio_stream_qos(default_conn, default_unicast_group);
 	if (err) {
 		shell_error(sh, "Unable to setup QoS");
 		return -ENOEXEC;
@@ -978,7 +1016,8 @@ static struct bt_audio_base received_base;
 static bool sink_syncable;
 
 static bool scan_recv(const struct bt_le_scan_recv_info *info,
-		     uint32_t broadcast_id)
+		      struct net_buf_simple *ad,
+		      uint32_t broadcast_id)
 {
 	shell_print(ctx_shell, "Found broadcaster with ID 0x%06X",
 		    broadcast_id);
@@ -1146,7 +1185,7 @@ static int cmd_select_broadcast_source(const struct shell *sh, size_t argc,
 static int cmd_create_broadcast(const struct shell *sh, size_t argc,
 				char *argv[])
 {
-	static struct bt_audio_stream *streams[ARRAY_SIZE(broadcast_source_streams)];
+	struct bt_audio_stream *streams[ARRAY_SIZE(broadcast_source_streams)];
 	struct named_lc3_preset *named_preset;
 	int err;
 
@@ -1287,7 +1326,7 @@ static int cmd_accept_broadcast(const struct shell *sh, size_t argc,
 
 static int cmd_sync_broadcast(const struct shell *sh, size_t argc, char *argv[])
 {
-	static struct bt_audio_stream *streams[ARRAY_SIZE(broadcast_sink_streams)];
+	struct bt_audio_stream *streams[ARRAY_SIZE(broadcast_sink_streams)];
 	uint32_t bis_bitfield;
 	int err;
 
@@ -1382,11 +1421,14 @@ static int cmd_init(const struct shell *sh, size_t argc, char *argv[])
 #endif /* CONFIG_BT_AUDIO_UNICAST || CONFIG_BT_AUDIO_BROADCAST_SOURCE */
 
 	if (IS_ENABLED(CONFIG_BT_AUDIO_CAPABILITY)) {
-		/* Mark all supported contexts as available */
-		bt_audio_capability_set_available_contexts(BT_AUDIO_DIR_SINK,
-							   BT_AUDIO_CONTEXT_TYPE_ANY);
-		bt_audio_capability_set_available_contexts(BT_AUDIO_DIR_SOURCE,
-							   BT_AUDIO_CONTEXT_TYPE_ANY);
+		/* Mark mandatory context as available */
+		err = bt_audio_capability_set_available_contexts(
+					BT_AUDIO_DIR_SINK, BT_AUDIO_CONTEXT_TYPE_UNSPECIFIED);
+		__ASSERT(err == 0, "Failed to set sink available contexts");
+
+		err = bt_audio_capability_set_available_contexts(
+					BT_AUDIO_DIR_SOURCE, BT_AUDIO_CONTEXT_TYPE_UNSPECIFIED);
+		__ASSERT(err == 0, "Failed to set source available contexts");
 	}
 
 #if defined(CONFIG_BT_AUDIO_UNICAST)

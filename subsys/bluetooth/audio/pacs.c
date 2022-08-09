@@ -36,12 +36,6 @@ NET_BUF_SIMPLE_DEFINE_STATIC(read_buf, CONFIG_BT_L2CAP_TX_MTU);
 
 static const struct bt_audio_pacs_cb *pacs_cb;
 
-static struct bt_pacs_context available_context = {
-	/* TODO: This should reflect the ongoing channel contexts */
-	.snk = BT_AUDIO_CONTEXT_TYPE_UNSPECIFIED,
-	.src = BT_AUDIO_CONTEXT_TYPE_UNSPECIFIED,
-};
-
 static void pac_data_add(struct net_buf_simple *buf, uint8_t num,
 			 struct bt_codec_data *data)
 {
@@ -395,7 +389,7 @@ static ssize_t src_loc_read(struct bt_conn *conn,
 				 &location_32_le, sizeof(location_32_le));
 }
 
-#if defined(BT_PAC_SRC_LOC_WRITEABLE)
+#if defined(CONFIG_BT_PAC_SRC_LOC_WRITEABLE)
 static ssize_t src_loc_write(struct bt_conn *conn,
 			     const struct bt_gatt_attr *attr, const void *data,
 			     uint16_t len, uint16_t offset, uint8_t flags)
@@ -431,7 +425,7 @@ static ssize_t src_loc_write(struct bt_conn *conn,
 
 	return len;
 }
-#endif /* BT_PAC_SRC_LOC_WRITEABLE */
+#endif /* CONFIG_BT_PAC_SRC_LOC_WRITEABLE */
 
 static void src_loc_cfg_changed(const struct bt_gatt_attr *attr, uint16_t value)
 {
@@ -703,6 +697,15 @@ int bt_audio_pacs_register_cb(const struct bt_audio_pacs_cb *cb)
 
 bool bt_pacs_context_available(enum bt_audio_dir dir, uint16_t context)
 {
+	struct bt_pacs_context available_context;
+	int err;
+
+	err = available_contexts_get(NULL, &available_context);
+	if (err) {
+		BT_DBG("get_available_contexts returned %d", err);
+		return false;
+	}
+
 	if (IS_ENABLED(CONFIG_BT_PAC_SRC) && dir == BT_AUDIO_DIR_SOURCE) {
 		return (context & available_context.src) == context;
 	} else if (IS_ENABLED(CONFIG_BT_PAC_SNK) && dir == BT_AUDIO_DIR_SINK) {

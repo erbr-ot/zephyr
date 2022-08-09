@@ -19,6 +19,18 @@ API Changes
 Changes in this release
 =======================
 
+* Changed :c:struct:`spi_cs_control` to remove anonymous struct.
+  This causes possible breakage for static initialization of the
+  struct.  Updated :c:macro:`SPI_CS_CONTROL_PTR_DT` to reflect
+  this change.
+
+* The :kconfig:option:`CONFIG_LEGACY_INCLUDE_PATH` option has been disabled by
+  default, all upstream code and modules have been converted to use
+  ``<zephyr/...>`` header paths. The option is still available to facilitate
+  the migration of external applications, but will be removed with the 3.4
+  release.  The :zephyr_file:`scripts/utils/migrate_includes.py` script is
+  provided to automate the migration.
+
 Removed APIs in this release
 ============================
 
@@ -38,8 +50,25 @@ Removed APIs in this release
   * ``k_delayed_work_remaining_ticks()``
   * ``K_DELAYED_WORK_DEFINE``
 
+* Removed support for enabling passthrough mode on MPU9150 to
+  AK8975 sensor.
+
+* Removed deprecated SPI :c:struct:`spi_cs_control` fields for GPIO management
+  that have been replaced with :c:struct:`gpio_dt_spec`.
+
 Deprecated in this release
 ==========================
+
+* :c:macro:`DT_SPI_DEV_CS_GPIOS_LABEL` and
+  :c:macro:`DT_INST_SPI_DEV_CS_GPIOS_LABEL` are deprecated in favor of
+  utilizing :c:macro:`DT_SPI_DEV_CS_GPIOS_CTLR` and variants.
+
+* :c:macro:`DT_GPIO_LABEL`, :c:macro:`DT_INST_GPIO_LABEL`,
+  :c:macro:`DT_GPIO_LABEL_BY_IDX`, and :c:macro:`DT_INST_GPIO_LABEL_BY_IDX`,
+  are deprecated in favor of utilizing :c:macro:`DT_GPIO_CTLR` and variants.
+
+* :c:macro:`DT_BUS_LABEL`, and :c:macro:`DT_INST_BUS_LABEL`, are deprecated
+  in favor of utilizing :c:macro:`DT_BUS` and variants.
 
 Stable API changes in this release
 ==================================

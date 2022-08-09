@@ -310,8 +310,8 @@ static int lwm2m_setup(void)
 	/* Match Security object instance with a Server object instance with
 	 * Short Server ID.
 	 */
-	lwm2m_engine_set_u16("0/0/10", 101);
-	lwm2m_engine_set_u16("1/0/0", 101);
+	lwm2m_engine_set_u16("0/0/10", CONFIG_LWM2M_SERVER_DEFAULT_SSID);
+	lwm2m_engine_set_u16("1/0/0", CONFIG_LWM2M_SERVER_DEFAULT_SSID);
 #endif
 
 	/* setup SERVER object */
@@ -464,6 +464,10 @@ static void rd_client_event(struct lwm2m_ctx *client,
 
 	case LWM2M_RD_CLIENT_EVENT_QUEUE_MODE_RX_OFF:
 		LOG_DBG("Queue mode RX window closed");
+		break;
+
+	case LWM2M_RD_CLIENT_EVENT_ENGINE_SUSPENDED:
+		LOG_DBG("LwM2M engine suspended");
 		break;
 
 	case LWM2M_RD_CLIENT_EVENT_NETWORK_ERROR:

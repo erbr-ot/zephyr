@@ -35,6 +35,10 @@ set(DTS_DEPS                    ${PROJECT_BINARY_DIR}/zephyr.dts.d)
 # This is relative to each element of DTS_ROOT.
 set(VENDOR_PREFIXES             dts/bindings/vendor-prefixes.txt)
 
+# Devicetree in Kconfig.
+set(GEN_DRIVER_KCONFIG_SCRIPT   ${ZEPHYR_BASE}/scripts/dts/gen_driver_kconfig_dts.py)
+set(DTS_KCONFIG                 ${KCONFIG_BINARY_DIR}/Kconfig.dts)
+
 # Devicetree in CMake.
 set(DTS_CMAKE_SCRIPT            ${ZEPHYR_BASE}/scripts/dts/gen_dts_cmake.py)
 set(DTS_CMAKE                   ${PROJECT_BINARY_DIR}/dts.cmake)
@@ -196,6 +200,7 @@ if(SUPPORTS_DTS)
     CMAKE_CONFIGURE_DEPENDS
     ${include_files}
     ${GEN_DEFINES_SCRIPT}
+    ${GEN_DRIVER_KCONFIG_SCRIPT}
     ${DTS_CMAKE_SCRIPT}
     )
 
@@ -209,7 +214,6 @@ if(SUPPORTS_DTS)
   --dtc-flags '${EXTRA_DTC_FLAGS_RAW}'
   --bindings-dirs ${DTS_ROOT_BINDINGS}
   --header-out ${DEVICETREE_UNFIXED_H}.new
-  --device-header-out ${DEVICE_EXTERN_H}.new
   --dts-out ${ZEPHYR_DTS}.new # for debugging and dtc
   --edt-pickle-out ${EDT_PICKLE}
   ${EXTRA_GEN_DEFINES_ARGS}
@@ -226,11 +230,23 @@ if(SUPPORTS_DTS)
   else()
     zephyr_file_copy(${ZEPHYR_DTS}.new ${ZEPHYR_DTS} ONLY_IF_DIFFERENT)
     zephyr_file_copy(${DEVICETREE_UNFIXED_H}.new ${DEVICETREE_UNFIXED_H} ONLY_IF_DIFFERENT)
-    zephyr_file_copy(${DEVICE_EXTERN_H}.new ${DEVICE_EXTERN_H})
-    file(REMOVE ${ZEPHYR_DTS}.new ${DEVICETREE_UNFIXED_H}.new ${DEVICE_EXTERN_H}.new)
+    file(WRITE ${DEVICE_EXTERN_H}
+"#error The contents of this file are now implemented directly in zephyr/device.h.")
+    file(REMOVE ${ZEPHYR_DTS}.new ${DEVICETREE_UNFIXED_H}.new)
     message(STATUS "Generated zephyr.dts: ${ZEPHYR_DTS}")
     message(STATUS "Generated devicetree_unfixed.h: ${DEVICETREE_UNFIXED_H}")
-    message(STATUS "Generated device_extern.h: ${DEVICE_EXTERN_H}")
+  endif()
+
+
+  execute_process(
+    COMMAND ${PYTHON_EXECUTABLE} ${GEN_DRIVER_KCONFIG_SCRIPT}
+    --kconfig-out ${DTS_KCONFIG}
+    --bindings-dirs ${DTS_ROOT_BINDINGS}
+    WORKING_DIRECTORY ${PROJECT_BINARY_DIR}
+    RESULT_VARIABLE ret
+    )
+  if(NOT "${ret}" STREQUAL "0")
+    message(FATAL_ERROR "gen_driver_kconfig_dts.py failed with return code: ${ret}")
   endif()
 
   execute_process(
@@ -293,5 +309,5 @@ if(SUPPORTS_DTS)
 else()
   set(header_template ${ZEPHYR_BASE}/misc/generated/generated_header.template)
   zephyr_file_copy(${header_template} ${DEVICETREE_UNFIXED_H} ONLY_IF_DIFFERENT)
-  zephyr_file_copy(${header_template} ${DEVICE_EXTERN_H} ONLY_IF_DIFFERENT)
+  file(WRITE ${DTS_KCONFIG} "# DTS not supported")
 endif(SUPPORTS_DTS)

@@ -3,7 +3,7 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-#include <ztest.h>
+#include <zephyr/ztest.h>
 #include <zephyr/drivers/clock_control.h>
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(test);
@@ -265,7 +265,7 @@ static void test_async_on_stopped_on_instance(const struct device *dev,
 {
 	enum clock_control_status status;
 	int err;
-	int key;
+	unsigned int key;
 	bool executed = false;
 
 	status = clock_control_get_status(dev, subsys);
