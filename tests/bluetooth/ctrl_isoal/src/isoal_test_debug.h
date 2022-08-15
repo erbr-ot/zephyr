@@ -16,7 +16,9 @@
 /*#define DEBUG_TRACE			(1)*/
 
 extern void isoal_test_debug_print_rx_pdu(struct isoal_pdu_rx *pdu_meta);
-extern void isoal_test_debug_print_rx_sdu(const struct isoal_sink *sink_ctx, uint8_t *buf);
+extern void isoal_test_debug_print_rx_sdu(const struct isoal_sink             *sink_ctx,
+					  const struct isoal_emitted_sdu_frag *sdu_frag,
+					  const struct isoal_emitted_sdu      *sdu);
 extern void isoal_test_debug_print_tx_pdu(struct node_tx_iso *node_tx);
 extern void isoal_test_debug_print_tx_sdu(struct isoal_sdu_tx *tx_sdu);
 

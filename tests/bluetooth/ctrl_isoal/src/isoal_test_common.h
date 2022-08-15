@@ -45,6 +45,12 @@
 	(s == ISOAL_CONTINUE ? "CONTINUE" : \
 		(s == ISOAL_ERR_SPOOL ? "ERR SPOOL" : "???")))
 
+#if ISOAL_CONFIG_BUFFER_RX_SDUS
+#define COLLATED_RX_SDU_INFO(_non_buf, _buf) (_buf)
+#else
+#define COLLATED_RX_SDU_INFO(_non_buf, _buf) (_non_buf)
+#endif /* ISOAL_CONFIG_BUFFER_RX_SDUS */
+
 
 struct rx_pdu_meta_buffer {
 	struct isoal_pdu_rx pdu_meta;

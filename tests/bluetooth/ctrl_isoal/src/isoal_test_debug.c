@@ -66,26 +66,40 @@ void isoal_test_debug_print_rx_pdu(struct isoal_pdu_rx *pdu_meta)
 
 /**
  * Print contents of RX SDU
- * @param[in] sink_ctx Sink context provided when SDU is emitted
- * @param[in] buf      SDU data buffer pointer
+ * @param sink_ctx Sink context provided when SDU is emitted
+ * @param sdu_frag Information on emitted fragment
+ * @param sdu      Information collated for SDu
  */
-void isoal_test_debug_print_rx_sdu(const struct isoal_sink *sink_ctx, uint8_t *buf)
+void isoal_test_debug_print_rx_sdu(const struct isoal_sink             *sink_ctx,
+				   const struct isoal_emitted_sdu_frag *sdu_frag,
+				   const struct isoal_emitted_sdu      *sdu)
 {
 	zassert_not_null(sink_ctx, "");
-	zassert_not_null(buf, "");
+	zassert_not_null(sdu_frag, "");
+	zassert_not_null(sdu, "");
 
-	uint16_t len = sink_ctx->sdu_production.sdu_written;
+	uint8_t *buf = ((struct rx_sdu_frag_buffer *)sdu_frag->sdu.contents.dbuf)->sdu;
+	uint16_t len = sdu_frag->sdu_frag_size;
 
 	PRINT("\n");
 	PRINT("SDU %04d (%10d) | %12s [%10s] %03d: ",
-		sink_ctx->sdu_production.sdu.seqn,
-		sink_ctx->sdu_production.sdu.timestamp,
-		STATE_TO_STR(sink_ctx->sdu_production.sdu_state),
-		DU_ERR_TO_STR(sink_ctx->sdu_production.sdu.status),
+		sdu_frag->sdu.seqn,
+		sdu_frag->sdu.timestamp,
+		STATE_TO_STR(sdu_frag->sdu_state),
+		DU_ERR_TO_STR(sdu_frag->sdu.status),
 		len);
 	for (int i = 0; i < len; i++) {
 		PRINT("%02x ", buf[i]);
 	}
+	PRINT("\n");
+
+	PRINT("    %17s   %12s [%10s] %03d  ",
+		"Collated-",
+		(sdu->total_sdu_size != len ||
+			sdu->collated_status != sdu_frag->sdu.status ?
+				"!! DIFF !!" : ""),
+		DU_ERR_TO_STR(sdu->collated_status),
+		sdu->total_sdu_size);
 	PRINT("\n");
 	PRINT("\n");
 }
@@ -108,7 +122,7 @@ void isoal_test_debug_print_tx_pdu(struct node_tx_iso *node_tx)
 
 	PRINT("\n");
 	PRINT("PDU %04u (    %02u    ) | %12s | %03u: ",
-		(uint32_t) node_tx->payload_number,
+		(uint32_t) node_tx->payload_count,
 		 node_tx->sdu_fragments,
 		LLID_TO_STR(pdu->ll_id),
 		pdu->length);
@@ -182,7 +196,9 @@ void isoal_test_debug_print_tx_sdu(struct isoal_sdu_tx *tx_sdu)
 }
 #else /* DEBUG_TEST */
 void isoal_test_debug_print_rx_pdu(struct isoal_pdu_rx *pdu_meta) {}
-void isoal_test_debug_print_rx_sdu(const struct isoal_sink *sink_ctx, uint8_t *buf) {}
+void isoal_test_debug_print_rx_sdu(const struct isoal_sink             *sink_ctx,
+				   const struct isoal_emitted_sdu_frag *sdu_frag,
+				   const struct isoal_emitted_sdu      *sdu){}
 void isoal_test_debug_print_tx_pdu(struct node_tx_iso *node_tx) {}
 void isoal_test_debug_print_tx_sdu(struct isoal_sdu_tx *tx_sdu) {}
 #endif /* DEBUG_TEST */

@@ -36,25 +36,27 @@ static isoal_status_t sink_sdu_alloc_test(const struct isoal_sink *sink_ctx,
  * Callback test fixture to be provided for RX sink creation. Emits provided
  * SDU in buffer
  * @param[in]  sink_ctx  Sink context provided by ISO-AL
- * @param[in]  valid_sdu SDU buffer and details of SDU to be emitted
+ * @param[in]  sdu_frag SDU buffer and details of SDU to be emitted
  * @return               Status of operation
  */
-static isoal_status_t sink_sdu_emit_test(const struct isoal_sink *sink_ctx,
-					 const struct isoal_sdu_produced *valid_sdu)
+static isoal_status_t sink_sdu_emit_test(const struct isoal_sink             *sink_ctx,
+					 const struct isoal_emitted_sdu_frag *sdu_frag,
+					 const struct isoal_emitted_sdu      *sdu)
 {
 	isoal_test_debug_trace_func_call(__func__, "IN");
 
-	isoal_test_debug_print_rx_sdu(sink_ctx,
-		((struct rx_sdu_frag_buffer *)valid_sdu->contents.dbuf)->sdu);
+	isoal_test_debug_print_rx_sdu(sink_ctx, sdu_frag, sdu);
 
 	ztest_check_expected_value(sink_ctx);
-	ztest_check_expected_value(sink_ctx->sdu_production.sdu_state);
-	ztest_check_expected_value(sink_ctx->sdu_production.sdu_written);
-	ztest_check_expected_value(valid_sdu->status);
-	ztest_check_expected_value(valid_sdu->timestamp);
-	ztest_check_expected_value(valid_sdu->seqn);
-	ztest_check_expected_value(valid_sdu->contents.dbuf);
-	ztest_check_expected_value(valid_sdu->contents.size);
+	ztest_check_expected_value(sdu_frag->sdu_state);
+	ztest_check_expected_value(sdu_frag->sdu_frag_size);
+	ztest_check_expected_value(sdu_frag->sdu.status);
+	ztest_check_expected_value(sdu_frag->sdu.timestamp);
+	ztest_check_expected_value(sdu_frag->sdu.seqn);
+	ztest_check_expected_value(sdu_frag->sdu.contents.dbuf);
+	ztest_check_expected_value(sdu_frag->sdu.contents.size);
+	ztest_check_expected_value(sdu->total_sdu_size);
+	ztest_check_expected_value(sdu->collated_status);
 
 	return ztest_get_return_value();
 }
@@ -558,12 +560,14 @@ ZTEST(test_rx_unframed, test_rx_unframed_single_pdu)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	isoal_sdu_len_t sdu_size;
 	uint8_t iso_interval_int;
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
 	uint16_t testdata_indx;
@@ -602,6 +606,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_single_pdu)
 	testdata_indx = 0;
 	testdata_size = 23;
 	sdu_size = 23;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	sink_hdl = basic_rx_test_setup(0xADAD,            /* Handle */
 				       role,              /* Role */
@@ -632,13 +638,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_single_pdu)
 
 	/* SDU should be emitted as it is complete */
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -663,12 +671,14 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_pdu)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	isoal_sdu_len_t sdu_size;
 	uint8_t iso_interval_int;
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
 	uint16_t testdata_indx;
@@ -755,6 +765,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_pdu)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	/* Send PDU with end fragment  */
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_COMPLETE_END,
@@ -771,13 +783,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_pdu)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -802,12 +816,14 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_split)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	isoal_sdu_len_t sdu_size;
 	uint8_t iso_interval_int;
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
 	uint16_t testdata_indx;
@@ -892,6 +908,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_split)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_ERRORS, ISOAL_SDU_STATUS_ERRORS);
 
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_START_CONTINUE,
 				&testdata[testdata_indx], (testdata_size - testdata_indx),
@@ -908,13 +926,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_split)
 
 	/* SDU emitted with errors as end fragment was not seen */
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_ERRORS);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_ERRORS);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -973,6 +993,9 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_split)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_ERRORS, ISOAL_SDU_STATUS_ERRORS);
 
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_START_CONTINUE,
 				&testdata[testdata_indx], (testdata_size - testdata_indx),
@@ -989,13 +1012,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_split)
 
 	/* SDU emitted with errors as end fragment was not seen */
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_ERRORS);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_ERRORS);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -1018,6 +1043,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_split)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size = 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_COMPLETE_END,
 				&testdata[testdata_indx], (testdata_size - testdata_indx),
@@ -1036,13 +1063,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_split)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -1067,12 +1096,14 @@ ZTEST(test_rx_unframed, test_rx_unframed_multi_split)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	isoal_sdu_len_t sdu_size;
 	uint8_t iso_interval_int;
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
 	uint16_t testdata_indx;
@@ -1256,6 +1287,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_multi_split)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_COMPLETE_END,
 				&testdata[testdata_indx], (testdata_size - testdata_indx),
@@ -1271,13 +1304,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_multi_split)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -1302,12 +1337,14 @@ ZTEST(test_rx_unframed, test_rx_unframed_multi_split_on_border)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	isoal_sdu_len_t sdu_size;
 	uint8_t iso_interval_int;
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
 	uint16_t testdata_indx;
@@ -1392,6 +1429,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_multi_split_on_border)
 	testdata_indx = testdata_size;
 	testdata_size += 23;
 	sdu_size += 23;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, 100);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_START_CONTINUE,
 				&testdata[testdata_indx], (testdata_size - testdata_indx),
@@ -1407,13 +1446,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_multi_split_on_border)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_START);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_START);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -1434,6 +1475,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_multi_split_on_border)
 	testdata_indx = testdata_size;
 	testdata_size += 40;
 	sdu_size = 40;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, 100);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_START_CONTINUE,
 				&testdata[testdata_indx], (testdata_size - testdata_indx),
@@ -1452,13 +1495,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_multi_split_on_border)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_CONT);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_CONT);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -1514,6 +1559,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_multi_split_on_border)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, 100);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_COMPLETE_END,
 				&testdata[testdata_indx], (testdata_size - testdata_indx),
@@ -1529,13 +1576,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_multi_split_on_border)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_END);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_END);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -1560,12 +1609,14 @@ ZTEST(test_rx_unframed, test_rx_unframed_long_pdu_short_sdu)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	isoal_sdu_len_t sdu_size;
 	uint8_t iso_interval_int;
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
 	uint16_t testdata_indx;
@@ -1604,6 +1655,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_long_pdu_short_sdu)
 	testdata_indx = 0;
 	testdata_size = 40;
 	sdu_size = 20;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, 40);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	sink_hdl = basic_rx_test_setup(0xADAD,            /* Handle */
 				       role,              /* Role */
@@ -1633,18 +1686,21 @@ ZTEST(test_rx_unframed, test_rx_unframed_long_pdu_short_sdu)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_START);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_START);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	/* SDU 2 */
 	isoal_test_init_rx_sdu_buffer(&rx_sdu_frag_buf);
 	sdu_size = 20;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, 40);
 
 	ztest_expect_value(sink_sdu_alloc_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
 	ztest_expect_value(sink_sdu_alloc_test, valid_pdu, &rx_pdu_meta_buf.pdu_meta);
@@ -1657,13 +1713,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_long_pdu_short_sdu)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_END);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_END);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -1687,12 +1745,14 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_pdu_prem)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	isoal_sdu_len_t sdu_size;
 	uint8_t iso_interval_int;
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
 	uint16_t testdata_indx;
@@ -1731,6 +1791,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_pdu_prem)
 	testdata_indx = 0;
 	testdata_size = 13;
 	sdu_size = 13;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_ERRORS, ISOAL_SDU_STATUS_ERRORS);
 
 	sink_hdl = basic_rx_test_setup(0xADAD,            /* Handle */
 				       role,              /* Role */
@@ -1759,13 +1821,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_pdu_prem)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_ERRORS);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_ERRORS);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -1788,6 +1852,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_pdu_prem)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size = 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_COMPLETE_END,
 				&testdata[testdata_indx], (testdata_size - testdata_indx),
@@ -1806,13 +1872,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_pdu_prem)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -1836,12 +1904,14 @@ ZTEST(test_rx_unframed, test_rx_unframed_single_pdu_err)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	isoal_sdu_len_t sdu_size;
 	uint8_t iso_interval_int;
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
 	uint16_t testdata_indx;
@@ -1880,6 +1950,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_single_pdu_err)
 	testdata_indx = 0;
 	testdata_size = 13;
 	sdu_size = 13;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_ERRORS, ISOAL_SDU_STATUS_ERRORS);
 
 	sink_hdl = basic_rx_test_setup(0xADAD,            /* Handle */
 				       role,              /* Role */
@@ -1908,13 +1980,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_single_pdu_err)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_ERRORS);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_ERRORS);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -1937,6 +2011,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_single_pdu_err)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size = 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_LOST_DATA, ISOAL_SDU_STATUS_LOST_DATA);
 
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_COMPLETE_END,
 				&testdata[testdata_indx], (testdata_size - testdata_indx),
@@ -1955,13 +2031,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_single_pdu_err)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_LOST_DATA);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_LOST_DATA);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -1985,12 +2063,14 @@ ZTEST(test_rx_unframed, test_rx_unframed_seq_err)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	isoal_sdu_len_t sdu_size;
 	uint8_t iso_interval_int;
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
 	uint16_t testdata_indx;
@@ -2081,6 +2161,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_seq_err)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_LOST_DATA, ISOAL_SDU_STATUS_LOST_DATA);
 
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_COMPLETE_END,
 				&testdata[testdata_indx], (testdata_size - testdata_indx),
@@ -2096,13 +2178,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_seq_err)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_LOST_DATA);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_LOST_DATA);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -2171,17 +2255,19 @@ ZTEST(test_rx_unframed, test_rx_unframed_seq_err)
  * Tests reassembly of  SDUs where PDUs are not in sequence with errors
  * Tests error prioritization
  */
-ZTEST(test_rx_unframed, test_rx_unframed_seq_pdu_err)
+ZTEST(test_rx_unframed, test_rx_unframed_seq_pdu_err1)
 {
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	isoal_sdu_len_t sdu_size;
 	uint8_t iso_interval_int;
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
 	uint16_t testdata_indx;
@@ -2272,6 +2358,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_seq_pdu_err)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_LOST_DATA, ISOAL_SDU_STATUS_LOST_DATA);
 
 	/* PDU status ISOAL_PDU_STATUS_ERRORS */
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_COMPLETE_END,
@@ -2289,13 +2377,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_seq_pdu_err)
 
 	/* Lost data should be higher priority */
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_LOST_DATA);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_LOST_DATA);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -2364,6 +2454,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_seq_pdu_err)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_COMPLETE_END,
 				&testdata[testdata_indx], (testdata_size - testdata_indx),
@@ -2379,13 +2471,277 @@ ZTEST(test_rx_unframed, test_rx_unframed_seq_pdu_err)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
+	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
+
+	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Test recombine (White Box) */
+	/* Expecting padding so state should be Error Spooling */
+	zassert_equal(isoal_global.sink_state[sink_hdl].sdu_production.fsm, ISOAL_ERR_SPOOL,
+		"FSM state %s should be %s!",
+		FSM_TO_STR(isoal_global.sink_state[sink_hdl].sdu_production.fsm),
+		FSM_TO_STR(ISOAL_ERR_SPOOL));
+}
+
+/**
+ * Test Suite  :   RX unframed PDU reassembly
+ *
+ * Tests reassembly of  SDUs where PDUs are not in sequence with errors
+ * Tests releasing and collating information for buffered SDUs when an error in
+ * reception occurs.
+ */
+ZTEST(test_rx_unframed, test_rx_unframed_seq_pdu_err2)
+{
+	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
+	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
+	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
+	isoal_sink_handle_t sink_hdl;
+	uint32_t stream_sync_delay;
+	uint32_t group_sync_delay;
+	isoal_sdu_len_t sdu_size;
+	uint8_t iso_interval_int;
+	uint64_t payload_number;
+	uint16_t total_sdu_size;
+	uint32_t pdu_timestamp;
+	uint32_t sdu_timestamp;
+	uint16_t testdata_indx;
+	uint16_t testdata_size;
+	uint32_t sdu_interval;
+	isoal_sdu_cnt_t seqn;
+	uint8_t testdata[80];
+	isoal_status_t err;
+	uint32_t latency;
+	uint8_t role;
+	uint8_t BN;
+	uint8_t FT;
+
+	/* Settings */
+	role = BT_CONN_ROLE_PERIPHERAL;
+	iso_interval_int = 1;
+	sdu_interval = CONN_INT_UNIT_US;
+	BN = 3;
+	FT = 1;
+	stream_sync_delay = (iso_interval_int * CONN_INT_UNIT_US) - 200;
+	group_sync_delay = (iso_interval_int * CONN_INT_UNIT_US) - 50;
+
+	/* PDU 1 -------------------------------------------------------------*/
+	isoal_test_init_rx_pdu_buffer(&rx_pdu_meta_buf);
+	isoal_test_init_rx_sdu_buffer(&rx_sdu_frag_buf);
+	init_test_data_buffer(testdata, 80);
+	sdu_buffer.dbuf = &rx_sdu_frag_buf;
+	sdu_buffer.size = 40;
+	payload_number = 1000 * BN;
+	pdu_timestamp = 9249;
+	latency = calc_rx_latency_by_role(role, false, FT,
+					sdu_interval, iso_interval_int,
+					stream_sync_delay, group_sync_delay);
+	sdu_timestamp = (uint32_t)((int64_t)pdu_timestamp + latency);
+	seqn = 1;
+	testdata_indx = 0;
+	testdata_size = 40;
+	sdu_size = 40;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, 50);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_LOST_DATA);
+
+	sink_hdl = basic_rx_test_setup(0xADAD,            /* Handle */
+				       role,              /* Role */
+				       false,             /* Framed */
+				       BN,                /* BN */
+				       FT,                /* FT */
+				       sdu_interval,      /* SDU Interval */
+				       iso_interval_int,  /* ISO Interval */
+				       stream_sync_delay, /* Stream Sync Delay */
+				       group_sync_delay); /* Group Sync Delay */
+
+	isoal_test_create_unframed_pdu(PDU_BIS_LLID_START_CONTINUE,
+				&testdata[testdata_indx], (testdata_size - testdata_indx),
+				payload_number, pdu_timestamp, ISOAL_PDU_STATUS_VALID,
+				&rx_pdu_meta_buf.pdu_meta);
+
+	/* Test recombine (Black Box) */
+	ztest_expect_value(sink_sdu_alloc_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
+	ztest_expect_value(sink_sdu_alloc_test, valid_pdu, &rx_pdu_meta_buf.pdu_meta);
+	ztest_return_data(sink_sdu_alloc_test, sdu_buffer, &sdu_buffer);
+	ztest_returns_value(sink_sdu_alloc_test, ISOAL_STATUS_OK);
+
+	ztest_expect_value(sink_sdu_write_test, dbuf, &rx_sdu_frag_buf);
+	ztest_expect_value(sink_sdu_write_test, pdu_payload, &rx_pdu_meta_buf.pdu[2]);
+	ztest_expect_value(sink_sdu_write_test, consume_len, (testdata_size - testdata_indx));
+	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
+
+	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_START);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
+	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
+
+
+	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Test recombine (White Box) */
+	zassert_equal(isoal_global.sink_state[sink_hdl].sdu_production.fsm, ISOAL_CONTINUE,
+		"FSM state %s should be %s!",
+		FSM_TO_STR(isoal_global.sink_state[sink_hdl].sdu_production.fsm),
+		FSM_TO_STR(ISOAL_CONTINUE));
+
+	/* PDU 2 Not transferred to ISO-AL ------------------------------------*/
+	payload_number++;
+	pdu_timestamp += 200;
+	testdata_indx = testdata_size;
+	testdata_size += 10;
+
+	/* PDU 3 -------------------------------------------------------------*/
+	isoal_test_init_rx_pdu_buffer(&rx_pdu_meta_buf);
+	payload_number++;
+	pdu_timestamp += 200;
+	testdata_indx = testdata_size;
+	testdata_size += 10;
+	sdu_size = 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, 50);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_LOST_DATA, ISOAL_SDU_STATUS_LOST_DATA);
+
+	/* PDU status ISOAL_PDU_STATUS_ERRORS */
+	isoal_test_create_unframed_pdu(PDU_BIS_LLID_COMPLETE_END,
+				&testdata[testdata_indx], (testdata_size - testdata_indx),
+				payload_number, pdu_timestamp, ISOAL_PDU_STATUS_ERRORS,
+				&rx_pdu_meta_buf.pdu_meta);
+
+	/* Test recombine (Black Box) */
+	ztest_expect_value(sink_sdu_alloc_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
+	ztest_expect_value(sink_sdu_alloc_test, valid_pdu, &rx_pdu_meta_buf.pdu_meta);
+	ztest_return_data(sink_sdu_alloc_test, sdu_buffer, &sdu_buffer);
+	ztest_returns_value(sink_sdu_alloc_test, ISOAL_STATUS_OK);
+
+	ztest_expect_value(sink_sdu_write_test, dbuf, &rx_sdu_frag_buf);
+	ztest_expect_value(sink_sdu_write_test, pdu_payload, &rx_pdu_meta_buf.pdu[2]);
+	ztest_expect_value(sink_sdu_write_test, consume_len, (testdata_size - testdata_indx));
+	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
+
+	/* Lost data should be higher priority */
+	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_END);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_LOST_DATA);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
+	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
+
+	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Test recombine (White Box) */
+	/* PDU count will not have reached 3 as one PDU was not received, so
+	 * last_pdu will not be set and the state should remain in Error
+	 * Spooling.
+	 */
+	zassert_equal(isoal_global.sink_state[sink_hdl].sdu_production.fsm, ISOAL_ERR_SPOOL,
+		"FSM state %s should be %s!",
+		FSM_TO_STR(isoal_global.sink_state[sink_hdl].sdu_production.fsm),
+		FSM_TO_STR(ISOAL_ERR_SPOOL));
+
+	/* PDU 4 -------------------------------------------------------------*/
+	isoal_test_init_rx_pdu_buffer(&rx_pdu_meta_buf);
+	isoal_test_init_rx_sdu_buffer(&rx_sdu_frag_buf);
+	payload_number++;
+	seqn++;
+	pdu_timestamp = 9249 + CONN_INT_UNIT_US;
+	sdu_timestamp = (uint32_t)((int64_t)pdu_timestamp + latency);
+	testdata_indx = testdata_size;
+	testdata_size += 10;
+	sdu_size = 10;
+
+	isoal_test_create_unframed_pdu(PDU_BIS_LLID_START_CONTINUE,
+				&testdata[testdata_indx], (testdata_size - testdata_indx),
+				payload_number, pdu_timestamp, ISOAL_PDU_STATUS_VALID,
+				&rx_pdu_meta_buf.pdu_meta);
+
+	/* Test recombine (Black Box) */
+	ztest_expect_value(sink_sdu_alloc_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
+	ztest_expect_value(sink_sdu_alloc_test, valid_pdu, &rx_pdu_meta_buf.pdu_meta);
+	ztest_return_data(sink_sdu_alloc_test, sdu_buffer, &sdu_buffer);
+	ztest_returns_value(sink_sdu_alloc_test, ISOAL_STATUS_OK);
+
+
+	ztest_expect_value(sink_sdu_write_test, dbuf, &rx_sdu_frag_buf);
+	ztest_expect_value(sink_sdu_write_test, pdu_payload, &rx_pdu_meta_buf.pdu[2]);
+	ztest_expect_value(sink_sdu_write_test, consume_len, (testdata_size - testdata_indx));
+	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
+
+	/* SDU should not be emitted */
+
+	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Test recombine (White Box) */
+	/* Detecting the transition from an end fragment to a start fragment
+	 * should have triggered the monitoring code to pull the state machine
+	 * out of Eroor spooling and directly into the start of a new SDU. As
+	 * this was not an end fragment, the next state should be continue.
+	 */
+	zassert_equal(isoal_global.sink_state[sink_hdl].sdu_production.fsm, ISOAL_CONTINUE,
+		"FSM state %s should be %s!",
+		FSM_TO_STR(isoal_global.sink_state[sink_hdl].sdu_production.fsm),
+		FSM_TO_STR(ISOAL_CONTINUE));
+
+	/* PDU 5 -------------------------------------------------------------*/
+	isoal_test_init_rx_pdu_buffer(&rx_pdu_meta_buf);
+	payload_number++;
+	pdu_timestamp += 200;
+	testdata_indx = testdata_size;
+	testdata_size += 10;
+	sdu_size += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
+
+	isoal_test_create_unframed_pdu(PDU_BIS_LLID_COMPLETE_END,
+				&testdata[testdata_indx], (testdata_size - testdata_indx),
+				payload_number, pdu_timestamp, ISOAL_PDU_STATUS_VALID,
+				&rx_pdu_meta_buf.pdu_meta);
+
+	/* Test recombine (Black Box) */
+	/* Should not allocate a new SDU */
+
+	ztest_expect_value(sink_sdu_write_test, dbuf, &rx_sdu_frag_buf);
+	ztest_expect_value(sink_sdu_write_test, pdu_payload, &rx_pdu_meta_buf.pdu[2]);
+	ztest_expect_value(sink_sdu_write_test, consume_len, (testdata_size - testdata_indx));
+	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
+
+	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -2410,12 +2766,14 @@ ZTEST(test_rx_unframed, test_rx_unframed_padding)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	isoal_sdu_len_t sdu_size;
 	uint8_t iso_interval_int;
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
 	uint16_t testdata_indx;
@@ -2500,6 +2858,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_padding)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_COMPLETE_END,
 				&testdata[testdata_indx], (testdata_size - testdata_indx),
@@ -2515,13 +2875,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_padding)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -2604,12 +2966,14 @@ ZTEST(test_rx_unframed, test_rx_unframed_padding_no_end)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	isoal_sdu_len_t sdu_size;
 	uint8_t iso_interval_int;
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
 	uint16_t testdata_indx;
@@ -2720,6 +3084,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_padding_no_end)
 	isoal_test_init_rx_pdu_buffer(&rx_pdu_meta_buf);
 	payload_number++;
 	pdu_timestamp += 200;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_ERRORS, ISOAL_SDU_STATUS_ERRORS);
 
 	/* PDU padding 2 */
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_START_CONTINUE,
@@ -2734,13 +3100,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_padding_no_end)
 
 	/* SDU emitted with errors as end fragment was not seen */
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_ERRORS);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_ERRORS);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -2766,12 +3134,14 @@ ZTEST(test_rx_unframed, test_rx_unframed_padding_error1)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	isoal_sdu_len_t sdu_size;
 	uint8_t iso_interval_int;
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
 	uint16_t testdata_indx;
@@ -2810,6 +3180,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_padding_error1)
 	testdata_indx = 0;
 	testdata_size = 13;
 	sdu_size = 13;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_ERRORS, ISOAL_SDU_STATUS_ERRORS);
 
 	sink_hdl = basic_rx_test_setup(0xADAD,            /* Handle */
 				       role,              /* Role */
@@ -2838,13 +3210,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_padding_error1)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_ERRORS);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_ERRORS);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -2927,12 +3301,14 @@ ZTEST(test_rx_unframed, test_rx_unframed_padding_error2)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	isoal_sdu_len_t sdu_size;
 	uint8_t iso_interval_int;
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
 	uint16_t testdata_indx;
@@ -3015,6 +3391,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_padding_error2)
 	payload_number++;
 	pdu_timestamp += 200;
 	testdata_indx = testdata_size;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_ERRORS, ISOAL_SDU_STATUS_ERRORS);
 
 	/* PDU with errors that appears as padding */
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_START_CONTINUE,
@@ -3028,13 +3406,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_padding_error2)
 	/* SDU should not be written to */
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_ERRORS);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_ERRORS);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -3087,12 +3467,14 @@ ZTEST(test_rx_unframed, test_rx_unframed_padding_error3)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	isoal_sdu_len_t sdu_size;
 	uint8_t iso_interval_int;
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
 	uint16_t testdata_indx;
@@ -3177,6 +3559,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_padding_error3)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_COMPLETE_END,
 				&testdata[testdata_indx], (testdata_size - testdata_indx),
@@ -3192,13 +3576,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_padding_error3)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -3252,12 +3638,14 @@ ZTEST(test_rx_unframed, test_rx_unframed_zero_len_packet)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	isoal_sdu_len_t sdu_size;
 	uint8_t iso_interval_int;
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
 	uint16_t testdata_indx;
@@ -3296,6 +3684,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_zero_len_packet)
 	testdata_indx = 0;
 	testdata_size = 0;
 	sdu_size = 0;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	sink_hdl = basic_rx_test_setup(0xADAD,            /* Handle */
 				       role,              /* Role */
@@ -3321,13 +3711,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_zero_len_packet)
 	/* SDU should not be written to */
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -3352,12 +3744,14 @@ ZTEST(test_rx_unframed, test_rx_unframed_seq_err_zero_length)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	isoal_sdu_len_t sdu_size;
 	uint8_t iso_interval_int;
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
 	uint16_t testdata_indx;
@@ -3448,6 +3842,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_seq_err_zero_length)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_LOST_DATA, ISOAL_SDU_STATUS_LOST_DATA);
 
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_COMPLETE_END,
 				&testdata[testdata_indx], (testdata_size - testdata_indx),
@@ -3463,13 +3859,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_seq_err_zero_length)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_LOST_DATA);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_LOST_DATA);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -3495,6 +3893,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_seq_err_zero_length)
 	sdu_timestamp = (uint32_t)((int64_t)pdu_timestamp + latency);
 	testdata_indx = testdata_size;
 	sdu_size = 0;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_COMPLETE_END,
 				&testdata[testdata_indx], (testdata_size - testdata_indx),
@@ -3511,13 +3911,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_seq_err_zero_length)
 	/* SDU should not be written to */
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -3548,12 +3950,14 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_pdu_no_end)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	isoal_sdu_len_t sdu_size;
 	uint8_t iso_interval_int;
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
 	uint16_t testdata_indx;
@@ -3638,6 +4042,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_pdu_no_end)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_ERRORS, ISOAL_SDU_STATUS_ERRORS);
 
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_START_CONTINUE,
 				&testdata[testdata_indx], (testdata_size - testdata_indx),
@@ -3653,13 +4059,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_pdu_no_end)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_ERRORS);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_ERRORS);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -3765,12 +4173,14 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_pdu_invalid_llid2)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	isoal_sdu_len_t sdu_size;
 	uint8_t iso_interval_int;
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
 	uint16_t testdata_indx;
@@ -3809,6 +4219,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_pdu_invalid_llid2)
 	testdata_indx = 0;
 	testdata_size = 13;
 	sdu_size = 13;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	sink_hdl = basic_rx_test_setup(0xADAD,            /* Handle */
 				       role,              /* Role */
@@ -3882,12 +4294,14 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_pdu_invalid_llid2_pdu_err)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
 	isoal_sdu_len_t sdu_size;
 	uint8_t iso_interval_int;
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
 	uint16_t testdata_indx;
@@ -3972,6 +4386,8 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_pdu_invalid_llid2_pdu_err)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_ERRORS, ISOAL_SDU_STATUS_ERRORS);
 
 	/* Invalid LLID - Valid PDU */
 	isoal_test_create_unframed_pdu(PDU_BIS_LLID_FRAMED,
@@ -3989,13 +4405,15 @@ ZTEST(test_rx_unframed, test_rx_unframed_dbl_pdu_invalid_llid2_pdu_err)
 
 	/* SDU emitted with errors */
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_ERRORS);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_ERRORS);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -4019,6 +4437,7 @@ ZTEST(test_rx_framed, test_rx_framed_single_pdu_single_sdu)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -4026,6 +4445,7 @@ ZTEST(test_rx_framed, test_rx_framed_single_pdu_single_sdu)
 	uint8_t iso_interval_int;
 	uint16_t pdu_data_loc[5];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
@@ -4068,6 +4488,8 @@ ZTEST(test_rx_framed, test_rx_framed_single_pdu_single_sdu)
 	testdata_indx = 0;
 	testdata_size = 23;
 	sdu_size = 23;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	sink_hdl = basic_rx_test_setup(0xADAD,            /* Handle */
 				       role,              /* Role */
@@ -4098,13 +4520,15 @@ ZTEST(test_rx_framed, test_rx_framed_single_pdu_single_sdu)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 
@@ -4130,6 +4554,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -4137,6 +4562,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu)
 	uint8_t iso_interval_int;
 	uint16_t pdu_data_loc[5];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
@@ -4266,6 +4692,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -4283,13 +4711,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -4313,6 +4743,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf[2];
 	struct isoal_sdu_buffer sdu_buffer[2];
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -4322,6 +4753,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu)
 	uint16_t pdu_data_loc[5];
 	isoal_sdu_cnt_t seqn[2];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint16_t testdata_indx;
@@ -4428,6 +4860,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu)
 	testdata_indx = testdata_size;
 	testdata_size += 13;
 	sdu_size[1] = 13;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[0], sdu_size[0]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	pdu_data_loc[2] = isoal_test_add_framed_pdu_start(&testdata[testdata_indx],
 				(testdata_size - testdata_indx),
@@ -4442,13 +4876,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[0].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[0].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	/* SDU 2 */
@@ -4483,6 +4919,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size[1] += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[1], sdu_size[1]);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -4500,13 +4937,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[1]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[1]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[1]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[1].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[1].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[1]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[1]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[1]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[1].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[1].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -4530,6 +4969,7 @@ ZTEST(test_rx_framed, test_rx_framed_zero_length_sdu)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf[3];
 	struct isoal_sdu_buffer sdu_buffer[3];
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -4539,6 +4979,7 @@ ZTEST(test_rx_framed, test_rx_framed_zero_length_sdu)
 	uint16_t pdu_data_loc[5];
 	isoal_sdu_cnt_t seqn[3];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint16_t testdata_indx;
@@ -4667,6 +5108,9 @@ ZTEST(test_rx_framed, test_rx_framed_zero_length_sdu)
 
 	/* Test recombine (Black Box) */
 	/* SDU 1 */
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[0], sdu_size[0]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
+
 	ztest_expect_value(sink_sdu_write_test, dbuf, &rx_sdu_frag_buf[0]);
 	ztest_expect_value(sink_sdu_write_test, pdu_payload,
 		&rx_pdu_meta_buf.pdu[2+pdu_data_loc[1]]);
@@ -4674,16 +5118,21 @@ ZTEST(test_rx_framed, test_rx_framed_zero_length_sdu)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[0].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[0].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	/* SDU 2 */
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[1], sdu_size[1]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
+
 	/* Zero length SDU */
 	ztest_expect_value(sink_sdu_alloc_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
 	ztest_expect_value(sink_sdu_alloc_test, valid_pdu, &rx_pdu_meta_buf.pdu_meta);
@@ -4693,13 +5142,15 @@ ZTEST(test_rx_framed, test_rx_framed_zero_length_sdu)
 	/* SDU should not be written to */
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[1]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[1]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[1]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[1].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[1].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[1]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[1]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[1]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[1].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[1].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	/* SDU 3 */
@@ -4734,6 +5185,8 @@ ZTEST(test_rx_framed, test_rx_framed_zero_length_sdu)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size[2] += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[2], sdu_size[2]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -4751,13 +5204,15 @@ ZTEST(test_rx_framed, test_rx_framed_zero_length_sdu)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[2]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[2]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[2]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[2].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[2].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[2]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[2]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[2]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[2].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[2].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -4782,6 +5237,7 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_padding)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -4789,6 +5245,7 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_padding)
 	uint8_t iso_interval_int;
 	uint16_t pdu_data_loc[5];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
@@ -4831,6 +5288,8 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_padding)
 	testdata_indx = 0;
 	testdata_size = 13;
 	sdu_size = 13;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	sink_hdl = basic_rx_test_setup(0xADAD,            /* Handle */
 				       role,              /* Role */
@@ -4861,13 +5320,15 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_padding)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 
@@ -4924,6 +5385,8 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_padding)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size = 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -4944,13 +5407,15 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_padding)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -4975,6 +5440,7 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_pdu_err1)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -4982,6 +5448,7 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_pdu_err1)
 	uint8_t iso_interval_int;
 	uint16_t pdu_data_loc[5];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
@@ -5024,6 +5491,8 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_pdu_err1)
 	testdata_indx = 0;
 	testdata_size = 23;
 	sdu_size = 0;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_ERRORS, ISOAL_SDU_STATUS_ERRORS);
 
 	sink_hdl = basic_rx_test_setup(0xADAD,            /* Handle */
 				       role,              /* Role */
@@ -5051,13 +5520,15 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_pdu_err1)
 	/* SDU should not be written to */
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_ERRORS);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_ERRORS);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 
@@ -5085,6 +5556,8 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_pdu_err1)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size = 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -5105,13 +5578,15 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_pdu_err1)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 
@@ -5137,6 +5612,7 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_pdu_err2)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -5144,6 +5620,7 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_pdu_err2)
 	uint8_t iso_interval_int;
 	uint16_t pdu_data_loc[5];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
@@ -5186,6 +5663,8 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_pdu_err2)
 	testdata_indx = 0;
 	testdata_size = 23;
 	sdu_size = 0;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_LOST_DATA, ISOAL_SDU_STATUS_LOST_DATA);
 
 	sink_hdl = basic_rx_test_setup(0xADAD,            /* Handle */
 				       role,              /* Role */
@@ -5213,13 +5692,15 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_pdu_err2)
 	/* SDU should not be written to */
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_LOST_DATA);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_LOST_DATA);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 
@@ -5247,6 +5728,8 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_pdu_err2)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size = 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -5267,13 +5750,15 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_pdu_err2)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 
@@ -5292,13 +5777,18 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_pdu_err2)
  * Test Suite  :   RX framed PDU recombination
  *
  * Tests recombination of a single SDU from a single segmented PDU with errors,
- * followed by a valid PDU
+ * mainly focussing on the release of SDUs buffered before the PDU with errors
+ * was received. The first PDU triggers a release of a filled SDU and the
+ * reception of the second PDU is expected to trigger allocation and release of
+ * a new SDU to indicate the error and the status information should be collated
+ * accordingly.
  */
-ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_seq_err1)
+ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_pdu_err3)
 {
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -5306,6 +5796,174 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_seq_err1)
 	uint8_t iso_interval_int;
 	uint16_t pdu_data_loc[5];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
+	uint32_t sdu_timeoffset;
+	uint32_t pdu_timestamp;
+	uint32_t sdu_timestamp;
+	uint16_t testdata_indx;
+	uint16_t testdata_size;
+	uint32_t sdu_interval;
+	isoal_sdu_cnt_t seqn;
+	uint8_t testdata[50];
+	isoal_status_t err;
+	uint32_t latency;
+	uint8_t role;
+	uint8_t BN;
+	uint8_t FT;
+
+	/* Settings */
+	role = BT_CONN_ROLE_PERIPHERAL;
+	iso_interval_int = 1;
+	sdu_interval = ((iso_interval_int * CONN_INT_UNIT_US) / 3) + 5;
+	BN = 3;
+	FT = 1;
+	stream_sync_delay = (iso_interval_int * CONN_INT_UNIT_US) - 200;
+	group_sync_delay = (iso_interval_int * CONN_INT_UNIT_US) - 50;
+
+	/* PDU 1 -------------------------------------------------------------*/
+	isoal_test_init_rx_pdu_buffer(&rx_pdu_meta_buf);
+	isoal_test_init_rx_sdu_buffer(&rx_sdu_frag_buf);
+	init_test_data_buffer(testdata, 50);
+	memset(pdu_data_loc, 0, sizeof(pdu_data_loc));
+
+	sdu_buffer.dbuf = &rx_sdu_frag_buf;
+	sdu_buffer.size = 35;
+	payload_number = 1000 * BN;
+	pdu_timestamp = 9249;
+	latency = calc_rx_latency_by_role(role, true, FT,
+					sdu_interval, iso_interval_int,
+					stream_sync_delay, group_sync_delay);
+	sdu_timeoffset = group_sync_delay - 50;
+	sdu_timestamp = (uint32_t)((int64_t)pdu_timestamp + latency - sdu_timeoffset);
+	seqn = 1;
+	testdata_indx = 0;
+	testdata_size = 35;
+	sdu_size = 35;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, 35);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_PDU_STATUS_VALID, ISOAL_SDU_STATUS_LOST_DATA);
+
+	sink_hdl = basic_rx_test_setup(0xADAD,            /* Handle */
+				       role,              /* Role */
+				       true,              /* Framed */
+				       BN,                /* BN */
+				       FT,                /* FT */
+				       sdu_interval,      /* SDU Interval */
+				       iso_interval_int,  /* ISO Interval */
+				       stream_sync_delay, /* Stream Sync Delay */
+				       group_sync_delay); /* Group Sync Delay */
+
+	/* PDU with errors */
+	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
+		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
+	pdu_data_loc[0] = isoal_test_add_framed_pdu_start(&testdata[testdata_indx],
+				(testdata_size - testdata_indx),
+				sdu_timeoffset, &rx_pdu_meta_buf.pdu_meta);
+
+	/* Test recombine (Black Box) */
+	ztest_expect_value(sink_sdu_alloc_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
+	ztest_expect_value(sink_sdu_alloc_test, valid_pdu, &rx_pdu_meta_buf.pdu_meta);
+	ztest_return_data(sink_sdu_alloc_test, sdu_buffer, &sdu_buffer);
+	ztest_returns_value(sink_sdu_alloc_test, ISOAL_STATUS_OK);
+
+	ztest_expect_value(sink_sdu_write_test, dbuf, &rx_sdu_frag_buf);
+	ztest_expect_value(sink_sdu_write_test, pdu_payload,
+		&rx_pdu_meta_buf.pdu[2+pdu_data_loc[0]]);
+	ztest_expect_value(sink_sdu_write_test, consume_len, (testdata_size - testdata_indx));
+	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
+
+	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_START);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_PDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
+	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
+
+
+	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Test recombine (White Box) */
+	zassert_equal(isoal_global.sink_state[sink_hdl].sdu_production.fsm, ISOAL_CONTINUE,
+		"FSM state %s should be %s!",
+		FSM_TO_STR(isoal_global.sink_state[sink_hdl].sdu_production.fsm),
+		FSM_TO_STR(ISOAL_CONTINUE));
+
+	/* PDU 2 -------------------------------------------------------------*/
+	isoal_test_init_rx_pdu_buffer(&rx_pdu_meta_buf);
+
+	payload_number++;
+	pdu_timestamp += 200;
+
+	testdata_indx = testdata_size;
+	testdata_size += 15;
+	sdu_size = 0;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, 35);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_PDU_STATUS_LOST_DATA, ISOAL_PDU_STATUS_LOST_DATA);
+
+	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
+		ISOAL_PDU_STATUS_LOST_DATA, &rx_pdu_meta_buf.pdu_meta);
+	pdu_data_loc[1] = isoal_test_add_framed_pdu_cont(&testdata[testdata_indx],
+				(testdata_size - testdata_indx),
+				&rx_pdu_meta_buf.pdu_meta);
+
+	/* Test recombine (Black Box) */
+	ztest_expect_value(sink_sdu_alloc_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
+	ztest_expect_value(sink_sdu_alloc_test, valid_pdu, &rx_pdu_meta_buf.pdu_meta);
+	ztest_return_data(sink_sdu_alloc_test, sdu_buffer, &sdu_buffer);
+	ztest_returns_value(sink_sdu_alloc_test, ISOAL_STATUS_OK);
+
+	/* SDU should not be written to */
+
+	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_END);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_PDU_STATUS_LOST_DATA);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
+	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
+
+
+	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Test recombine (White Box) */
+	zassert_equal(isoal_global.sink_state[sink_hdl].sdu_production.fsm, ISOAL_ERR_SPOOL,
+		"FSM state %s should be %s!",
+		FSM_TO_STR(isoal_global.sink_state[sink_hdl].sdu_production.fsm),
+		FSM_TO_STR(ISOAL_ERR_SPOOL));
+}
+
+/**
+ * Test Suite  :   RX framed PDU recombination
+ *
+ * Tests recombination of a single SDU from a single segmented PDU with errors,
+ * followed by a valid PDU
+ */
+ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_seq_err1)
+{
+	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
+	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
+	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
+	isoal_sink_handle_t sink_hdl;
+	uint32_t stream_sync_delay;
+	uint32_t group_sync_delay;
+	isoal_sdu_len_t sdu_size;
+	uint8_t iso_interval_int;
+	uint16_t pdu_data_loc[5];
+	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
@@ -5348,6 +6006,8 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_seq_err1)
 	testdata_indx = 0;
 	testdata_size = 13;
 	sdu_size = 13;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	sink_hdl = basic_rx_test_setup(0xADAD,            /* Handle */
 				       role,              /* Role */
@@ -5378,13 +6038,15 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_seq_err1)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 
@@ -5430,6 +6092,8 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_seq_err1)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size = 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -5450,13 +6114,15 @@ ZTEST(test_rx_framed, test_rx_framed_dbl_pdu_dbl_sdu_seq_err1)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -5480,6 +6146,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_err1)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -5487,6 +6154,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_err1)
 	uint8_t iso_interval_int;
 	uint16_t pdu_data_loc[5];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
@@ -5529,6 +6197,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_err1)
 	testdata_indx = 0;
 	testdata_size = 13;
 	sdu_size = 0;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_ERRORS, ISOAL_SDU_STATUS_ERRORS);
 
 	sink_hdl = basic_rx_test_setup(0xADAD,            /* Handle */
 				       role,              /* Role */
@@ -5556,13 +6226,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_err1)
 	/* SDU should not be written to */
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_ERRORS);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_ERRORS);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 
@@ -5653,6 +6325,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_err1)
 	testdata_indx = testdata_size;
 	testdata_size += 13;
 	sdu_size = 13;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -5673,13 +6347,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_err1)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 
@@ -5704,6 +6380,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_err2)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -5711,6 +6388,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_err2)
 	uint8_t iso_interval_int;
 	uint16_t pdu_data_loc[5];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
@@ -5802,6 +6480,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_err2)
 	pdu_timestamp += 200;
 	testdata_indx = testdata_size;
 	testdata_size += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_ERRORS, ISOAL_SDU_STATUS_ERRORS);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_ERRORS, &rx_pdu_meta_buf.pdu_meta);
@@ -5815,13 +6495,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_err2)
 	/* SDU should not be written to */
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_ERRORS);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_ERRORS);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 
@@ -5880,6 +6562,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_err2)
 	testdata_indx = testdata_size;
 	testdata_size += 13;
 	sdu_size = 13;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -5900,13 +6584,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_err2)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -5930,6 +6616,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_err3)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -5937,6 +6624,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_err3)
 	uint8_t iso_interval_int;
 	uint16_t pdu_data_loc[5];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
@@ -6064,6 +6752,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_err3)
 	pdu_timestamp += 200;
 	testdata_indx = testdata_size;
 	testdata_size += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_ERRORS, ISOAL_SDU_STATUS_ERRORS);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_ERRORS, &rx_pdu_meta_buf.pdu_meta);
@@ -6077,13 +6767,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_err3)
 	/* SDU should not be written to */
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_ERRORS);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_ERRORS);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -6110,6 +6802,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_err3)
 	testdata_indx = testdata_size;
 	testdata_size += 13;
 	sdu_size = 13;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -6130,13 +6824,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_err3)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -6160,6 +6856,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_seq_err1)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -6167,6 +6864,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_seq_err1)
 	uint8_t iso_interval_int;
 	uint16_t pdu_data_loc[5];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
@@ -6267,6 +6965,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_seq_err1)
 	pdu_timestamp += 200;
 	testdata_indx = testdata_size;
 	testdata_size += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_LOST_DATA, ISOAL_SDU_STATUS_LOST_DATA);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -6280,13 +6980,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_seq_err1)
 	/* SDU should not be written to */
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_LOST_DATA);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_LOST_DATA);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -6313,6 +7015,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_seq_err1)
 	testdata_indx = testdata_size;
 	testdata_size += 13;
 	sdu_size = 13;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -6333,13 +7037,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_seq_err1)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -6363,6 +7069,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_seq_err1)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -6370,6 +7077,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_seq_err1)
 	uint8_t iso_interval_int;
 	uint16_t pdu_data_loc[5];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
@@ -6470,6 +7178,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_seq_err1)
 	pdu_timestamp += 200;
 	testdata_indx = testdata_size;
 	testdata_size += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_LOST_DATA, ISOAL_SDU_STATUS_LOST_DATA);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_ERRORS, &rx_pdu_meta_buf.pdu_meta);
@@ -6483,13 +7193,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_seq_err1)
 	/* SDU should not be written to */
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_LOST_DATA);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_LOST_DATA);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -6516,6 +7228,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_seq_err1)
 	testdata_indx = testdata_size;
 	testdata_size += 13;
 	sdu_size = 13;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -6536,13 +7250,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_single_sdu_pdu_seq_err1)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -6566,6 +7282,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err1)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf[2];
 	struct isoal_sdu_buffer sdu_buffer[2];
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -6575,6 +7292,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err1)
 	uint16_t pdu_data_loc[5];
 	isoal_sdu_cnt_t seqn[2];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint16_t testdata_indx;
@@ -6618,6 +7336,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err1)
 	testdata_indx = 0;
 	testdata_size = 13;
 	sdu_size[0] = 0;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[0], sdu_size[0]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_ERRORS, ISOAL_SDU_STATUS_ERRORS);
 
 	sink_hdl = basic_rx_test_setup(0xADAD,            /* Handle */
 				       role,              /* Role */
@@ -6645,13 +7365,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err1)
 	/* SDU should not be written to */
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_ERRORS);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[0].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_ERRORS);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[0].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -6729,6 +7451,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err1)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size[1] += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[1], sdu_size[1]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -6746,13 +7470,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err1)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[1]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[1]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[1]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[1].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[1].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[1]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[1]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[1]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[1].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[1].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -6779,6 +7505,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err1)
 	testdata_indx = testdata_size;
 	testdata_size += 13;
 	sdu_size[0] = 13;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[0], sdu_size[0]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -6799,13 +7527,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err1)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[0].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[0].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -6829,6 +7559,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err2)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf[2];
 	struct isoal_sdu_buffer sdu_buffer[2];
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -6838,6 +7569,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err2)
 	uint16_t pdu_data_loc[5];
 	isoal_sdu_cnt_t seqn[2];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint16_t testdata_indx;
@@ -6929,6 +7661,9 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err2)
 	pdu_timestamp += 200;
 	testdata_indx = testdata_size;
 	testdata_size += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[0], sdu_size[0]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_ERRORS, ISOAL_SDU_STATUS_ERRORS);
+
 
 	/* PDU with errors */
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
@@ -6954,13 +7689,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err2)
 	/* SDU should not be written to */
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_ERRORS);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[0].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_ERRORS);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[0].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	/* SDU 2 */
@@ -7023,6 +7760,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err2)
 	testdata_indx = testdata_size;
 	testdata_size += 13;
 	sdu_size[0] = 13;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[0], sdu_size[0]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -7043,13 +7782,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err2)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[0].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[0].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -7073,6 +7814,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err3)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf[2];
 	struct isoal_sdu_buffer sdu_buffer[2];
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -7082,6 +7824,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err3)
 	uint16_t pdu_data_loc[5];
 	isoal_sdu_cnt_t seqn[2];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint16_t testdata_indx;
@@ -7195,6 +7938,9 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err3)
 
 	/* Test recombine (Black Box) */
 	/* SDU 1 */
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[0], sdu_size[0]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
+
 	ztest_expect_value(sink_sdu_write_test, dbuf, &rx_sdu_frag_buf[0]);
 	ztest_expect_value(sink_sdu_write_test, pdu_payload,
 		&rx_pdu_meta_buf.pdu[2+pdu_data_loc[1]]);
@@ -7202,13 +7948,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err3)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[0].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[0].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	/* SDU 2 */
@@ -7243,6 +7991,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err3)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	/* SDU size does not change */
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[1], sdu_size[1]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_ERRORS, ISOAL_SDU_STATUS_ERRORS);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_ERRORS, &rx_pdu_meta_buf.pdu_meta);
@@ -7256,13 +8006,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err3)
 	/* SDU should not be written to */
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[1]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_ERRORS);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[1]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[1]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[1].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[1].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[1]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_ERRORS);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[1]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[1]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[1].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[1].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -7289,6 +8041,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err3)
 	testdata_indx = testdata_size;
 	testdata_size += 13;
 	sdu_size[0] = 13;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[0], sdu_size[0]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -7309,13 +8063,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_err3)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[0].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[0].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -7339,6 +8095,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seq_err1)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf[2];
 	struct isoal_sdu_buffer sdu_buffer[2];
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -7348,6 +8105,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seq_err1)
 	uint16_t pdu_data_loc[5];
 	isoal_sdu_cnt_t seqn[2];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint16_t testdata_indx;
@@ -7460,6 +8218,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seq_err1)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	/* SDU size does not change */
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[0], sdu_size[0]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_LOST_DATA, ISOAL_SDU_STATUS_LOST_DATA);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -7474,13 +8234,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seq_err1)
 
 	/* SDU 1 emitted with errors, SDU 2 lost */
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_LOST_DATA);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[0].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_LOST_DATA);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[0].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -7507,6 +8269,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seq_err1)
 	testdata_indx = testdata_size;
 	testdata_size += 13;
 	sdu_size[0] = 13;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[0], sdu_size[0]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -7527,13 +8291,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seq_err1)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[0].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[0].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -7557,6 +8323,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_seq_err1)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf[2];
 	struct isoal_sdu_buffer sdu_buffer[2];
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -7566,6 +8333,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_seq_err1)
 	uint16_t pdu_data_loc[5];
 	isoal_sdu_cnt_t seqn[2];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint16_t testdata_indx;
@@ -7678,6 +8446,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_seq_err1)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	/* SDU size does not change */
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[0], sdu_size[0]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_LOST_DATA, ISOAL_SDU_STATUS_LOST_DATA);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_ERRORS, &rx_pdu_meta_buf.pdu_meta);
@@ -7692,13 +8462,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_seq_err1)
 
 	/* SDU 1 emitted with errors, SDU 2 lost */
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_LOST_DATA);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[0].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_LOST_DATA);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[0].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -7725,6 +8497,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_seq_err1)
 	testdata_indx = testdata_size;
 	testdata_size += 13;
 	sdu_size[0] = 13;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[0], sdu_size[0]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -7745,13 +8519,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_pdu_seq_err1)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[0].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[0].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -7776,6 +8552,7 @@ ZTEST(test_rx_framed, test_rx_framed_single_invalid_pdu_single_sdu)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -7783,6 +8560,7 @@ ZTEST(test_rx_framed, test_rx_framed_single_invalid_pdu_single_sdu)
 	uint8_t iso_interval_int;
 	uint16_t pdu_data_loc[5];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
@@ -7853,6 +8631,8 @@ ZTEST(test_rx_framed, test_rx_framed_single_invalid_pdu_single_sdu)
 	testdata_indx = testdata_size;
 	testdata_size += 7;
 	sdu_size += 7;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	pdu_data_loc[2] = isoal_test_add_framed_pdu_end(&testdata[testdata_indx],
 				(testdata_size - testdata_indx),
@@ -7883,13 +8663,15 @@ ZTEST(test_rx_framed, test_rx_framed_single_invalid_pdu_single_sdu)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 
@@ -7916,6 +8698,7 @@ ZTEST(test_rx_framed, test_rx_framed_single_invalid_pdu_single_sdu_hdr_err)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf;
 	struct isoal_sdu_buffer sdu_buffer;
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -7923,6 +8706,7 @@ ZTEST(test_rx_framed, test_rx_framed_single_invalid_pdu_single_sdu_hdr_err)
 	uint8_t iso_interval_int;
 	uint16_t pdu_data_loc[5];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint32_t sdu_timestamp;
@@ -8009,6 +8793,8 @@ ZTEST(test_rx_framed, test_rx_framed_single_invalid_pdu_single_sdu_hdr_err)
 	testdata_indx = testdata_size;
 	testdata_size += 6;
 	sdu_size += 6;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size, sdu_size);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	pdu_data_loc[4] = isoal_test_add_framed_pdu_end(&testdata[testdata_indx],
 				(testdata_size - testdata_indx),
@@ -8051,13 +8837,15 @@ ZTEST(test_rx_framed, test_rx_framed_single_invalid_pdu_single_sdu_hdr_err)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer.dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer.dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer.size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 
@@ -8087,6 +8875,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seg_err1)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf[2];
 	struct isoal_sdu_buffer sdu_buffer[2];
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -8096,6 +8885,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seg_err1)
 	uint16_t pdu_data_loc[5];
 	isoal_sdu_cnt_t seqn[2];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint16_t testdata_indx;
@@ -8139,6 +8929,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seg_err1)
 	testdata_indx = 0;
 	testdata_size = 13;
 	sdu_size[0] = 0;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[0], sdu_size[0]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_LOST_DATA, ISOAL_SDU_STATUS_LOST_DATA);
 
 	sink_hdl = basic_rx_test_setup(0xADAD,            /* Handle */
 				       role,              /* Role */
@@ -8169,13 +8961,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seg_err1)
 	/* SDU should not be written to */
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_LOST_DATA);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[0].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_LOST_DATA);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[0].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -8253,6 +9047,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seg_err1)
 	testdata_indx = testdata_size;
 	testdata_size += 10;
 	sdu_size[1] += 10;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[1], sdu_size[1]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -8270,13 +9066,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seg_err1)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[1]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[1]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[1]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[1].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[1].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[1]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[1]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[1]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[1].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[1].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -8305,6 +9103,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seg_err2)
 	struct rx_pdu_meta_buffer rx_pdu_meta_buf;
 	struct rx_sdu_frag_buffer rx_sdu_frag_buf[2];
 	struct isoal_sdu_buffer sdu_buffer[2];
+	isoal_sdu_status_t collated_status;
 	isoal_sink_handle_t sink_hdl;
 	uint32_t stream_sync_delay;
 	uint32_t group_sync_delay;
@@ -8314,6 +9113,7 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seg_err2)
 	uint16_t pdu_data_loc[5];
 	isoal_sdu_cnt_t seqn[2];
 	uint64_t payload_number;
+	uint16_t total_sdu_size;
 	uint32_t sdu_timeoffset;
 	uint32_t pdu_timestamp;
 	uint16_t testdata_indx;
@@ -8430,6 +9230,9 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seg_err2)
 
 	/* Test recombine (Black Box) */
 	/* SDU 1 */
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[0], sdu_size[0]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
+
 	ztest_expect_value(sink_sdu_write_test, dbuf, &rx_sdu_frag_buf[0]);
 	ztest_expect_value(sink_sdu_write_test, pdu_payload,
 		&rx_pdu_meta_buf.pdu[2+pdu_data_loc[1]]);
@@ -8437,16 +9240,21 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seg_err2)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[0].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[0].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	/* SDU 2 */
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[1], sdu_size[1]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_LOST_DATA, ISOAL_SDU_STATUS_LOST_DATA);
+
 	ztest_expect_value(sink_sdu_alloc_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
 	ztest_expect_value(sink_sdu_alloc_test, valid_pdu, &rx_pdu_meta_buf.pdu_meta);
 	ztest_return_data(sink_sdu_alloc_test, sdu_buffer, &sdu_buffer[1]);
@@ -8455,13 +9263,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seg_err2)
 	/* SDU should not be written to */
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[1]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_LOST_DATA);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[1]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[1]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[1].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[1].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[1]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_LOST_DATA);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[1]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[1]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[1].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[1].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
@@ -8520,6 +9330,8 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seg_err2)
 	testdata_indx = testdata_size;
 	testdata_size += 13;
 	sdu_size[0] = 13;
+	total_sdu_size = COLLATED_RX_SDU_INFO(sdu_size[0], sdu_size[0]);
+	collated_status = COLLATED_RX_SDU_INFO(ISOAL_SDU_STATUS_VALID, ISOAL_SDU_STATUS_VALID);
 
 	isoal_test_create_framed_pdu_base(payload_number, pdu_timestamp,
 		ISOAL_PDU_STATUS_VALID, &rx_pdu_meta_buf.pdu_meta);
@@ -8540,13 +9352,15 @@ ZTEST(test_rx_framed, test_rx_framed_trppl_pdu_dbl_sdu_seg_err2)
 	ztest_returns_value(sink_sdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(sink_sdu_emit_test, sink_ctx, &isoal_global.sink_state[sink_hdl]);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_state, BT_ISO_SINGLE);
-	ztest_expect_value(sink_sdu_emit_test, sink_ctx->sdu_production.sdu_written, sdu_size[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->status, ISOAL_SDU_STATUS_VALID);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->timestamp, sdu_timestamp[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->seqn, seqn[0]);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.dbuf, sdu_buffer[0].dbuf);
-	ztest_expect_value(sink_sdu_emit_test, valid_sdu->contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_state, BT_ISO_SINGLE);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu_frag_size, sdu_size[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.status, ISOAL_SDU_STATUS_VALID);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.timestamp, sdu_timestamp[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.seqn, seqn[0]);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.dbuf, sdu_buffer[0].dbuf);
+	ztest_expect_value(sink_sdu_emit_test, sdu_frag->sdu.contents.size, sdu_buffer[0].size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->total_sdu_size, total_sdu_size);
+	ztest_expect_value(sink_sdu_emit_test, sdu->collated_status, collated_status);
 	ztest_returns_value(sink_sdu_emit_test, ISOAL_STATUS_OK);
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);

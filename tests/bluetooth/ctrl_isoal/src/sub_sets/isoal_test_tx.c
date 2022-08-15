@@ -77,7 +77,7 @@ static isoal_status_t source_pdu_emit_test(struct node_tx_iso *node_tx,
 	isoal_test_debug_print_tx_pdu(node_tx);
 
 	ztest_check_expected_value(node_tx);
-	ztest_check_expected_value(node_tx->payload_number);
+	ztest_check_expected_value(node_tx->payload_count);
 	ztest_check_expected_value(node_tx->sdu_fragments);
 
 	pdu = (struct pdu_iso *)node_tx->pdu;
@@ -523,7 +523,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_1_sdu_1_frag_1_pdu_maxPDU)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_COMPLETE_END);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -643,7 +643,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_1_sdu_1_frag_1_pdu_bufSize)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_COMPLETE_END);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -754,7 +754,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_1_sdu_1_frag_3_pdu)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_START_CONTINUE);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -777,7 +777,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_1_sdu_1_frag_3_pdu)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_START_CONTINUE);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -801,7 +801,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_1_sdu_1_frag_3_pdu)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_COMPLETE_END);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -985,7 +985,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_1_sdu_3_frag_1_pdu)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_COMPLETE_END);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -1134,7 +1134,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_1_sdu_3_frag_2_pdu)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[0].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_START_CONTINUE);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -1195,7 +1195,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_1_sdu_3_frag_2_pdu)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[1].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_COMPLETE_END);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -1344,7 +1344,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_2_sdu_3_frag_4_pdu)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[0].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_START_CONTINUE);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -1405,7 +1405,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_2_sdu_3_frag_4_pdu)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[1].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_COMPLETE_END);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -1490,7 +1490,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_2_sdu_3_frag_4_pdu)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[0].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_START_CONTINUE);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -1551,7 +1551,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_2_sdu_3_frag_4_pdu)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[1].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_COMPLETE_END);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -1705,7 +1705,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_2_sdu_3_frag_4_pdu_padding)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[0].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_START_CONTINUE);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -1766,7 +1766,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_2_sdu_3_frag_4_pdu_padding)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[1].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_COMPLETE_END);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -1789,7 +1789,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_2_sdu_3_frag_4_pdu_padding)
 	/* PDU should not be written to */
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[0].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_START_CONTINUE);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -1811,7 +1811,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_2_sdu_3_frag_4_pdu_padding)
 	/* PDU should not be written to */
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[2].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_START_CONTINUE);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -1896,7 +1896,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_2_sdu_3_frag_4_pdu_padding)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[0].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_START_CONTINUE);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -1957,7 +1957,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_2_sdu_3_frag_4_pdu_padding)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[1].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_COMPLETE_END);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -1980,7 +1980,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_2_sdu_3_frag_4_pdu_padding)
 	/* PDU should not be written to */
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[0].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_START_CONTINUE);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -2002,7 +2002,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_2_sdu_3_frag_4_pdu_padding)
 	/* PDU should not be written to */
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[2].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_START_CONTINUE);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -2119,7 +2119,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_1_zero_sdu_1_frag_1_pdu_maxPDU_padding)
 	/* PDU should not be written to */
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[0].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_COMPLETE_END);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -2142,7 +2142,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_1_zero_sdu_1_frag_1_pdu_maxPDU_padding)
 	/* PDU should not be written to */
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[1].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_START_CONTINUE);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -2164,7 +2164,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_1_zero_sdu_1_frag_1_pdu_maxPDU_padding)
 	/* PDU should not be written to */
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[2].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_START_CONTINUE);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -2380,7 +2380,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_1_sdu_1_frag_pdu_emit_err)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_COMPLETE_END);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -2524,7 +2524,7 @@ ZTEST(test_tx_framed, test_tx_framed_1_sdu_1_frag_1_pdu_maxPDU)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -2673,7 +2673,7 @@ ZTEST(test_tx_framed, test_tx_framed_1_sdu_1_frag_1_pdu_bufSize)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -2811,7 +2811,7 @@ ZTEST(test_tx_framed, test_tx_framed_1_sdu_1_frag_3_pdu)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -2855,7 +2855,7 @@ ZTEST(test_tx_framed, test_tx_framed_1_sdu_1_frag_3_pdu)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -2901,7 +2901,7 @@ ZTEST(test_tx_framed, test_tx_framed_1_sdu_1_frag_3_pdu)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -3131,7 +3131,7 @@ ZTEST(test_tx_framed, test_tx_framed_1_sdu_3_frag_1_pdu)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -3318,7 +3318,7 @@ ZTEST(test_tx_framed, test_tx_framed_1_sdu_3_frag_2_pdu)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[0].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -3410,7 +3410,7 @@ ZTEST(test_tx_framed, test_tx_framed_1_sdu_3_frag_2_pdu)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[1].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -3597,7 +3597,7 @@ ZTEST(test_tx_framed, test_tx_framed_2_sdu_3_frag_4_pdu)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[0].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -3689,7 +3689,7 @@ ZTEST(test_tx_framed, test_tx_framed_2_sdu_3_frag_4_pdu)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[1].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -3807,7 +3807,7 @@ ZTEST(test_tx_framed, test_tx_framed_2_sdu_3_frag_4_pdu)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[0].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -3899,7 +3899,7 @@ ZTEST(test_tx_framed, test_tx_framed_2_sdu_3_frag_4_pdu)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf[1].node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -4054,7 +4054,7 @@ ZTEST(test_tx_framed, test_tx_framed_2_sdu_1_frag_2_pdu_refPoint2)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -4130,7 +4130,7 @@ ZTEST(test_tx_framed, test_tx_framed_2_sdu_1_frag_2_pdu_refPoint2)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -4276,7 +4276,7 @@ ZTEST(test_tx_framed, test_tx_framed_1_sdu_1_frag_1_pdu_refPoint3)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -4406,7 +4406,7 @@ ZTEST(test_tx_framed, test_tx_framed_1_zero_sdu_1_frag_1_pdu_maxPDU)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
@@ -4664,7 +4664,7 @@ ZTEST(test_tx_framed, test_tx_framed_1_sdu_1_frag_pdu_emit_err)
 	ztest_returns_value(source_pdu_write_test, ISOAL_STATUS_OK);
 
 	ztest_expect_value(source_pdu_emit_test, node_tx, &tx_pdu_meta_buf.node_tx);
-	ztest_expect_value(source_pdu_emit_test, node_tx->payload_number, payload_number);
+	ztest_expect_value(source_pdu_emit_test, node_tx->payload_count, payload_number);
 	ztest_expect_value(source_pdu_emit_test, node_tx->sdu_fragments, sdu_fragments);
 	ztest_expect_value(source_pdu_emit_test, pdu->ll_id, PDU_BIS_LLID_FRAMED);
 	ztest_expect_value(source_pdu_emit_test, pdu->length, pdu_write_size);
