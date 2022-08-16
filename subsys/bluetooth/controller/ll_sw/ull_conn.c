@@ -2599,11 +2599,6 @@ static void conn_cleanup(struct ll_conn *conn, uint8_t reason)
 	conn_cleanup_finalize(conn);
 }
 
-void ull_conn_timeout(void *param)
-{
-	conn_cleanup(param, BT_HCI_ERR_CONN_TIMEOUT);
-}
-
 static void tx_ull_flush(struct ll_conn *conn)
 {
 #if defined(CONFIG_BT_LL_SW_LLCP_LEGACY)

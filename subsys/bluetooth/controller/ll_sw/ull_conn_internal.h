@@ -39,8 +39,6 @@ uint8_t ull_conn_llcp_req(void *conn);
 
 void ull_pdu_data_init(struct pdu_data *pdu);
 
-void ull_conn_timeout(void *param);
-
 #if defined(CONFIG_BT_CTLR_CONN_PARAM_REQ)
 /* Connection context pointer used as CPR mutex to serialize connection
  * parameter requests procedures across simulataneous connections so that
