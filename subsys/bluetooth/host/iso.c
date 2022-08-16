@@ -422,10 +422,10 @@ static void bt_iso_chan_disconnected(struct bt_iso_chan *chan, uint8_t reason)
 					is_chan_connected = true;
 					break;
 				}
+			}
 
-				if (!is_chan_connected) {
-					cig->state = BT_ISO_CIG_STATE_INACTIVE;
-				}
+			if (!is_chan_connected) {
+				cig->state = BT_ISO_CIG_STATE_INACTIVE;
 			}
 #endif /* CONFIG_BT_ISO_CENTRAL */
 		}
