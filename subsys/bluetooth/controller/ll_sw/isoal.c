@@ -362,7 +362,7 @@ static isoal_status_t isoal_rx_buffered_emit_sdu(struct isoal_sink *sink, bool e
 	sdu_status.collated_status = sdu_frag.sdu.status;
 	emit_sdu_current = true;
 
-#if ISOAL_CONFIG_BUFFER_RX_SDUS
+#if defined(ISOAL_CONFIG_BUFFER_RX_SDUS_ENABLE)
 	uint16_t next_write_indx;
 	bool sdu_list_empty;
 	bool emit_sdu_list;
@@ -425,7 +425,7 @@ static isoal_status_t isoal_rx_buffered_emit_sdu(struct isoal_sink *sink, bool e
 
 		next_write_indx = sp->sdu_list.next_write_indx  = 0;
 	}
-#endif /* ISOAL_CONFIG_BUFFER_RX_SDUS */
+#endif /* ISOAL_CONFIG_BUFFER_RX_SDUS_ENABLE */
 
 	if (emit_sdu_current) {
 		if (sdu_frag.sdu_state == BT_ISO_SINGLE) {
@@ -435,11 +435,11 @@ static isoal_status_t isoal_rx_buffered_emit_sdu(struct isoal_sink *sink, bool e
 
 		err |= session->sdu_emit(sink, &sdu_frag, &sdu_status);
 
-#if ISOAL_CONFIG_BUFFER_RX_SDUS
+#if defined(ISOAL_CONFIG_BUFFER_RX_SDUS_ENABLE)
 	} else if (next_write_indx < CONFIG_BT_CTLR_ISO_RX_SDU_BUFFERS) {
 		sp->sdu_list.list[next_write_indx++] = sdu_frag;
 		sp->sdu_list.next_write_indx = next_write_indx;
-#endif /* ISOAL_CONFIG_BUFFER_RX_SDUS */
+#endif /* ISOAL_CONFIG_BUFFER_RX_SDUS_ENABLE */
 	} else {
 		/* Unreachable */
 		LL_ASSERT(0);

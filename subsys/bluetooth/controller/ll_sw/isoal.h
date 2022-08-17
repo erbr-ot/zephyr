@@ -8,8 +8,10 @@
 #include <zephyr/types.h>
 #include <zephyr/toolchain.h>
 
-#define ISOAL_CONFIG_BUFFER_RX_SDUS defined(CONFIG_BT_CTLR_ISO_RX_SDU_BUFFERS) &&                  \
-		(CONFIG_BT_CTLR_ISO_RX_SDU_BUFFERS > 0)
+#if defined(CONFIG_BT_CTLR_ISO_RX_SDU_BUFFERS) && (CONFIG_BT_CTLR_ISO_RX_SDU_BUFFERS > 0)
+#define ISOAL_CONFIG_BUFFER_RX_SDUS_ENABLE
+#endif /* CONFIG_BT_CTLR_ISO_RX_SDU_BUFFERS > 0 */
+
 
 /** Function return error codes */
 typedef uint8_t isoal_status_t;
@@ -146,12 +148,12 @@ struct isoal_emitted_sdu {
 	isoal_sdu_status_t        collated_status;
 };
 
-#if ISOAL_CONFIG_BUFFER_RX_SDUS
+#if defined(ISOAL_CONFIG_BUFFER_RX_SDUS_ENABLE)
 struct isoal_emit_sdu_queue {
 	struct isoal_emitted_sdu_frag list[CONFIG_BT_CTLR_ISO_RX_SDU_BUFFERS];
 	uint16_t next_write_indx;
 };
-#endif /* ISOAL_CONFIG_BUFFER_RX_SDUS */
+#endif /* ISOAL_CONFIG_BUFFER_RX_SDUS_ENABLE */
 
 /** @brief Produced ISO PDU encapsulation */
 struct isoal_pdu_produced {
@@ -266,7 +268,7 @@ struct isoal_sink_session {
 };
 
 struct isoal_sdu_production {
-#if ISOAL_CONFIG_BUFFER_RX_SDUS
+#if defined(ISOAL_CONFIG_BUFFER_RX_SDUS_ENABLE)
 	/* Buffered SDUs */
 	struct isoal_emit_sdu_queue sdu_list;
 #endif
