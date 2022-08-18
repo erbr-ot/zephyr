@@ -13,15 +13,26 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <zephyr/fff.h>
 #include <zephyr/types.h>
 #include <zephyr/ztest.h>
 #include <zephyr/ztest_error_hook.h>
+#include <zephyr/ztest_mock.h>
 
+#if 0
+#include <zephyr/fff.h>
+#endif
 
 /* Include the DUT */
 #include "ll_sw/isoal.c"
 
+#include "isoal_test_common.h"
+#include "isoal_test_debug.h"
+
+/* Include Test Subsets */
+#include "sub_sets/isoal_test_rx.c"
+#include "sub_sets/isoal_test_tx.c"
+
+#if 0
 DEFINE_FFF_GLOBALS;
 
 /* #define DEBUG_TEST			(1) */
@@ -8075,10 +8086,6 @@ ZTEST(test_rx_framed, test_rx_framed_single_invalid_pdu_single_sdu)
 
 	err = isoal_rx_pdu_recombine(sink_hdl, &rx_pdu_meta_buf.pdu_meta);
 
-/* Include Test Subsets */
-#include "isoal_test_rx.c"
-#include "isoal_test_tx.c"
-
 	/* Test recombine (White Box) */
 	zassert_equal(isoal_global.sink_state[sink_hdl].sdu_production.fsm, ISOAL_START,
 		      "FSM state %s should be %s!",
@@ -8141,3 +8148,14 @@ static void common_before(void *f)
 ZTEST_SUITE(test_rx_basics, NULL, NULL, common_before, NULL, NULL);
 ZTEST_SUITE(test_rx_unframed, NULL, NULL, common_before, NULL, NULL);
 ZTEST_SUITE(test_rx_framed, NULL, NULL, common_before, NULL, NULL);
+#endif
+
+ZTEST_SUITE(test_rx_basics, NULL, NULL, NULL, NULL, NULL);
+ZTEST_SUITE(test_rx_unframed, NULL, NULL, NULL, NULL, NULL);
+ZTEST_SUITE(test_rx_framed, NULL, NULL, NULL, NULL, NULL);
+
+ZTEST_SUITE(test_tx_basics, NULL, NULL, NULL, NULL, NULL);
+ZTEST_SUITE(test_tx_unframed, NULL, NULL, NULL, NULL, NULL);
+ZTEST_SUITE(test_tx_framed, NULL, NULL, NULL, NULL, NULL);
+
+ZTEST_SUITE(test_tx_framed_ebq, NULL, NULL, NULL, NULL, NULL);
