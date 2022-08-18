@@ -156,13 +156,19 @@ uint8_t ull_cp_remote_cpr_pending(struct ll_conn *conn);
  * @brief Check if a remote connection param reg is expecting an
  *        anchor point move response.
  */
-bool ull_cp_remote_cpr_awaiting_apm_response(struct ll_conn *conn);
+bool ull_cp_remote_cpr_apm_awaiting_reply(struct ll_conn *conn);
 
 /**
- * @brief Repsond to anhor point move of remote connection param
+ * @brief Repsond to anchor point move of remote connection
+ *        param reg.
+ */
+void ull_cp_remote_cpr_apm_reply(struct ll_conn *conn, uint16_t *offsets);
+
+/**
+ * @brief Reject anchor point move of remote connection param
  *        reg.
  */
-void ull_cp_remote_cpr_apm_respond(struct ll_conn *conn, uint16_t *offsets);
+void ull_cp_remote_cpr_apm_neg_reply(struct ll_conn *conn, uint8_t error_code);
 
 /**
  * @brief Initiate a Termination Procedure.

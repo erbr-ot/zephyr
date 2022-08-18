@@ -141,10 +141,8 @@ enum {
 	/* CONN_PARAM_REQ negative reply */
 	RP_CU_EVT_CONN_PARAM_REQ_NEG_REPLY,
 
-#if defined(CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE)
 	/* CONN_PARAM_REQ Ancjor Point Move reply */
 	RP_CU_EVT_CONN_PARAM_REQ_USER_RESPONSE,
-#endif /* CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE */
 };
 
 /*
@@ -1258,12 +1256,12 @@ void llcp_rp_conn_param_req_neg_reply(struct ll_conn *conn, struct proc_ctx *ctx
 }
 
 #if defined(CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE)
-bool llcp_rp_conn_param_req_awaiting_apm_response(struct proc_ctx *ctx)
+bool llcp_rp_conn_param_req_apm_awaiting_reply(struct proc_ctx *ctx)
 {
 	return (ctx->state == RP_CU_STATE_WAIT_USER_RESPONSE);
 }
 
-void llcp_rp_conn_param_req_apm_response(struct ll_conn *conn, struct proc_ctx *ctx)
+void llcp_rp_conn_param_req_apm_reply(struct ll_conn *conn, struct proc_ctx *ctx)
 {
 	rp_cu_execute_fsm(conn, ctx, RP_CU_EVT_CONN_PARAM_REQ_USER_RESPONSE, NULL);
 }

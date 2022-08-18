@@ -1039,38 +1039,46 @@ uint8_t ull_cp_remote_cpr_pending(struct ll_conn *conn)
 }
 
 #if defined(CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE)
-bool ull_cp_remote_cpr_awaiting_apm_response(struct ll_conn *conn)
+bool ull_cp_remote_cpr_apm_awaiting_reply(struct ll_conn *conn)
 {
 	struct proc_ctx *ctx;
 
 	ctx = llcp_rr_peek(conn);
 
 	if (ctx && ctx->proc == PROC_CONN_PARAM_REQ) {
-		return llcp_rp_conn_param_req_awaiting_apm_response(ctx);
+		return llcp_rp_conn_param_req_apm_awaiting_reply(ctx);
 	}
 
 	return false;
 }
 
-void ull_cp_remote_cpr_apm_respond(struct ll_conn *conn, uint16_t *offsets)
+void ull_cp_remote_cpr_apm_reply(struct ll_conn *conn, uint16_t *offsets)
 {
 	struct proc_ctx *ctx;
 
 	ctx = llcp_rr_peek(conn);
 
 	if (ctx && ctx->proc == PROC_CONN_PARAM_REQ) {
-		if (offsets[0] != 0xFFFF) {
-			ctx->data.cu.offsets[0] = offsets[0];
-			ctx->data.cu.offsets[1] = offsets[1];
-			ctx->data.cu.offsets[2] = offsets[2];
-			ctx->data.cu.offsets[3] = offsets[3];
-			ctx->data.cu.offsets[4] = offsets[4];
-			ctx->data.cu.offsets[5] = offsets[5];
-			ctx->data.cu.error = 0U;
-		} else {
-			ctx->data.cu.error = BT_HCI_ERR_UNSUPP_LL_PARAM_VAL;
-		}
-		llcp_rp_conn_param_req_apm_response(conn, ctx);
+		ctx->data.cu.offsets[0] = offsets[0];
+		ctx->data.cu.offsets[1] = offsets[1];
+		ctx->data.cu.offsets[2] = offsets[2];
+		ctx->data.cu.offsets[3] = offsets[3];
+		ctx->data.cu.offsets[4] = offsets[4];
+		ctx->data.cu.offsets[5] = offsets[5];
+		ctx->data.cu.error = 0U;
+		llcp_rp_conn_param_req_apm_reply(conn, ctx);
+	}
+}
+
+void ull_cp_remote_cpr_apm_neg_reply(struct ll_conn *conn, uint8_t error_code)
+{
+	struct proc_ctx *ctx;
+
+	ctx = llcp_rr_peek(conn);
+
+	if (ctx && ctx->proc == PROC_CONN_PARAM_REQ) {
+		ctx->data.cu.error = error_code;
+		llcp_rp_conn_param_req_apm_reply(conn, ctx);
 	}
 }
 #endif /* CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE */

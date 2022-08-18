@@ -480,8 +480,8 @@ void llcp_rp_cu_init_proc(struct proc_ctx *ctx);
 void llcp_rp_cu_run(struct ll_conn *conn, struct proc_ctx *ctx, void *param);
 void llcp_rp_conn_param_req_reply(struct ll_conn *conn, struct proc_ctx *ctx);
 void llcp_rp_conn_param_req_neg_reply(struct ll_conn *conn, struct proc_ctx *ctx);
-bool llcp_rp_conn_param_req_awaiting_apm_response(struct proc_ctx *ctx);
-void llcp_rp_conn_param_req_apm_response(struct ll_conn *conn, struct proc_ctx *ctx);
+bool llcp_rp_conn_param_req_apm_awaiting_reply(struct proc_ctx *ctx);
+void llcp_rp_conn_param_req_apm_reply(struct ll_conn *conn, struct proc_ctx *ctx);
 
 /*
  * Terminate Helper
