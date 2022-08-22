@@ -67,8 +67,19 @@ Deprecated in this release
   :c:macro:`DT_GPIO_LABEL_BY_IDX`, and :c:macro:`DT_INST_GPIO_LABEL_BY_IDX`,
   are deprecated in favor of utilizing :c:macro:`DT_GPIO_CTLR` and variants.
 
+* :c:macro:`DT_LABEL`, and :c:macro:`DT_INST_LABEL`, are deprecated
+  in favor of utilizing :c:macro:`DT_PROP` and variants.
+
 * :c:macro:`DT_BUS_LABEL`, and :c:macro:`DT_INST_BUS_LABEL`, are deprecated
   in favor of utilizing :c:macro:`DT_BUS` and variants.
+
+* STM32 LPTIM domain clock should now be configured using devicetree.
+  Related Kconfig :kconfig:option:`CONFIG_STM32_LPTIM_CLOCK` option is now
+  deprecated.
+
+* 'label' property from devicetree as a base property.  The property is still
+   valid for specific bindings to specify like :dtcompatible:`gpio-leds` and
+   :dtcompatible:`fixed-partitions`.
 
 Stable API changes in this release
 ==================================
@@ -102,6 +113,11 @@ Bluetooth
 * Direction Finding
 
 * Host
+
+  * Added :c:func:`bt_conn_auth_cb_overlay` to overlay authentication callbacks for a Bluetooth LE connection.
+  * Removed ``CONFIG_BT_HCI_ECC_STACK_SIZE``.
+    The Bluetooth long workqueue (:kconfig:option:`CONFIG_BT_LONG_WQ`) is used for processing ECC commands instead of the dedicated thread.
+  * :c:func:`bt_conn_get_security` and `bt_conn_enc_key_size` now take a ``const struct bt_conn*`` argument.
 
 * Mesh
 
@@ -164,6 +180,10 @@ Drivers and Sensors
 
 * I2S
 
+* IEEE 802.15.4
+
+  * All IEEE 802.15.4 drivers have been converted to Devicetree-based drivers.
+
 * Interrupt Controller
 
 * MBOX
@@ -190,6 +210,9 @@ Drivers and Sensors
 
 Networking
 **********
+
+* ``CONFIG_NET_CONFIG_IEEE802154_DEV_NAME`` has been removed in favor of
+  using a Devicetree choice given by ``zephyr,ieee802154``.
 
 USB
 ***

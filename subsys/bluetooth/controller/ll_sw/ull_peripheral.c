@@ -214,6 +214,7 @@ void ull_periph_setup(struct node_rx_hdr *rx, struct node_rx_ftr *ftr,
 	conn->procedure_reload =
 		RADIO_CONN_EVENTS((40 * 1000 * 1000), conn_interval_us);
 #else
+#if defined(CONFIG_BT_CTLR_CONN_ISO)
 	uint16_t conn_accept_timeout;
 
 	(void)ll_conn_iso_accept_timeout_get(&conn_accept_timeout);
@@ -221,6 +222,7 @@ void ull_periph_setup(struct node_rx_hdr *rx, struct node_rx_ftr *ftr,
 
 	/* Setup the PRT reload */
 	ull_cp_prt_reload_set(conn, conn_interval_us);
+#endif /* CONFIG_BT_CTLR_CONN_ISO */
 #endif /* CONFIG_BT_LL_SW_LLCP_LEGACY */
 
 #if (!defined(CONFIG_BT_LL_SW_LLCP_LEGACY))
