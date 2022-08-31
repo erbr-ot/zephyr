@@ -49,6 +49,7 @@ void isoal_test_debug_print_rx_pdu(struct isoal_pdu_rx *pdu_meta)
 {
 	zassert_not_null(pdu_meta, "");
 
+	PRINT("\n");
 	PRINT("PDU %04u (%10u) | %12s [%10s] %03u: ",
 		(uint32_t) pdu_meta->meta->payload_number,
 		(uint32_t) pdu_meta->meta->timestamp,
