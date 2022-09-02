@@ -1147,7 +1147,7 @@ static void isoal_source_deallocate(isoal_source_handle_t hdl)
 static isoal_status_t isoal_check_source_hdl_valid(isoal_source_handle_t hdl)
 {
 	if (hdl < CONFIG_BT_CTLR_ISOAL_SOURCES &&
-		isoal_global.sink_allocated[hdl] == ISOAL_ALLOC_STATE_TAKEN) {
+		isoal_global.source_allocated[hdl] == ISOAL_ALLOC_STATE_TAKEN) {
 		return ISOAL_STATUS_OK;
 	}
 
