@@ -2847,15 +2847,18 @@ static uint32_t aux_time_get(struct ll_adv_aux_set *aux, struct pdu_adv *pdu,
 static uint8_t aux_time_update(struct ll_adv_aux_set *aux, struct pdu_adv *pdu,
 			       struct pdu_adv *pdu_scan)
 {
-	uint32_t volatile ret_cb;
-	uint32_t ticks_minus;
-	uint32_t ticks_plus;
 	uint32_t time_ticks;
 	uint32_t time_us;
-	uint32_t ret;
 
 	time_us = aux_time_get(aux, pdu, pdu_scan);
 	time_ticks = HAL_TICKER_US_TO_TICKS(time_us);
+
+#if !defined(CONFIG_BT_CTLR_JIT_SCHEDULING)
+	uint32_t volatile ret_cb;
+	uint32_t ticks_minus;
+	uint32_t ticks_plus;
+	uint32_t ret;
+
 	if (aux->ull.ticks_slot > time_ticks) {
 		ticks_minus = aux->ull.ticks_slot - time_ticks;
 		ticks_plus = 0U;
@@ -2877,6 +2880,7 @@ static uint8_t aux_time_update(struct ll_adv_aux_set *aux, struct pdu_adv *pdu,
 	if (ret != TICKER_STATUS_SUCCESS) {
 		return BT_HCI_ERR_CMD_DISALLOWED;
 	}
+#endif /* !CONFIG_BT_CTLR_JIT_SCHEDULING */
 
 	aux->ull.ticks_slot = time_ticks;
 

@@ -1037,15 +1037,18 @@ uint32_t ull_adv_sync_start(struct ll_adv_set *adv,
 uint8_t ull_adv_sync_time_update(struct ll_adv_sync_set *sync,
 				 struct pdu_adv *pdu)
 {
-	uint32_t volatile ret_cb;
-	uint32_t ticks_minus;
-	uint32_t ticks_plus;
 	uint32_t time_ticks;
 	uint32_t time_us;
-	uint32_t ret;
 
 	time_us = ull_adv_sync_time_get(sync, pdu->len);
 	time_ticks = HAL_TICKER_US_TO_TICKS(time_us);
+
+#if !defined(CONFIG_BT_CTLR_JIT_SCHEDULING)
+	uint32_t volatile ret_cb;
+	uint32_t ticks_minus;
+	uint32_t ticks_plus;
+	uint32_t ret;
+
 	if (sync->ull.ticks_slot > time_ticks) {
 		ticks_minus = sync->ull.ticks_slot - time_ticks;
 		ticks_plus = 0U;
@@ -1066,6 +1069,7 @@ uint8_t ull_adv_sync_time_update(struct ll_adv_sync_set *sync,
 	if (ret != TICKER_STATUS_SUCCESS) {
 		return BT_HCI_ERR_CMD_DISALLOWED;
 	}
+#endif /* !CONFIG_BT_CTLR_JIT_SCHEDULING */
 
 	sync->ull.ticks_slot = time_ticks;
 
