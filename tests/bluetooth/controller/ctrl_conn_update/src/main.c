@@ -248,7 +248,7 @@ void test_conn_update_central_loc_accept(void)
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
 
 	/* Initiate a Connection Parameter Request Procedure */
-	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT);
+	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT, NULL);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -401,7 +401,7 @@ void test_conn_update_central_loc_accept_reject_2nd_cpr(void)
 	ull_cp_state_set(&conn_3rd, ULL_CP_CONNECTED);
 
 	/* Initiate a Connection Parameter Request Procedure */
-	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT);
+	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT, NULL);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -484,7 +484,7 @@ void test_conn_update_central_loc_accept_reject_2nd_cpr(void)
 	ull_cp_release_tx(&conn_3rd, tx);
 
 	/* Initiate a parallel Connection Parameter Request Procedure */
-	err = ull_cp_conn_update(&conn_3rd, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT);
+	err = ull_cp_conn_update(&conn_3rd, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT, NULL);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -622,7 +622,7 @@ void test_conn_update_central_loc_invalid_param_rsp(void)
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
 
 	/* Initiate a Connection Parameter Request Procedure */
-	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT);
+	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT, NULL);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -691,7 +691,7 @@ void test_conn_update_central_loc_invalid_rsp(void)
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
 
 	/* Initiate a Connection Parameter Request Procedure */
-	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT);
+	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT, NULL);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -764,7 +764,7 @@ void test_conn_update_central_loc_reject(void)
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
 
 	/* Initiate a Connection Parameter Request Procedure */
-	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT);
+	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT, NULL);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -843,7 +843,7 @@ void test_conn_update_central_loc_remote_legacy(void)
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
 
 	/* Initiate a Connection Parameter Request Procedure */
-	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT);
+	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT, NULL);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -968,7 +968,7 @@ void test_conn_update_central_loc_unsupp_wo_feat_exch(void)
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
 
 	/* Initiate a Connection Parameter Request Procedure */
-	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT);
+	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT, NULL);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -1085,7 +1085,7 @@ void test_conn_update_central_loc_unsupp_w_feat_exch(void)
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
 
 	/* Initiate a Connection Parameter Request Procedure */
-	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT);
+	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT, NULL);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -1208,7 +1208,7 @@ void test_conn_update_central_loc_collision(void)
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
 
 	/* (A) Initiate a Connection Parameter Request Procedure */
-	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT);
+	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT, NULL);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -1659,7 +1659,7 @@ void test_conn_update_central_rem_collision(void)
 
 	/* (B) Initiate a Connection Parameter Request Procedure */
 	err = ull_cp_conn_update(&conn, req_B->interval_min, req_B->interval_max, req_B->latency,
-				 req_B->timeout);
+				 req_B->timeout, NULL);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -1841,7 +1841,7 @@ void test_conn_update_periph_loc_accept(void)
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
 
 	/* Initiate a Connection Parameter Request Procedure */
-	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT);
+	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT, NULL);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -1946,7 +1946,7 @@ void test_conn_update_periph_loc_reject(void)
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
 
 	/* Initiate a Connection Parameter Request Procedure */
-	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT);
+	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT, NULL);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -2025,7 +2025,7 @@ void test_conn_update_periph_loc_unsupp_feat_wo_feat_exch(void)
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
 
 	/* Initiate a Connection Parameter Request Procedure */
-	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT);
+	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT, NULL);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -2092,7 +2092,7 @@ void test_conn_update_periph_loc_unsupp_feat_w_feat_exch(void)
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
 
 	/* Initiate a Connection Parameter Request Procedure */
-	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT);
+	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT, NULL);
 	zassert_equal(err, BT_HCI_ERR_UNSUPP_REMOTE_FEATURE);
 
 	/* Prepare */
@@ -2186,7 +2186,7 @@ void test_conn_update_periph_loc_collision(void)
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
 
 	/* (A) Initiate a Connection Parameter Request Procedure */
-	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT);
+	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT, NULL);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -2806,7 +2806,7 @@ void test_conn_update_periph_rem_apm_accept_defered(void)
 		/* Prepare */
 		event_prepare(&conn);
 
-		zassert_equal(true, ull_cp_remote_cpr_awaiting_apm_response(&conn), NULL);
+		zassert_equal(true, ull_cp_remote_cpr_apm_awaiting_reply(&conn), NULL);
 
 		/* There should be no host notification */
 		ut_rx_q_is_empty();
@@ -2815,7 +2815,7 @@ void test_conn_update_periph_rem_apm_accept_defered(void)
 		event_done(&conn);
 	}
 
-	ull_cp_remote_cpr_apm_respond(&conn, offsets);
+	ull_cp_remote_cpr_apm_reply(&conn, offsets);
 
 	/* There should be no host notification */
 	ut_rx_q_is_empty();
@@ -2908,14 +2908,6 @@ void test_conn_update_periph_rem_apm_reject_defered(void)
 {
 #if defined(CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE)
 	struct node_tx *tx;
-	uint16_t offsets[6] = {
-		0xffffU,
-		0xffffU,
-		0xffffU,
-		0xffffU,
-		0xffffU,
-		0xffffU
-	};
 	/* Default conn_param_req PDU */
 	struct pdu_data_llctrl_conn_param_req conn_param_req_apm = { .interval_min = INTVL_MIN,
 								 .interval_max = INTVL_MAX,
@@ -2970,7 +2962,7 @@ void test_conn_update_periph_rem_apm_reject_defered(void)
 		/* Prepare */
 		event_prepare(&conn);
 
-		zassert_equal(true, ull_cp_remote_cpr_awaiting_apm_response(&conn), NULL);
+		zassert_equal(true, ull_cp_remote_cpr_apm_awaiting_reply(&conn), NULL);
 
 		/* There should be no host notification */
 		ut_rx_q_is_empty();
@@ -2979,7 +2971,7 @@ void test_conn_update_periph_rem_apm_reject_defered(void)
 		event_done(&conn);
 	}
 
-	ull_cp_remote_cpr_apm_respond(&conn, offsets);
+	ull_cp_remote_cpr_apm_neg_reply(&conn, BT_HCI_ERR_UNSUPP_LL_PARAM_VAL);
 
 	/* Prepare */
 	event_prepare(&conn);
@@ -3126,7 +3118,7 @@ void test_conn_update_periph_loc_collision_reject_2nd_cpr(void)
 	ull_cp_state_set(&conn_3rd, ULL_CP_CONNECTED);
 
 	/* (A) Initiate a Connection Parameter Request Procedure */
-	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT);
+	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT, NULL);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -3253,7 +3245,7 @@ void test_conn_update_periph_loc_collision_reject_2nd_cpr(void)
 
 	{
 		/* Initiate a parallel local Connection Parameter Request Procedure */
-		err = ull_cp_conn_update(&conn_2nd, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT);
+		err = ull_cp_conn_update(&conn_2nd, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT, NULL);
 		zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 		/* Prepare */
@@ -3503,7 +3495,7 @@ void test_conn_update_periph_rem_accept_reject_2nd_cpr(void)
 
 	{
 		/* Initiate a parallel local Connection Parameter Request Procedure */
-		err = ull_cp_conn_update(&conn_2nd, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT);
+		err = ull_cp_conn_update(&conn_2nd, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT, NULL);
 		zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 		/* Prepare */
@@ -4069,7 +4061,7 @@ void test_conn_update_periph_rem_collision(void)
 
 	/* (B) Initiate a Connection Parameter Request Procedure */
 	err = ull_cp_conn_update(&conn, req_B->interval_min, req_B->interval_max, req_B->latency,
-				 req_B->timeout);
+				 req_B->timeout, NULL);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/*******************/
@@ -4250,7 +4242,7 @@ void test_conn_update_central_loc_accept_no_param_req(void)
 
 	do {
 		/* Initiate a Connection Update Procedure */
-		err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT);
+		err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT, NULL);
 		zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 		/* Prepare */
@@ -4581,7 +4573,7 @@ void test_conn_update_periph_loc_disallowed_no_param_req(void)
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
 
 	/* Initiate a Connection Update Procedure */
-	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT);
+	err = ull_cp_conn_update(&conn, INTVL_MIN, INTVL_MAX, LATENCY, TIMEOUT, NULL);
 	zassert_equal(err, BT_HCI_ERR_CMD_DISALLOWED);
 
 	/* Prepare */

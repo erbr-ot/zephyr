@@ -52,22 +52,6 @@
 #include "hal/debug.h"
 
 #if defined(CONFIG_BT_PERIPHERAL)
-static uint16_t cc_event_counter(struct ll_conn *conn)
-{
-	struct lll_conn *lll;
-	uint16_t event_counter;
-
-	uint16_t lazy = conn->llcp.prep.lazy;
-
-	/**/
-	lll = &conn->lll;
-
-	/* Calculate current event counter */
-	event_counter = lll->event_counter + lll->latency_prepare + lazy;
-
-	return event_counter;
-}
-
 /* LLCP Remote Procedure FSM states */
 enum {
 	/* Establish Procedure */
@@ -109,6 +93,10 @@ enum {
 	/* Unknown response received */
 	RP_CC_EVT_UNKNOWN,
 };
+
+static void rp_cc_check_instant(struct ll_conn *conn, struct proc_ctx *ctx, uint8_t evt,
+				void *param);
+
 /*
  * LLCP Remote Procedure FSM
  */
@@ -124,8 +112,13 @@ static void llcp_rp_cc_tx_rsp(struct ll_conn *conn, struct proc_ctx *ctx)
 
 	pdu = (struct pdu_data *)tx->pdu;
 
+	/* Postpone if instant is in this or next connection event. This would handle obsolete value
+	 * due to retransmission, as well as incorrect behavior by central.
+	 * We need at least 2 connection events to get ready. First for receiving the indication,
+	 * the second for setting up the CIS.
+	 */
 	ctx->data.cis_create.conn_event_count = MAX(ctx->data.cis_create.conn_event_count,
-						    cc_event_counter(conn) + 2);
+						    ull_conn_event_counter(conn) + 2);
 
 	llcp_pdu_encode_cis_rsp(ctx, pdu);
 	ctx->tx_opcode = pdu->llctrl.opcode;
@@ -301,15 +294,17 @@ static uint8_t rp_cc_check_phy(struct ll_conn *conn, struct proc_ctx *ctx,
 static bool rp_cc_check_cis_established_or_timeout_lll(struct proc_ctx *ctx)
 {
 	const struct ll_conn_iso_stream *cis =
-		ll_conn_iso_stream_get(ctx->data.cis_create.cis_handle);
+		ll_iso_stream_connected_get(ctx->data.cis_create.cis_handle);
 
-	if (cis->established) {
-		return true;
-	}
+	if (cis) {
+		if (cis->established) {
+			return true;
+		}
 
-	if (!cis->event_expire) {
-		ctx->data.cis_create.error = BT_HCI_ERR_CONN_FAIL_TO_ESTAB;
-		return true;
+		if (!cis->event_expire) {
+			ctx->data.cis_create.error = BT_HCI_ERR_CONN_FAIL_TO_ESTAB;
+			return true;
+		}
 	}
 
 	return false;
@@ -383,19 +378,13 @@ static void rp_cc_state_wait_rx_cis_ind(struct ll_conn *conn, struct proc_ctx *c
 	case RP_CC_EVT_CIS_IND:
 		llcp_pdu_decode_cis_ind(ctx, pdu);
 		if (!ull_peripheral_iso_setup(&pdu->llctrl.cis_ind, ctx->data.cis_create.cig_id,
-					 ctx->data.cis_create.cis_handle)) {
+					      ctx->data.cis_create.cis_handle)) {
 
 			/* CIS has been setup, go wait for 'instant' before starting */
 			ctx->state = RP_CC_STATE_WAIT_INSTANT;
 
-			/* Fixme - Implement CIS Supervision timeout
-			 * Spec:
-			 * When establishing a CIS, the Peripheral shall start the CIS supervision
-			 * timer at the start of the next CIS event after receiving the LL_CIS_IND.
-			 * If the CIS supervision timer reaches 6 * ISO_Interval before the CIS is
-			 * established, the CIS shall be considered lost.
-			 */
-
+			/* Check if this connection event is where we need to start the CIS */
+			rp_cc_check_instant(conn, ctx, evt, param);
 			break;
 		}
 		/* If we get to here the CIG_ID referred in req/acquire has become void/invalid */
@@ -457,7 +446,7 @@ static void rp_cc_check_instant(struct ll_conn *conn, struct proc_ctx *ctx, uint
 	}
 
 	if (is_instant_reached_or_passed(start_event_count,
-					 cc_event_counter(conn))) {
+					 ull_conn_event_counter(conn))) {
 		/* Start CIS */
 		ull_peripheral_iso_start(conn, conn->llcp.prep.ticks_at_expire,
 					 ctx->data.cis_create.cis_handle);
@@ -621,5 +610,10 @@ void llcp_rp_cc_reject(struct ll_conn *conn, struct proc_ctx *ctx)
 void llcp_rp_cc_run(struct ll_conn *conn, struct proc_ctx *ctx, void *param)
 {
 	rp_cc_execute_fsm(conn, ctx, RP_CC_EVT_RUN, param);
+}
+
+bool llcp_rp_cc_awaiting_instant(struct proc_ctx *ctx)
+{
+	return (ctx->state == RP_CC_STATE_WAIT_INSTANT);
 }
 #endif /* CONFIG_BT_PERIPHERAL */
