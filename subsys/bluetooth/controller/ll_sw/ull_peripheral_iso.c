@@ -392,6 +392,9 @@ void ull_peripheral_iso_start(struct ll_conn *acl, uint32_t ticks_at_expire,
 	cis->lll.offset = cis_offs_to_cig_ref;
 	cis->lll.handle = cis_handle;
 
+	/* Connection establishment timeout */
+	cis->event_expire = 6U;
+
 	/* Check if another CIS was already started and CIG ticker is
 	 * running. If so, we just return with updated offset and
 	 * validated handle.

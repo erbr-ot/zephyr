@@ -298,12 +298,21 @@ static uint8_t rp_cc_check_phy(struct ll_conn *conn, struct proc_ctx *ctx,
 	return BT_HCI_ERR_SUCCESS;
 }
 
-static bool rp_cc_check_cis_established_lll(struct proc_ctx *ctx)
+static bool rp_cc_check_cis_established_or_timeout_lll(struct proc_ctx *ctx)
 {
 	const struct ll_conn_iso_stream *cis =
 		ll_conn_iso_stream_get(ctx->data.cis_create.cis_handle);
 
-	return cis->established;
+	if (cis->established) {
+		return true;
+	}
+
+	if (!cis->event_expire) {
+		ctx->data.cis_create.error = BT_HCI_ERR_CONN_FAIL_TO_ESTAB;
+		return true;
+	}
+
+	return false;
 }
 
 static void rp_cc_state_wait_rx_cis_req(struct ll_conn *conn, struct proc_ctx *ctx, uint8_t evt,
@@ -507,8 +516,11 @@ static void rp_cc_state_wait_cis_established(struct ll_conn *conn, struct proc_c
 	switch (evt) {
 	case RP_CC_EVT_RUN:
 		/* Check for CIS state */
-		if (rp_cc_check_cis_established_lll(ctx)) {
-			/* CIS was established, so let's got ahead and complete procedure */
+		if (rp_cc_check_cis_established_or_timeout_lll(ctx)) {
+			/* CIS was established or establishement timed out,
+			 * In either case complete procedure and generate
+			 * notification
+			 */
 			rp_cc_complete(conn, ctx, evt, param);
 		}
 		break;
