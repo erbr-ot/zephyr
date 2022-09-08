@@ -1424,7 +1424,10 @@ int ull_conn_llcp(struct ll_conn *conn, uint32_t ticks_at_expire, uint16_t lazy)
 			/* Terminate Procedure timeout is started, will
 			 * replace any other timeout running
 			 */
-			conn->procedure_expire = conn->supervision_reload;
+			const uint32_t conn_interval_us = conn->lll.interval * CONN_INT_UNIT_US;
+
+			conn->procedure_expire = RADIO_CONN_EVENTS((conn->timeout * 10U * 1000U),
+								   conn_interval_us);
 
 			/* NOTE: if supervision timeout equals connection
 			 * interval, dont timeout in current event.
@@ -1679,7 +1682,10 @@ void ull_conn_done(struct node_rx_event_done *done)
 	else {
 		/* Start supervision timeout, if not started already */
 		if (!conn->supervision_expire) {
-			conn->supervision_expire = conn->supervision_reload;
+			const uint32_t conn_interval_us = conn->lll.interval * CONN_INT_UNIT_US;
+
+			conn->supervision_expire = RADIO_CONN_EVENTS((conn->timeout * 10U * 1000U),
+								   conn_interval_us);
 		}
 	}
 
@@ -3331,9 +3337,7 @@ static inline int event_conn_upd_prep(struct ll_conn *conn, uint16_t lazy,
 		/* Prepare the rx packet structure */
 		if ((conn->llcp_cu.interval != lll->interval) ||
 		    (conn->llcp_cu.latency != lll->latency) ||
-		    (RADIO_CONN_EVENTS(conn->llcp_cu.timeout * 10000U,
-				       lll->interval * CONN_INT_UNIT_US) !=
-		     conn->supervision_reload)) {
+		    (conn->llcp_cu.timeout != conn->timeout)) {
 			struct node_rx_cu *cu;
 
 			rx->hdr.handle = lll->handle;
@@ -3465,9 +3469,7 @@ static inline int event_conn_upd_prep(struct ll_conn *conn, uint16_t lazy,
 		lll->interval = conn->llcp_cu.interval;
 		lll->latency = conn->llcp_cu.latency;
 
-		conn->supervision_reload =
-			RADIO_CONN_EVENTS((conn->llcp_cu.timeout * 10U * 1000U),
-					  conn_interval_us);
+		conn->timeout = conn->llcp_cu.timeout;
 		conn->procedure_reload =
 			RADIO_CONN_EVENTS((40 * 1000 * 1000), conn_interval_us);
 
@@ -5615,8 +5617,7 @@ static inline int reject_ind_conn_upd_recv(struct ll_conn *conn,
 	cu->status = rej_ext_ind->error_code;
 	cu->interval = lll->interval;
 	cu->latency = lll->latency;
-	cu->timeout = conn->supervision_reload *
-		      lll->interval * 125U / 1000;
+	cu->timeout = conn->timeout;
 
 	return 0;
 }
@@ -7202,11 +7203,7 @@ static inline int ctrl_rx(memq_link_t *link, struct node_rx_pdu **rx,
 				     lll->interval) ||
 				    (conn->llcp_conn_param.latency !=
 				     lll->latency) ||
-				    (RADIO_CONN_EVENTS(conn->llcp_conn_param.timeout *
-						       10000U,
-						       lll->interval *
-						       CONN_INT_UNIT_US) !=
-				     conn->supervision_reload)) {
+				    (conn->llcp_conn_param.timeout != conn->timeout)) {
 #if defined(CONFIG_BT_CTLR_LE_ENC)
 					/* postpone CP request event if under
 					 * encryption setup
@@ -7303,11 +7300,7 @@ static inline int ctrl_rx(memq_link_t *link, struct node_rx_pdu **rx,
 			if ((conn->llcp_conn_param.interval_max !=
 			     lll->interval) ||
 			    (conn->llcp_conn_param.latency != lll->latency) ||
-			    (RADIO_CONN_EVENTS(conn->llcp_conn_param.timeout *
-					       10000U,
-					       lll->interval *
-					       CONN_INT_UNIT_US) !=
-			     conn->supervision_reload)) {
+			    (conn->llcp_conn_param.timeout != conn->timeout)) {
 				conn->llcp_conn_param.state =
 					LLCP_CPR_STATE_APP_WAIT;
 			} else {
@@ -7514,8 +7507,7 @@ static inline int ctrl_rx(memq_link_t *link, struct node_rx_pdu **rx,
 			cu->status = BT_HCI_ERR_UNSUPP_REMOTE_FEATURE;
 			cu->interval = lll->interval;
 			cu->latency = lll->latency;
-			cu->timeout = conn->supervision_reload *
-				      lll->interval * 125U / 1000;
+			cu->timeout = conn->timeout;
 #endif /* CONFIG_BT_CTLR_CONN_PARAM_REQ */
 
 #if defined(CONFIG_BT_CTLR_DATA_LENGTH)
@@ -8088,7 +8080,7 @@ void ull_conn_update_parameters(struct ll_conn *conn, uint8_t is_cu_proc, uint8_
 	lll->interval = interval;
 	lll->latency = latency;
 
-	conn->supervision_reload = RADIO_CONN_EVENTS((timeout * 10U * 1000U), conn_interval_us);
+	conn->timeout = timeout;
 	ull_cp_prt_reload_set(conn, conn_interval_us);
 
 #if defined(CONFIG_BT_CTLR_LE_PING)
