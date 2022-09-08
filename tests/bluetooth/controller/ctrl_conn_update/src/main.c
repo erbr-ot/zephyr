@@ -195,7 +195,7 @@ static void setup(void)
 
 	lll->interval = 0;
 	lll->latency = 0;
-	conn.supervision_reload = 1U;
+	conn.timeout = 1U;
 	lll->event_counter = 0;
 }
 
@@ -2511,7 +2511,7 @@ void test_conn_update_periph_rem_apm_accept_right_away(void)
 
 	conn.lll.interval = conn_param_req_apm.interval_max;
 	conn.lll.latency = conn_param_req_apm.latency;
-	conn.supervision_reload = RADIO_CONN_EVENTS(TIMEOUT * 10000U, conn.lll.interval * CONN_INT_UNIT_US);
+	conn.timeout = TIMEOUT;
 
 	/* Prepare */
 	event_prepare(&conn);
@@ -2649,7 +2649,7 @@ void test_conn_update_periph_rem_apm_reject_right_away(void)
 
 	conn.lll.interval = conn_param_req_apm.interval_max;
 	conn.lll.latency = conn_param_req_apm.latency;
-	conn.supervision_reload = RADIO_CONN_EVENTS(TIMEOUT * 10000U, conn.lll.interval * CONN_INT_UNIT_US);
+	conn.timeout = TIMEOUT;
 
 	/* Prepare */
 	event_prepare(&conn);
@@ -2785,7 +2785,7 @@ void test_conn_update_periph_rem_apm_accept_defered(void)
 
 	conn.lll.interval = conn_param_req_apm.interval_max;
 	conn.lll.latency = conn_param_req_apm.latency;
-	conn.supervision_reload = RADIO_CONN_EVENTS(TIMEOUT * 10000U, conn.lll.interval * CONN_INT_UNIT_US);
+	conn.timeout = TIMEOUT;
 
 	/* Prepare */
 	event_prepare(&conn);
@@ -2950,7 +2950,7 @@ void test_conn_update_periph_rem_apm_reject_defered(void)
 
 	conn.lll.interval = conn_param_req_apm.interval_max;
 	conn.lll.latency = conn_param_req_apm.latency;
-	conn.supervision_reload = RADIO_CONN_EVENTS(TIMEOUT * 10000U, conn.lll.interval * CONN_INT_UNIT_US);
+	conn.timeout = TIMEOUT;
 
 	/* Prepare */
 	event_prepare(&conn);

@@ -155,8 +155,7 @@ static bool cu_have_params_changed(struct ll_conn *conn, uint16_t interval, uint
 	struct lll_conn *lll = &conn->lll;
 
 	if ((interval != lll->interval) || (latency != lll->latency) ||
-	    (RADIO_CONN_EVENTS(timeout * 10000U, lll->interval * CONN_INT_UNIT_US) !=
-	     conn->supervision_reload)) {
+	    (timeout != conn->timeout)) {
 		return true;
 	}
 	return false;
