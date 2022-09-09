@@ -1190,6 +1190,28 @@ void ull_cp_cc_reject(struct ll_conn *conn, uint8_t error_code)
 		llcp_rp_cc_reject(conn, ctx);
 	}
 }
+
+bool ull_cp_cc_awaiting_established(struct ll_conn *conn)
+{
+	struct proc_ctx *ctx;
+
+	ctx = llcp_rr_peek(conn);
+	if (ctx && ctx->proc == PROC_CIS_CREATE) {
+		return llcp_rp_cc_awaiting_established(ctx);
+	}
+	return false;
+
+}
+
+void ull_cp_cc_established(struct ll_conn *conn)
+{
+	struct proc_ctx *ctx;
+
+	ctx = llcp_rr_peek(conn);
+	if (ctx && ctx->proc == PROC_CIS_CREATE) {
+		llcp_rp_cc_established(conn, ctx);
+	}
+}
 #endif /* defined(CONFIG_BT_PERIPHERAL) && defined(CONFIG_BT_CTLR_PERIPHERAL_ISO) */
 
 static bool pdu_is_expected(struct pdu_data *pdu, struct proc_ctx *ctx)

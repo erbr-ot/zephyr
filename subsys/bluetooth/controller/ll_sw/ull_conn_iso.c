@@ -252,8 +252,6 @@ uint8_t ll_conn_iso_accept_timeout_set(uint16_t timeout)
 
 void ull_conn_iso_cis_established(struct ll_conn_iso_stream *cis)
 {
-#if defined(CONFIG_BT_LL_SW_LLCP_LEGACY)
-	struct node_rx_conn_iso_estab *est;
 	struct node_rx_pdu *node_rx;
 
 	node_rx = ull_pdu_rx_alloc();
@@ -262,8 +260,12 @@ void ull_conn_iso_cis_established(struct ll_conn_iso_stream *cis)
 		return;
 	}
 
-	/* TODO: Send CIS_ESTABLISHED with status != 0 in error scenarios */
 	node_rx->hdr.type = NODE_RX_TYPE_CIS_ESTABLISHED;
+
+#if defined(CONFIG_BT_LL_SW_LLCP_LEGACY)
+	struct node_rx_conn_iso_estab *est;
+
+	/* TODO: Send CIS_ESTABLISHED with status != 0 in error scenarios */
 	node_rx->hdr.handle = 0xFFFF;
 	node_rx->hdr.rx_ftr.param = cis;
 
@@ -273,6 +275,12 @@ void ull_conn_iso_cis_established(struct ll_conn_iso_stream *cis)
 
 	ll_rx_put(node_rx->hdr.link, node_rx);
 	ll_rx_sched();
+#else
+	/* Send node to ULL RX demuxer for triggering LLCP state machine */
+	node_rx->hdr.handle = cis->lll.acl_handle;
+
+	ull_rx_put(node_rx->hdr.link, node_rx);
+	ull_rx_sched();
 #endif /* defined(CONFIG_BT_LL_SW_LLCP_LEGACY) */
 
 	cis->established = 1;
