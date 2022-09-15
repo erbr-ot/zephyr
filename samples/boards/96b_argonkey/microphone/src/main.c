@@ -5,7 +5,7 @@
  */
 
 #include <string.h>
-#include <zephyr/zephyr.h>
+#include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 
 #include <zephyr/drivers/gpio.h>
@@ -111,7 +111,7 @@ void main(void)
 
 	int ret;
 
-	const struct device *mic_dev = DEVICE_DT_GET_ONE(st_mpxxdtyy);
+	const struct device *const mic_dev = DEVICE_DT_GET_ONE(st_mpxxdtyy);
 
 	if (!device_is_ready(mic_dev)) {
 		printk("Device %s is not ready\n", mic_dev->name);

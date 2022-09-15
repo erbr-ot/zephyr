@@ -4,9 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <zephyr/zephyr.h>
-#include <zephyr/sys/byteorder.h>
+#include <zephyr/kernel.h>
 #include <soc.h>
+#include <zephyr/sys/byteorder.h>
 
 #include "hal/cpu.h"
 #include "hal/ccm.h"
@@ -70,7 +70,7 @@
 
 static int init_reset(void);
 
-#if defined(CONFIG_BT_CTLR_CONN_ISO)
+#if defined(CONFIG_BT_CTLR_ADV_ISO) || defined(CONFIG_BT_CTLR_CONN_ISO)
 static isoal_status_t ll_iso_pdu_alloc(struct isoal_pdu_buffer *pdu_buffer);
 static isoal_status_t ll_iso_pdu_write(struct isoal_pdu_buffer *pdu_buffer,
 				       const size_t   offset,
@@ -78,11 +78,13 @@ static isoal_status_t ll_iso_pdu_write(struct isoal_pdu_buffer *pdu_buffer,
 				       const size_t   consume_len);
 static isoal_status_t ll_iso_pdu_emit(struct node_tx_iso *node_tx,
 				      const uint16_t handle);
+#if defined(CONFIG_BT_CTLR_CONN_ISO)
 static isoal_status_t ll_iso_pdu_release(struct node_tx_iso *node_tx,
 					 const uint16_t handle,
 					 const isoal_status_t status);
 int ll_iso_tx_mem_enqueue(uint16_t handle, void *node_tx, void *link);
 #endif /* CONFIG_BT_CTLR_CONN_ISO */
+#endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
 
 /* Allocate data path pools for RX/TX directions for each stream */
 #define BT_CTLR_ISO_STREAMS ((2 * (BT_CTLR_CONN_ISO_STREAMS)) + \
@@ -116,6 +118,8 @@ static void iso_rx_demux(void *param);
 #endif /* CONFIG_BT_CTLR_ISO_VENDOR_DATA_PATH */
 #endif /* CONFIG_BT_CTLR_SYNC_ISO) || CONFIG_BT_CTLR_CONN_ISO */
 
+#define ISO_TEST_PACKET_COUNTER_SIZE 4U
+
 #if defined(CONFIG_BT_CTLR_ADV_ISO) || defined(CONFIG_BT_CTLR_CONN_ISO)
 void ll_iso_link_tx_release(void *link);
 void ll_iso_tx_mem_release(void *node_tx);
@@ -124,7 +128,7 @@ void ll_iso_tx_mem_release(void *node_tx);
 				   offsetof(struct pdu_iso, payload) + \
 				   CONFIG_BT_CTLR_ISO_TX_BUFFER_SIZE)
 
-#define ISO_TEST_TX_BUFFER_SIZE 32
+#define ISO_TEST_TX_BUFFER_SIZE 32U
 
 static struct {
 	void *free;
@@ -627,10 +631,12 @@ static isoal_status_t ll_iso_test_sdu_alloc(const struct isoal_sink *sink_ctx,
 			LL_ASSERT(cis);
 
 			/* For unframed, SDU counter is the payload number */
-			cis->hdr.test_mode.rx_sdu_counter = (uint32_t)valid_pdu->meta->payload_number;
+			cis->hdr.test_mode.rx_sdu_counter =
+				(uint32_t)valid_pdu->meta->payload_number;
 		}
 	} else if (IS_SYNC_ISO_HANDLE(handle)) {
 		/* FIXME: Implement for sync receiver */
+		LL_ASSERT(false);
 	}
 
 	return sink_sdu_alloc_hci(sink_ctx, valid_pdu, sdu_buffer);
@@ -663,7 +669,12 @@ static isoal_status_t ll_iso_test_sdu_emit(const struct isoal_sink             *
 		length = sink_ctx->sdu_production.sdu_written;
 		framed = sink_ctx->session.framed;
 
-		if (length >= 4) {
+		/* In BT_HCI_ISO_TEST_ZERO_SIZE_SDU mode, all SDUs must have length 0 and there is
+		 * no sdu_counter field. In the other modes, the first 4 bytes must contain a
+		 * packet counter, which is used as SDU counter. The sdu_counter is extracted
+		 * regardless of mode as a sanity check, unless the length does not allow it.
+		 */
+		if (length >= ISO_TEST_PACKET_COUNTER_SIZE) {
 			sdu_counter = sys_get_le32(buf->data);
 		} else {
 			sdu_counter = 0U;
@@ -671,7 +682,7 @@ static isoal_status_t ll_iso_test_sdu_emit(const struct isoal_sink             *
 
 		switch (sdu_frag->sdu.status) {
 		case ISOAL_SDU_STATUS_VALID:
-			if (framed && cis->hdr.test_mode.rx_sdu_counter == 0) {
+			if (framed && cis->hdr.test_mode.rx_sdu_counter == 0U) {
 				/* BT 5.3, Vol 6, Part B, section 7.2:
 				 * When using framed PDUs the expected value of the SDU counter
 				 * shall be initialized with the value of the SDU counter of the
@@ -690,7 +701,8 @@ static isoal_status_t ll_iso_test_sdu_emit(const struct isoal_sink             *
 				break;
 
 			case BT_HCI_ISO_TEST_VARIABLE_SIZE_SDU:
-				if ((length >= 4) && (length <= cis->c_max_sdu) &&
+				if ((length >= ISO_TEST_PACKET_COUNTER_SIZE) &&
+				    (length <= cis->c_max_sdu) &&
 				    (sdu_counter == cis->hdr.test_mode.rx_sdu_counter)) {
 					cis->hdr.test_mode.received_cnt++;
 				} else {
@@ -749,6 +761,9 @@ uint8_t ll_iso_receive_test(uint16_t handle, uint8_t payload_type)
 	struct ll_iso_datapath *dp;
 	uint32_t sdu_interval;
 	isoal_status_t err;
+	uint8_t status;
+
+	status = BT_HCI_ERR_SUCCESS;
 
 	if (IS_CIS_HANDLE(handle)) {
 		struct ll_conn_iso_stream *cis;
@@ -786,7 +801,7 @@ uint8_t ll_iso_receive_test(uint16_t handle, uint8_t payload_type)
 		cis->hdr.datapath_out = dp;
 		cig = cis->group;
 
-		if (cig->lll.role) {
+		if (cig->lll.role == BT_HCI_ROLE_PERIPHERAL) {
 			/* peripheral */
 			sdu_interval = cig->c_sdu_interval;
 		} else {
@@ -818,22 +833,26 @@ uint8_t ll_iso_receive_test(uint16_t handle, uint8_t payload_type)
 
 	} else if (IS_SYNC_ISO_HANDLE(handle)) {
 		/* FIXME: Implement for sync receiver */
-		return BT_HCI_ERR_CMD_DISALLOWED;
+		status = BT_HCI_ERR_CMD_DISALLOWED;
 	} else {
 		/* Handle is out of range */
-		return BT_HCI_ERR_UNKNOWN_CONN_ID;
+		status = BT_HCI_ERR_UNKNOWN_CONN_ID;
 	}
 
-	return BT_HCI_ERR_SUCCESS;
+	return status;
 }
 
 uint8_t ll_iso_read_test_counters(uint16_t handle, uint32_t *received_cnt,
 				  uint32_t *missed_cnt,
 				  uint32_t *failed_cnt)
 {
-	*received_cnt = 0;
-	*missed_cnt   = 0;
-	*failed_cnt   = 0;
+	uint8_t status;
+
+	*received_cnt = 0U;
+	*missed_cnt   = 0U;
+	*failed_cnt   = 0U;
+
+	status = BT_HCI_ERR_SUCCESS;
 
 	if (IS_CIS_HANDLE(handle)) {
 		struct ll_conn_iso_stream *cis;
@@ -856,13 +875,13 @@ uint8_t ll_iso_read_test_counters(uint16_t handle, uint32_t *received_cnt,
 
 	} else if (IS_SYNC_ISO_HANDLE(handle)) {
 		/* FIXME: Implement for sync receiver */
-		return BT_HCI_ERR_CMD_DISALLOWED;
+		status = BT_HCI_ERR_CMD_DISALLOWED;
 	} else {
 		/* Handle is out of range */
-		return BT_HCI_ERR_UNKNOWN_CONN_ID;
+		status = BT_HCI_ERR_UNKNOWN_CONN_ID;
 	}
 
-	return BT_HCI_ERR_SUCCESS;
+	return status;
 }
 
 #if defined(CONFIG_BT_CTLR_READ_ISO_LINK_QUALITY)
@@ -904,7 +923,8 @@ static isoal_status_t ll_iso_test_pdu_release(struct node_tx_iso *node_tx,
 	return ISOAL_STATUS_OK;
 }
 
-static void ll_iso_transmit_test_send_sdu(uint16_t handle, uint32_t ticks_at_expire)
+#if defined(CONFIG_BT_CTLR_CONN_ISO)
+void ll_iso_transmit_test_send_sdu(uint16_t handle, uint32_t ticks_at_expire)
 {
 	isoal_source_handle_t source_handle;
 	struct isoal_sdu_tx sdu;
@@ -940,12 +960,12 @@ static void ll_iso_transmit_test_send_sdu(uint16_t handle, uint32_t ticks_at_exp
 		case BT_HCI_ISO_TEST_VARIABLE_SIZE_SDU:
 			/* Randomize the length [4..p_max_sdu] */
 			lll_rand_get(&rand_8, sizeof(rand_8));
-			rand_max_sdu = rand_8 * (cis->p_max_sdu - 4);
-			remaining_tx = 4 + (rand_max_sdu >> 8);
+			rand_max_sdu = rand_8 * (cis->p_max_sdu - ISO_TEST_PACKET_COUNTER_SIZE);
+			remaining_tx = ISO_TEST_PACKET_COUNTER_SIZE + (rand_max_sdu >> 8);
 			break;
 
 		case BT_HCI_ISO_TEST_MAX_SIZE_SDU:
-			LL_ASSERT(cis->p_max_sdu > 4);
+			LL_ASSERT(cis->p_max_sdu > ISO_TEST_PACKET_COUNTER_SIZE);
 			remaining_tx = cis->p_max_sdu;
 			break;
 
@@ -963,7 +983,8 @@ static void ll_iso_transmit_test_send_sdu(uint16_t handle, uint32_t ticks_at_exp
 		/* Configure SDU similarly to one delivered via HCI */
 		sdu.dbuf = tx_buffer;
 		sdu.grp_ref_point = cig->cig_ref_point;
-		sdu.target_event = cis->lll.event_count + (cis->lll.tx.flush_timeout > 1 ? 0 : 1);
+		sdu.target_event = cis->lll.event_count +
+				   (cis->lll.tx.flush_timeout > 1U ? 0U : 1U);
 		sdu.iso_sdu_length = remaining_tx;
 
 		/* Send all SDU fragments */
@@ -975,8 +996,8 @@ static void ll_iso_transmit_test_send_sdu(uint16_t handle, uint32_t ticks_at_exp
 			/* If this is the first fragment of a framed SDU, inject the SDU
 			 * counter.
 			 */
-			if (sdu.size >= 4 && ((sdu.sdu_state == BT_ISO_START) ||
-					      (sdu.sdu_state == BT_ISO_SINGLE))) {
+			if ((sdu.size >= ISO_TEST_PACKET_COUNTER_SIZE) &&
+			    ((sdu.sdu_state == BT_ISO_START) || (sdu.sdu_state == BT_ISO_SINGLE))) {
 				if (cis->framed) {
 					sdu_counter = (uint32_t)cis->hdr.test_mode.tx_sdu_counter;
 				} else {
@@ -1018,66 +1039,7 @@ static void ll_iso_transmit_test_send_sdu(uint16_t handle, uint32_t ticks_at_exp
 		LL_ASSERT(0);
 	}
 }
-
-#if defined(CONFIG_BT_CTLR_CONN_ISO)
-/* An ISO interval has elapsed for a Connected Isochronous Group */
-void ll_iso_transmit_test_cig_interval(uint16_t handle, uint32_t ticks_at_expire)
-{
-	struct ll_conn_iso_stream *cis;
-	struct ll_conn_iso_group *cig;
-	uint32_t sdu_interval;
-	uint32_t iso_interval;
-	uint16_t handle_iter;
-	uint64_t sdu_counter;
-	uint8_t tx_sdu_count;
-
-	cig = ll_conn_iso_group_get(handle);
-	LL_ASSERT(cig);
-
-	handle_iter = UINT16_MAX;
-
-	if (cig->lll.role) {
-		/* Peripheral */
-		sdu_interval = cig->p_sdu_interval;
-	} else {
-		/* Central */
-		sdu_interval = cig->c_sdu_interval;
-	}
-
-	iso_interval = cig->iso_interval * PERIODIC_INT_UNIT_US;
-
-	/* Handle ISO Transmit Test for all active CISes in the group */
-	for (int i = 0; i < cig->lll.num_cis; i++)  {
-		cis = ll_conn_iso_stream_get_by_group(cig, &handle_iter);
-		LL_ASSERT(cis);
-
-		if (!cis->hdr.test_mode.tx_enabled || cis->lll.handle == LLL_HANDLE_INVALID) {
-			continue;
-		}
-
-		/* Calculate number of SDUs to transmit in the next ISO event. Ensure no overflow
-		 * on 64-bit sdu_counter:
-		 *   (39 bits x 22 bits (4x10^6 us) = 61 bits / 8 bits (255 us) = 53 bits)
-		 */
-		sdu_counter = ceiling_fraction((cis->lll.event_count + 1) * iso_interval,
-					       sdu_interval);
-
-		if (cis->hdr.test_mode.tx_sdu_counter == 0) {
-			/* First ISO event. Align SDU counter for next event */
-			cis->hdr.test_mode.tx_sdu_counter = sdu_counter;
-			tx_sdu_count = 0;
-		} else {
-			/* Calculate number of SDUs to produce for next ISO event */
-			tx_sdu_count = sdu_counter - cis->hdr.test_mode.tx_sdu_counter;
-		}
-
-		/* Now process all SDUs due for next ISO event */
-		for (int sdu = 0; sdu < tx_sdu_count; sdu++) {
-			ll_iso_transmit_test_send_sdu(cis->lll.handle, ticks_at_expire);
-		}
-	}
-}
-#endif
+#endif /* CONFIG_BT_CTLR_CONN_ISO */
 
 uint8_t ll_iso_transmit_test(uint16_t handle, uint8_t payload_type)
 {
@@ -1085,6 +1047,9 @@ uint8_t ll_iso_transmit_test(uint16_t handle, uint8_t payload_type)
 	struct ll_iso_datapath *dp;
 	uint32_t sdu_interval;
 	isoal_status_t err;
+	uint8_t status;
+
+	status = BT_HCI_ERR_SUCCESS;
 
 	if (IS_CIS_HANDLE(handle)) {
 		struct ll_conn_iso_stream *cis;
@@ -1096,7 +1061,7 @@ uint8_t ll_iso_transmit_test(uint16_t handle, uint8_t payload_type)
 			return BT_HCI_ERR_UNKNOWN_CONN_ID;
 		}
 
-		if (cis->lll.tx.burst_number == 0) {
+		if (cis->lll.tx.burst_number == 0U) {
 			/* CIS is not configured for TX */
 			return BT_HCI_ERR_UNSUPP_FEATURE_PARAM_VAL;
 		}
@@ -1122,7 +1087,7 @@ uint8_t ll_iso_transmit_test(uint16_t handle, uint8_t payload_type)
 		cis->hdr.datapath_in = dp;
 		cig = cis->group;
 
-		if (cig->lll.role) {
+		if (cig->lll.role == BT_HCI_ROLE_PERIPHERAL) {
 			/* peripheral */
 			sdu_interval = cig->c_sdu_interval;
 		} else {
@@ -1165,22 +1130,26 @@ uint8_t ll_iso_transmit_test(uint16_t handle, uint8_t payload_type)
 		/* FIXME: Implement use of common header in stream to enable code sharing
 		 * between CIS and BIS for test commands (and other places).
 		 */
-		return BT_HCI_ERR_CMD_DISALLOWED;
+		status = BT_HCI_ERR_CMD_DISALLOWED;
 	} else {
 		/* Handle is out of range */
-		return BT_HCI_ERR_UNKNOWN_CONN_ID;
+		status = BT_HCI_ERR_UNKNOWN_CONN_ID;
 	}
 
-	return BT_HCI_ERR_SUCCESS;
+	return status;
 }
 #endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
 
 uint8_t ll_iso_test_end(uint16_t handle, uint32_t *received_cnt,
 			uint32_t *missed_cnt, uint32_t *failed_cnt)
 {
-	*received_cnt = 0;
-	*missed_cnt   = 0;
-	*failed_cnt   = 0;
+	uint8_t status;
+
+	*received_cnt = 0U;
+	*missed_cnt   = 0U;
+	*failed_cnt   = 0U;
+
+	status = BT_HCI_ERR_SUCCESS;
 
 	if (IS_CIS_HANDLE(handle)) {
 		struct ll_conn_iso_stream *cis;
@@ -1215,20 +1184,20 @@ uint8_t ll_iso_test_end(uint16_t handle, uint32_t *received_cnt,
 		}
 
 		/* Disable Test Mode */
-		memset(&cis->hdr.test_mode, 0, sizeof(cis->hdr.test_mode));
+		(void)memset(&cis->hdr.test_mode, 0U, sizeof(cis->hdr.test_mode));
 
 	} else if (IS_ADV_ISO_HANDLE(handle)) {
 		/* FIXME: Implement for broadcaster */
-		return BT_HCI_ERR_CMD_DISALLOWED;
+		status = BT_HCI_ERR_CMD_DISALLOWED;
 	} else if (IS_SYNC_ISO_HANDLE(handle)) {
 		/* FIXME: Implement for sync receiver */
-		return BT_HCI_ERR_CMD_DISALLOWED;
+		status = BT_HCI_ERR_CMD_DISALLOWED;
 	} else {
 		/* Handle is out of range */
-		return BT_HCI_ERR_UNKNOWN_CONN_ID;
+		status = BT_HCI_ERR_UNKNOWN_CONN_ID;
 	}
 
-	return BT_HCI_ERR_SUCCESS;
+	return status;
 }
 
 #if defined(CONFIG_BT_CTLR_ADV_ISO) || defined(CONFIG_BT_CTLR_CONN_ISO)
@@ -1537,9 +1506,7 @@ void ll_iso_link_tx_release(void *link)
 {
 	mem_release(link, &mem_link_iso_tx.free);
 }
-#endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
 
-#if defined(CONFIG_BT_CTLR_CONN_ISO)
 /**
  * Allocate a PDU from the LL and store the details in the given buffer. Allocation
  * is not expected to fail as there must always be sufficient PDU buffers. Any
@@ -1628,6 +1595,7 @@ static isoal_status_t ll_iso_pdu_emit(struct node_tx_iso *node_tx,
 	return ISOAL_STATUS_OK;
 }
 
+#if defined(CONFIG_BT_CTLR_CONN_ISO)
 /**
  * Release the given payload back to the memory pool.
  * @param node_tx TX node to release or forward
@@ -1654,6 +1622,7 @@ static isoal_status_t ll_iso_pdu_release(struct node_tx_iso *node_tx,
 	return ISOAL_STATUS_OK;
 }
 #endif /* CONFIG_BT_CTLR_CONN_ISO */
+#endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
 
 static int init_reset(void)
 {

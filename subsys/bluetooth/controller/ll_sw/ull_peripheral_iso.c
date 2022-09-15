@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#include <zephyr/zephyr.h>
+#include <zephyr/kernel.h>
 #include <zephyr/bluetooth/buf.h>
 #include <zephyr/sys/byteorder.h>
 
@@ -361,7 +361,7 @@ static void ticker_cb(uint32_t ticks_at_expire, uint32_t ticks_drift,
 	LL_ASSERT(!err);
 
 	/* Handle ISO Transmit Test for this CIG */
-	ll_iso_transmit_test_cig_interval(cig->lll.handle, ticks_at_expire);
+	ull_conn_iso_transmit_test_cig_interval(cig->lll.handle, ticks_at_expire);
 }
 
 static void ticker_op_cb(uint32_t status, void *param)

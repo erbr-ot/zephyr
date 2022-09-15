@@ -184,6 +184,7 @@ struct can_mcan_data {
 	uint8_t ext_filt_rtr;
 	uint8_t ext_filt_rtr_mask;
 	struct can_mcan_mm mm;
+	bool started;
 	void *custom;
 } __aligned(4);
 
@@ -259,6 +260,10 @@ struct can_mcan_reg;
 
 int can_mcan_get_capabilities(const struct device *dev, can_mode_t *cap);
 
+int can_mcan_start(const struct device *dev);
+
+int can_mcan_stop(const struct device *dev);
+
 int can_mcan_set_mode(const struct device *dev, can_mode_t mode);
 
 int can_mcan_set_timing(const struct device *dev,
@@ -295,5 +300,7 @@ void can_mcan_set_state_change_callback(const struct device *dev,
 					void *user_data);
 
 int can_mcan_get_max_bitrate(const struct device *dev, uint32_t *max_bitrate);
+
+void can_mcan_enable_configuration_change(const struct device *dev);
 
 #endif /* ZEPHYR_DRIVERS_CAN_MCAN_H_ */

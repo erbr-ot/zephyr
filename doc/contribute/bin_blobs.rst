@@ -42,10 +42,8 @@ anywhere else.
 Fetching blobs
 ==============
 
-Blobs are fetched from official third-party sources via a :ref:`west extension
-command <west-blobs>`, which users can run to this effect. The extension command
-implementation is hosted in the main zephyr repository. This is required to
-give the project overall control over the mechanism used to fetch the blobs.
+Blobs are fetched from official third-party sources by the :ref:`west blobs
+command <west-blobs>` command.
 
 The blobs themselves must be specified in the :ref:`module.yml
 <modules-bin-blobs>` files included in separate Zephyr :ref:`module repositories
@@ -61,7 +59,7 @@ corresponding :file:`module.yml` file. A specification for a blob must contain:
 - Version information
 - A reference to vendor-provided documentation
 - The blob’s :ref:`type <bin-blobs-types>`, which must be one of the allowed types
-- A checksum for the blob, which the west extension checks after downloading.
+- A checksum for the blob, which ``west blobs`` checks after downloading.
   This is required for reproducibility and to allow bisecting issues as blobs
   change using Git and west
 - License text applicable to the blob or a reference to such text, in SPDX
@@ -70,11 +68,11 @@ corresponding :file:`module.yml` file. A specification for a blob must contain:
 See the :ref:`corresponding section <modules-bin-blobs>` for a more formal
 definition of the fields.
 
-The :ref:`west extension command <west-blobs>` can be used to list metadata of
+The :ref:`west blobs <west-blobs>` command can be used to list metadata of
 available blobs and to fetch blobs from user-selected modules.
 
-The west extension only fetches and stores the binary blobs themselves. Any
-accompanying code, including interface header files for the blobs, must be
+The ``west blobs`` command only fetches and stores the binary blobs themselves.
+Any accompanying code, including interface header files for the blobs, must be
 present in the corresponding module repository.
 
 Tainting
@@ -224,5 +222,29 @@ the integration of such blob for the foreseeable future.
 Submission and review process
 =============================
 
-This section will be updated once the standard format for describing binary
-blobs is agreed upon.
+For references to binary blobs to be included in the project, they must be
+reviewed and accepted by the Technical Steering Committee (TSC). This process is
+only required for new binary blobs, updates to binary blobs follow the
+:ref:`module update procedure <modules_changes>`.
+
+A request for integration with binary blobs must be made by creating a new
+issue in the Zephyr project issue tracking system on GitHub with details
+about the blobs and the functionality they provide to the project.
+
+Follow the steps below to begin the submission process:
+
+#. Make sure to read through the :ref:`bin-blobs` section in
+   detail, so that you are informed of the criteria used by the TSC in order to
+   approve or reject a request
+#. Use the :github:`New Binary Blobs Issue
+   <new?assignees=&labels=RFC&template=bin-blobs.md&title=>` to open an issue
+#. Fill out all required sections, making sure you provide enough detail for the
+   TSC to assess the merit of the request. Additionally you must also create a Pull
+   Request that demonstrates the integration of the binary blobs and then
+   link to it from the issue
+#. Wait for feedback from the TSC, respond to any additional questions added as
+   GitHub issue comments
+
+If, after consideration by the TSC, the submission of the binary blob(s) is
+approved, the submission process is complete and the binary blob(s) can be
+integrated.

@@ -21,13 +21,13 @@ The features include the following:
 - A Bluetooth LE subsystem that supports features of Bluetooth 5 and Bluetooth mesh
 - Various peripherals:
 
-  - 12-bit ADC with up to 18 channels
+  - 12-bit ADC with up to 6 channels
   - TWAI compatible with CAN bus 2.0
   - Temperature sensor
-  - 4x SPI
-  - 2x I2S
-  - 2x I2C
-  - 3x UART
+  - 3x SPI
+  - 1x I2S
+  - 1x I2C
+  - 2x UART
   - LED PWM with up to 6 channels
 
 - Cryptographic hardware acceleration (RNG, ECC, RSA, SHA-2, AES)
@@ -38,12 +38,12 @@ System requirements
 Prerequisites
 -------------
 
-Espressif HAL requires binary blobs in order work. The west extension below performs the required
-syncronization to clone, checkout and pull the submodules:
+Espressif HAL requires WiFi and Bluetooth binary blobs in order work. Run the command
+below to retrieve those files.
 
 .. code-block:: console
 
-   west espressif update
+   west blobs fetch hal_espressif
 
 .. note::
 

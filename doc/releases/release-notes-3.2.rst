@@ -19,6 +19,8 @@ API Changes
 Changes in this release
 =======================
 
+* Zephyr now requires Python 3.8 or higher
+
 * Changed :c:struct:`spi_cs_control` to remove anonymous struct.
   This causes possible breakage for static initialization of the
   struct.  Updated :c:macro:`SPI_CS_CONTROL_PTR_DT` to reflect
@@ -30,6 +32,18 @@ Changes in this release
   the migration of external applications, but will be removed with the 3.4
   release.  The :zephyr_file:`scripts/utils/migrate_includes.py` script is
   provided to automate the migration.
+
+* :zephyr_file:`include/zephyr/zephyr.h` no longer defines ``__ZEPHYR__``.
+  This definition can be used by third-party code to compile code conditional
+  to Zephyr. The definition is already injected by the Zephyr build system.
+  Therefore, any third-party code integrated using the Zephyr build system will
+  require no changes. External build systems will need to inject the definition
+  by themselves, if they did not already.
+
+* :zephyr_file:`include/zephyr/zephyr.h` has been deprecated in favor of
+  :zephyr_file:`include/zephyr/kernel.h`, since it only included that header. No
+  changes are required by applications other than replacing ``#include
+  <zephyr/zephyr.h>`` with ``#include <zephyr/kernel.h>``.
 
 Removed APIs in this release
 ============================
@@ -81,6 +95,9 @@ Deprecated in this release
    valid for specific bindings to specify like :dtcompatible:`gpio-leds` and
    :dtcompatible:`fixed-partitions`.
 
+* Bluetooth mesh Configuration Client API prefixed with ``bt_mesh_cfg_``
+  is deprecated in favor of a new API with prefix ``bt_mesh_cfg_cli_``.
+
 Stable API changes in this release
 ==================================
 
@@ -114,6 +131,12 @@ Bluetooth
 
 * Host
 
+  * Added a new callback :c:func:`rpa_expired` in the struct :c:struct:`bt_le_ext_adv_cb`
+    to enable synchronization of the advertising payload updates with the Resolvable Private
+    Address (RPA) rotations when the :kconfig:option:`CONFIG_BT_PRIVACY` is enabled.
+  * Added a new :c:func:`bt_le_set_rpa_timeout()` API call to dynamically change the
+    the Resolvable Private Address (RPA) timeout when the :kconfig:option:`CONFIG_BT_RPA_TIMEOUT_DYNAMIC`
+    is enabled.
   * Added :c:func:`bt_conn_auth_cb_overlay` to overlay authentication callbacks for a Bluetooth LE connection.
   * Removed ``CONFIG_BT_HCI_ECC_STACK_SIZE``.
     The Bluetooth long workqueue (:kconfig:option:`CONFIG_BT_LONG_WQ`) is used for processing ECC commands instead of the dedicated thread.
@@ -214,11 +237,15 @@ Networking
 * ``CONFIG_NET_CONFIG_IEEE802154_DEV_NAME`` has been removed in favor of
   using a Devicetree choice given by ``zephyr,ieee802154``.
 
+* Added new Wi-Fi offload APIs for retrieving status and statistics.
+
 USB
 ***
 
 Build System
 ************
+
+* Removed deprecated ``GCCARMEMB_TOOLCHAIN_PATH`` setting
 
 Devicetree
 **********
@@ -229,6 +256,32 @@ Devicetree
 
 Libraries / Subsystems
 **********************
+
+* Management
+
+  * MCUMGR race condition when using the task status function whereby if a
+    thread state changed it could give a falsely short process list has been
+    fixed.
+  * MCUMGR shell (group 9) CBOR structure has changed, the ``rc``
+    response is now only used for mcumgr errors, shell command
+    execution result codes are instead returned in the ``ret``
+    variable instead, see :ref:`mcumgr_smp_group_9` for updated
+    information. Legacy bahaviour can be restored by enabling
+    :kconfig:option:`CONFIG_MCUMGR_CMD_SHELL_MGMT_LEGACY_RC_RETURN_CODE`
+  * MCUMGR img_mgmt erase command now accepts an optional slot number
+    to select which image will be erased, using the ``slot`` input
+    (will default to slot 1 if not provided).
+  * MCUMGR :kconfig:option:`CONFIG_OS_MGMT_TASKSTAT_SIGNED_PRIORITY` is now
+    enabled by default, this makes thread priorities in the taskstat command
+    signed, which matches the signed priority of tasks in Zephyr, to revert
+    to previous behaviour of using unsigned values, disable this Kconfig.
+  * MCUMGR taskstat runtime field support has been added, if
+    :kconfig:option:`CONFIG_OS_MGMT_TASKSTAT` is enabled, which will report the
+    number of CPU cycles have been spent executing the thread.
+  * MCUMgr transport API drops ``zst`` parameter, of :c:struct:`zephyr_smp_transport`
+    type, from :c:func:`zephyr_smp_transport_out_fn` type callback as it has
+    not been used, and the ``nb`` parameter, of :c:struct:`net_buf` type,
+    can carry additional transport information when needed.
 
 HALs
 ****

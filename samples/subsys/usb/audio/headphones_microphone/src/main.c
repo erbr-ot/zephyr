@@ -9,7 +9,7 @@
  * @brief Sample app for Audio class
  */
 
-#include <zephyr/zephyr.h>
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/usb/usb_device.h>
 #include <zephyr/usb/class/usb_audio.h>
@@ -65,7 +65,7 @@ static const struct usb_audio_ops mic_ops = {
 
 void main(void)
 {
-	const struct device *hp_dev = DEVICE_DT_GET_ONE(usb_audio_hp);
+	const struct device *const hp_dev = DEVICE_DT_GET_ONE(usb_audio_hp);
 	int ret;
 
 	LOG_INF("Entered %s", __func__);

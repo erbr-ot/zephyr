@@ -37,9 +37,9 @@
 #if defined(CONFIG_BT_CTLR_SYNC_ISO)
 #define IS_SYNC_ISO_HANDLE(_handle) \
 	(((_handle) >= BT_CTLR_SYNC_ISO_STREAM_HANDLE_BASE) && \
-	((_handle) <= (BT_CTLR_SYNC_ISO_STREAM_HANDLE_BASE + BT_CTLR_SYNC_ISO_STREAM_MAX - 1)))
+	((_handle) <= (BT_CTLR_SYNC_ISO_STREAM_HANDLE_BASE + BT_CTLR_SYNC_ISO_STREAM_MAX - 1U)))
 #else
-#define IS_SYNC_ISO_HANDLE(_handle) 0
+#define IS_SYNC_ISO_HANDLE(_handle) 0U
 #endif /* CONFIG_BT_CTLR_SYNC_ISO */
 
 struct ll_iso_test_mode_data {
