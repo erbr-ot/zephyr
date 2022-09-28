@@ -292,9 +292,15 @@ static void lp_cu_ntf(struct ll_conn *conn, struct proc_ctx *ctx)
 	pdu = (struct node_rx_cu *)ntf->pdu;
 
 	pdu->status = ctx->data.cu.error;
-	pdu->interval = ctx->data.cu.interval_max;
-	pdu->latency = ctx->data.cu.latency;
-	pdu->timeout = ctx->data.cu.timeout;
+	if (!ctx->data.cu.error) {
+		pdu->interval = ctx->data.cu.interval_max;
+		pdu->latency = ctx->data.cu.latency;
+		pdu->timeout = ctx->data.cu.timeout;
+	} else {
+		pdu->interval = conn->lll.interval;
+		pdu->latency = conn->lll.latency;
+		pdu->timeout = conn->timeout;
+	}
 
 	/* Enqueue notification towards LL */
 	ll_rx_put(ntf->hdr.link, ntf);
@@ -743,9 +749,15 @@ static void rp_cu_ntf(struct ll_conn *conn, struct proc_ctx *ctx)
 	pdu = (struct node_rx_cu *)ntf->pdu;
 
 	pdu->status = ctx->data.cu.error;
-	pdu->interval = ctx->data.cu.interval_max;
-	pdu->latency = ctx->data.cu.latency;
-	pdu->timeout = ctx->data.cu.timeout;
+	if (!ctx->data.cu.error) {
+		pdu->interval = ctx->data.cu.interval_max;
+		pdu->latency = ctx->data.cu.latency;
+		pdu->timeout = ctx->data.cu.timeout;
+	} else {
+		pdu->interval = conn->lll.interval;
+		pdu->latency = conn->lll.latency;
+		pdu->timeout = conn->timeout;
+	}
 
 	/* Enqueue notification towards LL */
 	ll_rx_put(ntf->hdr.link, ntf);
