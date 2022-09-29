@@ -1424,7 +1424,6 @@ static isoal_status_t isoal_tx_try_emit_pdu(struct isoal_source *source,
 	return err;
 }
 
-
 /**
  * @brief Fragment received SDU and produce unframed PDUs
  * @details Destination source may have an already partially built PDU
@@ -1442,6 +1441,7 @@ static isoal_status_t isoal_tx_unframed_produce(struct isoal_source *source,
 	struct isoal_pdu_production *pp;
 	const uint8_t *sdu_payload;
 	bool zero_length_sdu;
+	uint8_t burst_index;
 	isoal_status_t err;
 	bool padding_pdu;
 	uint8_t ll_id;
@@ -1462,9 +1462,35 @@ static isoal_status_t isoal_tx_unframed_produce(struct isoal_source *source,
 		tx_sdu->sdu_state == BT_ISO_SINGLE) {
 		/* Initialize to info provided in SDU */
 		uint32_t actual_grp_ref_point = tx_sdu->grp_ref_point;
-		uint64_t actual_event = tx_sdu->target_event;
+		uint64_t actual_event;
 
 		/* Start of a new SDU */
+
+		/* Calculate the burst index, i.e. the payload location within the burst.
+		 * FIXME: There is a risk of losing data if there are multiple SDUs per ISO
+		 * interval and SDUs are not released consecutively because the payload number
+		 * only aligns with the event after BN number of payloads. This solution is
+		 * aimed at passing EBQ testing.
+		 */
+		burst_index = pp->payload_number % session->burst_number;
+
+		/* Prevent changing target event in the middle of the burst. This means that
+		 * all payload within a burst will be targeted the same event.
+		 */
+		if (burst_index == 0) {
+			/* First payload in the burst - align with target event */
+
+			/* Update payload counter in case time has passed since last
+			 * SDU. This should mean that event count * burst number should
+			 * be greater than the current payload number. In the event of
+			 * an SDU interval smaller than the ISO interval, multiple SDUs
+			 * will be sent in the same event. As such the current payload
+			 * number should be retained. Payload numbers are indexed at 0
+			 * and valid until the PDU is emitted.
+			 */
+			pp->payload_number = MAX(pp->payload_number,
+				(tx_sdu->target_event * session->burst_number));
+		}
 
 		/* Update sequence number for received SDU
 		 *
@@ -1479,17 +1505,6 @@ static isoal_status_t isoal_tx_unframed_produce(struct isoal_source *source,
 		 * configured and the link is established.
 		 */
 		session->seqn++;
-
-		/* Update payload counter in case time has passed since last
-		 * SDU. This should mean that event count * burst number should
-		 * be greater than the current payload number. In the event of
-		 * an SDU interval smaller than the ISO interval, multiple SDUs
-		 * will be sent in the same event. As such the current payload
-		 * number should be retained. Payload numbers are indexed at 0
-		 * and valid until the PDU is emitted.
-		 */
-		pp->payload_number = MAX(pp->payload_number,
-			(tx_sdu->target_event * session->burst_number));
 
 		/* Get actual event for this payload number */
 		actual_event = pp->payload_number / session->burst_number;
