@@ -318,7 +318,10 @@ void ull_conn_iso_done(struct node_rx_event_done *done)
 
 		if (cis->lll.handle != LLL_HANDLE_INVALID) {
 			/* CIS was setup and is now expected to be going */
-			if (!(done->extra.trx_performed_mask &
+			if (done->extra.mic_state == LLL_CONN_MIC_FAIL) {
+				/* MIC failure - stop CIS and defer cleanup to after teardown. */
+				ull_conn_iso_cis_stop(cis, NULL, BT_HCI_ERR_TERM_DUE_TO_MIC_FAIL);
+			} else if (!(done->extra.trx_performed_mask &
 			      (1U << LL_CIS_IDX_FROM_HANDLE(cis->lll.handle)))) {
 				/* We did NOT have successful transaction on established CIS,
 				 * or CIS was not yet estanblished, so handle timeout */
@@ -326,15 +329,14 @@ void ull_conn_iso_done(struct node_rx_event_done *done)
 					struct ll_conn *conn = ll_conn_get(cis->lll.acl_handle);
 					cis->event_expire =
 					 	RADIO_CONN_EVENTS(conn->timeout * 10U * 1000U,
-								  cig->iso_interval * CONN_INT_UNIT_US) + 1;
+							cig->iso_interval * CONN_INT_UNIT_US) + 1;
 				}
 
 				if (--cis->event_expire == 0) {
 					/* Stop CIS and defer cleanup to after teardown. */
 					ull_conn_iso_cis_stop(cis, NULL,
-							      cis->established?BT_HCI_ERR_CONN_TIMEOUT:
-							      BT_HCI_ERR_CONN_FAIL_TO_ESTAB);
-
+							cis->established ? BT_HCI_ERR_CONN_TIMEOUT :
+							BT_HCI_ERR_CONN_FAIL_TO_ESTAB);
 				}
 			} else {
 				cis->event_expire = 0;
