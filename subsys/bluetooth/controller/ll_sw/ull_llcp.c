@@ -1203,12 +1203,13 @@ bool ull_cp_cc_awaiting_established(struct ll_conn *conn)
 
 }
 
-void ull_cp_cc_established(struct ll_conn *conn)
+void ull_cp_cc_established(struct ll_conn *conn, uint8_t error_code)
 {
 	struct proc_ctx *ctx;
 
 	ctx = llcp_rr_peek(conn);
 	if (ctx && ctx->proc == PROC_CIS_CREATE) {
+		ctx->data.cis_create.error = error_code;
 		llcp_rp_cc_established(conn, ctx);
 	}
 }

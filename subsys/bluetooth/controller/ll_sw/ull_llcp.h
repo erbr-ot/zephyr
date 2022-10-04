@@ -210,7 +210,7 @@ void ull_cp_cc_reject(struct ll_conn *conn, uint8_t error_code);
 /**
  * @brief CIS was established.
  */
-void ull_cp_cc_established(struct ll_conn *conn);
+void ull_cp_cc_established(struct ll_conn *conn, uint8_t error_code);
 
 /**
  * @brief Initiate a Channel Map Update Procedure.

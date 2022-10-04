@@ -2800,7 +2800,7 @@ static inline int rx_demux_rx(memq_link_t *link, struct node_rx_hdr *rx)
 
 		conn = ll_conn_get(rx->handle);
 		if (ull_cp_cc_awaiting_established(conn)) {
-			ull_cp_cc_established(conn);
+			ull_cp_cc_established(conn, BT_HCI_ERR_SUCCESS);
 		}
 
 		rx->type = NODE_RX_TYPE_RELEASE;
