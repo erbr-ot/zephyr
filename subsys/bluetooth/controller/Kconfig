@@ -257,7 +257,7 @@ config BT_CTLR_ISO_RX_SDU_BUFFERS
 
 config BT_CTLR_ISO_TX_SEG_PLAYLOAD_MIN
 	int "Minimum number of playload data bytes in a new segment"
-	depends on BT_CTLR_SYNC_ISO || BT_CTLR_CONN_ISO
+	depends on BT_CTLR_ADV_ISO || BT_CTLR_CONN_ISO
 	default 1
 	range 1 64
 	help

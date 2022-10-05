@@ -28,22 +28,16 @@
 #include "common/log.h"
 #include "hal/debug.h"
 
-/* Minimum number of bytes that would make inserting a new segment into a PDU
- * worthwhile.
- */
-#if defined(CONFIG_BT_CTLR_ISO_TX_SEG_PLAYLOAD_MIN)
-#define ISOAL_SEGMENT_MIN_PAYLOAD         CONFIG_BT_CTLR_ISO_TX_SEG_PLAYLOAD_MIN
-#else
-#define ISOAL_SEGMENT_MIN_PAYLOAD         (1)
-#endif /* CONFIG_BT_CTLR_ISO_TX_SEG_PLAYLOAD_MIN */
-
-/* Given the minimum payload, this defines the minimum remaining in a PDU that
- * would make inserting a new segment worthwhile.
+#if defined(CONFIG_BT_CTLR_ADV_ISO) || defined(CONFIG_BT_CTLR_CONN_ISO)
+/* Given the minimum payload, this defines the minimum number of bytes that
+ * should be  remaining in a TX PDU such that it would make inserting a new
+ * segment worthwhile during the segmentation process.
  * [Payload (min) + Segmentation Header + Time Offset]
  */
-#define ISOAL_SEGMENT_MIN_SIZE            (ISOAL_SEGMENT_MIN_PAYLOAD +         \
-                                          PDU_ISO_SEG_HDR_SIZE +              \
-                                          PDU_ISO_SEG_TIMEOFFSET_SIZE)
+#define ISOAL_TX_SEGMENT_MIN_SIZE         (CONFIG_BT_CTLR_ISO_TX_SEG_PLAYLOAD_MIN +                \
+					   PDU_ISO_SEG_HDR_SIZE +                                  \
+					   PDU_ISO_SEG_TIMEOFFSET_SIZE)
+#endif /* CONFIG_BT_CTLR_ADV_ISO || CONFIG_BT_CTLR_CONN_ISO */
 
 /** Allocation state */
 typedef uint8_t isoal_alloc_state_t;
@@ -126,7 +120,7 @@ static isoal_status_t isoal_sink_allocate(isoal_sink_handle_t *hdl)
 static void isoal_sink_deallocate(isoal_sink_handle_t hdl)
 {
 	isoal_global.sink_allocated[hdl] = ISOAL_ALLOC_STATE_FREE;
-	memset(&isoal_global.sink_state[hdl], 0, sizeof(struct isoal_sink));
+	(void)memset(&isoal_global.sink_state[hdl], 0, sizeof(struct isoal_sink));
 }
 
 /**
@@ -379,7 +373,7 @@ static isoal_status_t isoal_rx_buffered_emit_sdu(struct isoal_sink *sink, bool e
 	sdu_status.collated_status = sdu_frag.sdu.status;
 	emit_sdu_current = true;
 
-#if defined(ISOAL_CONFIG_BUFFER_RX_SDUS_ENABLE)
+#if defined(ISOAL_BUFFER_RX_SDUS_ENABLE)
 	uint16_t next_write_indx;
 	bool sdu_list_empty;
 	bool emit_sdu_list;
@@ -420,29 +414,30 @@ static isoal_status_t isoal_rx_buffered_emit_sdu(struct isoal_sink *sink, bool e
 
 	if (emit_sdu_list && next_write_indx > 0) {
 		if (!sdu_list_err) {
-			/* Collated information is not reliable if there is an error in
-			 * the sequence of the fragments.
+			/* Collated information is not reliable if there is an
+			 * error in the sequence of the fragments.
 			 */
-			for (int i = 0; i < next_write_indx; i++) {
+			for (uint8_t i = 0; i < next_write_indx; i++) {
 				sdu_status.total_sdu_size +=
 					sp->sdu_list.list[i].sdu_frag_size;
 				if (sp->sdu_list.list[i].sdu.status == ISOAL_SDU_STATUS_LOST_DATA ||
 					sdu_status.collated_status == ISOAL_SDU_STATUS_LOST_DATA) {
 					sdu_status.collated_status = ISOAL_SDU_STATUS_LOST_DATA;
 				} else {
-					sdu_status.collated_status |= sp->sdu_list.list[i].sdu.status;
+					sdu_status.collated_status |=
+						sp->sdu_list.list[i].sdu.status;
 				}
 			}
 		}
 
-		for (int i = 0; i < next_write_indx; i++) {
+		for (uint8_t i = 0; i < next_write_indx; i++) {
 			err |= session->sdu_emit(sink, &sp->sdu_list.list[i],
 						&sdu_status);
 		}
 
 		next_write_indx = sp->sdu_list.next_write_indx  = 0;
 	}
-#endif /* ISOAL_CONFIG_BUFFER_RX_SDUS_ENABLE */
+#endif /* ISOAL_BUFFER_RX_SDUS_ENABLE */
 
 	if (emit_sdu_current) {
 		if (sdu_frag.sdu_state == BT_ISO_SINGLE) {
@@ -452,11 +447,11 @@ static isoal_status_t isoal_rx_buffered_emit_sdu(struct isoal_sink *sink, bool e
 
 		err |= session->sdu_emit(sink, &sdu_frag, &sdu_status);
 
-#if defined(ISOAL_CONFIG_BUFFER_RX_SDUS_ENABLE)
+#if defined(ISOAL_BUFFER_RX_SDUS_ENABLE)
 	} else if (next_write_indx < CONFIG_BT_CTLR_ISO_RX_SDU_BUFFERS) {
 		sp->sdu_list.list[next_write_indx++] = sdu_frag;
 		sp->sdu_list.next_write_indx = next_write_indx;
-#endif /* ISOAL_CONFIG_BUFFER_RX_SDUS_ENABLE */
+#endif /* ISOAL_BUFFER_RX_SDUS_ENABLE */
 	} else {
 		/* Unreachable */
 		LL_ASSERT(0);
@@ -863,7 +858,8 @@ static isoal_status_t isoal_rx_framed_consume(struct isoal_sink *sink,
 			(struct pdu_iso_sdu_sh *) pdu_meta->pdu->payload;
 
 	seg_err = false;
-	if (seg_hdr && isoal_check_seg_header(seg_hdr, pdu_meta->pdu->length) == ISOAL_SDU_STATUS_LOST_DATA) {
+	if (seg_hdr && isoal_check_seg_header(seg_hdr, pdu_meta->pdu->length) ==
+								ISOAL_SDU_STATUS_LOST_DATA) {
 		seg_err = true;
 		seg_hdr = NULL;
 	}
@@ -1000,7 +996,8 @@ static isoal_status_t isoal_rx_framed_consume(struct isoal_sink *sink,
 		if (((uint8_t *) seg_hdr) > end_of_pdu) {
 			seg_hdr = NULL;
 		} else if (isoal_check_seg_header(seg_hdr,
-				(uint8_t)(end_of_pdu + 1 - ((uint8_t *) seg_hdr))) == ISOAL_SDU_STATUS_LOST_DATA) {
+				(uint8_t)(end_of_pdu + 1 - ((uint8_t *) seg_hdr))) ==
+								ISOAL_SDU_STATUS_LOST_DATA) {
 			seg_err = true;
 			seg_hdr = NULL;
 		}
@@ -1136,7 +1133,7 @@ static void isoal_source_deallocate(isoal_source_handle_t hdl)
 	}
 
 	isoal_global.source_allocated[hdl] = ISOAL_ALLOC_STATE_FREE;
-	memset(&isoal_global.source_state[hdl], 0, sizeof(struct isoal_source));
+	(void)memset(&isoal_global.source_state[hdl], 0, sizeof(struct isoal_source));
 }
 
 /**
@@ -1506,6 +1503,17 @@ static isoal_status_t isoal_tx_unframed_produce(struct isoal_source *source,
 		 */
 		session->seqn++;
 
+		/* Update payload counter in case time has passed since last
+		 * SDU. This should mean that event count * burst number should
+		 * be greater than the current payload number. In the event of
+		 * an SDU interval smaller than the ISO interval, multiple SDUs
+		 * will be sent in the same event. As such the current payload
+		 * number should be retained. Payload numbers are indexed at 0
+		 * and valid until the PDU is emitted.
+		 */
+		pp->payload_number = MAX(pp->payload_number,
+			(tx_sdu->target_event * session->burst_number));
+
 		/* Get actual event for this payload number */
 		actual_event = pp->payload_number / session->burst_number;
 
@@ -1513,12 +1521,14 @@ static isoal_status_t isoal_tx_unframed_produce(struct isoal_source *source,
 		 * event being set. This might introduce some errors as the
 		 * group refernce point for future events could drift. However
 		 * as the time offset calculation requires an absolute value,
-		 * this seems to be the best candidate.
+		 * this seems to be the best candidate. As the actual group
+		 * refereence point is 32-bits, it is expected that advancing
+		 * the reference point will cause it to wrap around.
 		 */
 		if (actual_event > tx_sdu->target_event) {
-			actual_grp_ref_point = tx_sdu->grp_ref_point +
+			actual_grp_ref_point = (uint32_t)(tx_sdu->grp_ref_point +
 				((actual_event - tx_sdu->target_event) * session->iso_interval *
-					ISO_INT_UNIT_US);
+					ISO_INT_UNIT_US));
 		}
 
 		/* Store timing info for TX Sync command */
@@ -1929,7 +1939,7 @@ static isoal_status_t isoal_tx_framed_produce(struct isoal_source *source,
 		 * PDU when the end of the SDU is reached, instead of waiting
 		 * for the next SDU.
 		 */
-		bool release_pdu = end_of_sdu && (pp->pdu_available <= ISOAL_SEGMENT_MIN_SIZE);
+		bool release_pdu = end_of_sdu && (pp->pdu_available <= ISOAL_TX_SEGMENT_MIN_SIZE);
 		const isoal_status_t err_emit = isoal_tx_try_emit_pdu(source, release_pdu, ll_id);
 
 		err |= err_emit;
@@ -1960,7 +1970,7 @@ static isoal_status_t isoal_tx_framed_produce(struct isoal_source *source,
  * @return              Status of operation
  */
 static isoal_status_t isoal_tx_framed_event_prepare_handle(isoal_source_handle_t source_hdl,
-						           uint64_t event_count)
+							   uint64_t event_count)
 {
 	struct isoal_source_session *session;
 	struct isoal_pdu_production *pp;
@@ -2064,12 +2074,11 @@ void isoal_tx_pdu_release(isoal_source_handle_t source_hdl,
  */
 isoal_status_t isoal_tx_get_sync_info(isoal_source_handle_t source_hdl,
 				      uint16_t *seq,
-			    	      uint32_t *timestamp,
-			    	      uint32_t *offset)
+				      uint32_t *timestamp,
+				      uint32_t *offset)
 {
-	struct isoal_source_session *session;
-
 	if (isoal_check_source_hdl_valid(source_hdl) == ISOAL_STATUS_OK) {
+		struct isoal_source_session *session;
 
 		session = &isoal_global.source_state[source_hdl].session;
 

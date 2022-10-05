@@ -9,7 +9,7 @@
 #include <zephyr/toolchain.h>
 
 #if defined(CONFIG_BT_CTLR_ISO_RX_SDU_BUFFERS) && (CONFIG_BT_CTLR_ISO_RX_SDU_BUFFERS > 0)
-#define ISOAL_CONFIG_BUFFER_RX_SDUS_ENABLE
+#define ISOAL_BUFFER_RX_SDUS_ENABLE
 #endif /* CONFIG_BT_CTLR_ISO_RX_SDU_BUFFERS > 0 */
 
 
@@ -137,7 +137,7 @@ struct isoal_emitted_sdu_frag {
 
 /** @brief Produced ISO SDU and required status information to be emitted */
 struct isoal_emitted_sdu {
-	/** Size of the SDU accross all fragments */
+	/** Size of the SDU across all fragments */
 	isoal_sdu_len_t           total_sdu_size;
 	/** Status of contents, if valid or SDU was lost.
 	 * This maps directly to the HCI ISO Data packet Packet_Status_Flag.
@@ -148,12 +148,12 @@ struct isoal_emitted_sdu {
 	isoal_sdu_status_t        collated_status;
 };
 
-#if defined(ISOAL_CONFIG_BUFFER_RX_SDUS_ENABLE)
+#if defined(ISOAL_BUFFER_RX_SDUS_ENABLE)
 struct isoal_emit_sdu_queue {
 	struct isoal_emitted_sdu_frag list[CONFIG_BT_CTLR_ISO_RX_SDU_BUFFERS];
 	uint16_t next_write_indx;
 };
-#endif /* ISOAL_CONFIG_BUFFER_RX_SDUS_ENABLE */
+#endif /* ISOAL_BUFFER_RX_SDUS_ENABLE */
 
 /** @brief Produced ISO PDU encapsulation */
 struct isoal_pdu_produced {
@@ -268,7 +268,7 @@ struct isoal_sink_session {
 };
 
 struct isoal_sdu_production {
-#if defined(ISOAL_CONFIG_BUFFER_RX_SDUS_ENABLE)
+#if defined(ISOAL_BUFFER_RX_SDUS_ENABLE)
 	/* Buffered SDUs */
 	struct isoal_emit_sdu_queue sdu_list;
 #endif
@@ -492,8 +492,8 @@ void isoal_tx_pdu_release(isoal_source_handle_t source_hdl,
 
 isoal_status_t isoal_tx_get_sync_info(isoal_source_handle_t source_hdl,
 				      uint16_t *seq,
-			    	      uint32_t *timestamp,
-			    	      uint32_t *offset);
+				      uint32_t *timestamp,
+				      uint32_t *offset);
 
 void isoal_tx_event_prepare(isoal_source_handle_t source_hdl,
 			    uint64_t event_number);
