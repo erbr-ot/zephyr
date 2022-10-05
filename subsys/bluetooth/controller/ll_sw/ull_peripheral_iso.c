@@ -125,7 +125,7 @@ uint8_t ll_cis_reject(uint16_t handle, uint8_t reason)
 	struct ll_conn *acl_conn = ll_cis_get_acl_awaiting_reply(handle, &status);
 
 	if (acl_conn) {
-		/* Accept request */
+		/* Reject request */
 		ull_cp_cc_reject(acl_conn, reason);
 	}
 #endif
@@ -141,6 +141,28 @@ int ull_peripheral_iso_init(void)
 int ull_peripheral_iso_reset(void)
 {
 	return 0;
+}
+
+/* Use this function to de-allocate CIS/CIG resources on an aborted CIS setup
+ * ie if CIS setup is 'cancelled' after call to ull_peripheral_iso_acquire()
+ * because of a rejection of the CIS request
+ */
+void ull_peripheral_iso_dealloc(uint16_t cis_handle)
+{
+	struct ll_conn_iso_stream *cis;
+	struct ll_conn_iso_group *cig;
+
+	cis = ll_conn_iso_stream_get(cis_handle);
+	LL_ASSERT(cis);
+
+	cig = cis->group;
+
+	ll_conn_iso_stream_release(cis);
+	cig->lll.num_cis--;
+
+	if (!cig->lll.num_cis) {
+		ll_conn_iso_group_release(cig);
+	}
 }
 
 uint8_t ull_peripheral_iso_acquire(struct ll_conn *acl,
@@ -204,6 +226,12 @@ uint8_t ull_peripheral_iso_acquire(struct ll_conn *acl,
 	/* Acquire new CIS */
 	cis = ll_conn_iso_stream_acquire();
 	if (cis == NULL) {
+		if (!cig->lll.num_cis) {
+			/* No CIS's in CIG, so this was just allocated
+			 * so release as we can't use it
+			 */
+			ll_conn_iso_group_release(cig);
+		}
 		/* No space for new CIS */
 		return BT_HCI_ERR_INSUFFICIENT_RESOURCES;
 	}
