@@ -23,6 +23,7 @@
 #include "ll_settings.h"
 
 #include "lll.h"
+#include "lll_clock.h"
 #include "lll/lll_df_types.h"
 #include "lll_conn.h"
 #include "lll_conn_iso.h"
@@ -912,3 +913,45 @@ void llcp_pdu_decode_cis_terminate_ind(struct proc_ctx *ctx, struct pdu_data *pd
 	ctx->data.cis_term.error_code = pdu->llctrl.cis_terminate_ind.error_code;
 }
 #endif /* defined(CONFIG_BT_CTLR_CENTRAL_ISO) || defined(CONFIG_BT_CTLR_PERIPHERAL_ISO) */
+
+#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+/*
+ * SCA Update Procedure Helpers
+ */
+void llcp_pdu_encode_clock_accuracy_req(struct proc_ctx *ctx, struct pdu_data *pdu)
+{
+	struct pdu_data_llctrl_clock_accuracy_req *p = &pdu->llctrl.sca_req;
+
+	pdu->ll_id = PDU_DATA_LLID_CTRL;
+	pdu->len = offsetof(struct pdu_data_llctrl, sca_req) +
+		   sizeof(struct pdu_data_llctrl_clock_accuracy_req);
+	pdu->llctrl.opcode = PDU_DATA_LLCTRL_TYPE_CLOCK_ACCURACY_REQ;
+	p->sca = ctx->data.scau.sca;
+}
+
+void llcp_pdu_encode_clock_accuracy_rsp(struct proc_ctx *ctx, struct pdu_data *pdu)
+{
+	struct pdu_data_llctrl_clock_accuracy_rsp *p = &pdu->llctrl.sca_rsp;
+
+	pdu->ll_id = PDU_DATA_LLID_CTRL;
+	pdu->len = offsetof(struct pdu_data_llctrl, sca_rsp) +
+		   sizeof(struct pdu_data_llctrl_clock_accuracy_rsp);
+	pdu->llctrl.opcode = PDU_DATA_LLCTRL_TYPE_CLOCK_ACCURACY_RSP;
+	p->sca = ctx->data.scau.sca;
+}
+
+void llcp_pdu_decode_clock_accuracy_req(struct proc_ctx *ctx, struct pdu_data *pdu)
+{
+	struct pdu_data_llctrl_clock_accuracy_req *p = &pdu->llctrl.sca_req;
+
+	ctx->data.scau.sca = p->sca;
+}
+
+void llcp_pdu_decode_clock_accuracy_rsp(struct proc_ctx *ctx, struct pdu_data *pdu)
+{
+	struct pdu_data_llctrl_clock_accuracy_rsp *p = &pdu->llctrl.sca_rsp;
+
+	ctx->data.scau.sca = p->sca;
+}
+#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
+

@@ -70,6 +70,9 @@ config BT_CTLR_MIN_USED_CHAN_SUPPORT
 config BT_CTLR_SMI_SUPPORT
 	bool
 
+config BT_CTLR_SCA_UPDATE_SUPPORT
+	bool
+
 config BT_CTLR_CONN_RSSI_SUPPORT
 	bool
 
@@ -440,6 +443,14 @@ config BT_CTLR_MIN_USED_CHAN
 	default y
 	help
 	  Enable support for Bluetooth 5.0 Minimum Number of Used Channels
+	  Procedure in the Controller.
+
+config BT_CTLR_SCA_UPDATE
+	bool "Sleep clock accuracy update procedure"
+	depends on BT_CTLR_SCA_UPDATE_SUPPORT
+	default y if BT_CTLR_CONN_ISO
+	help
+	  Enable support for Bluetooth 5.1 Sleep clock accuracy
 	  Procedure in the Controller.
 
 config BT_CTLR_CONN_RSSI

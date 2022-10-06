@@ -28,6 +28,7 @@ enum llcp_proc {
 	PROC_CTE_REQ,
 	PROC_CIS_CREATE,
 	PROC_CIS_TERMINATE,
+	PROC_SCA_UPDATE,
 	/* A helper enum entry, to use in pause procedure context */
 	PROC_NONE = 0x0,
 };
@@ -284,6 +285,11 @@ struct proc_ctx {
 			uint8_t  cis_id;
 			uint8_t error_code;
 		} cis_term;
+#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+		struct {
+			uint8_t sca;
+		} scau;
+#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
 	} data;
 
 	struct {
@@ -666,6 +672,17 @@ void llcp_ntf_encode_length_change(struct ll_conn *conn,
 					struct pdu_data *pdu);
 
 #endif /* CONFIG_BT_CTLR_DATA_LENGTH */
+
+#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+/*
+ * Sleep Clock Accuracy Update Procedure Helper
+ */
+void llcp_pdu_encode_clock_accuracy_req(struct proc_ctx *ctx, struct pdu_data *pdu);
+void llcp_pdu_encode_clock_accuracy_rsp(struct proc_ctx *ctx, struct pdu_data *pdu);
+void llcp_pdu_decode_clock_accuracy_req(struct proc_ctx *ctx, struct pdu_data *pdu);
+void llcp_pdu_decode_clock_accuracy_rsp(struct proc_ctx *ctx, struct pdu_data *pdu);
+
+#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
 
 #if defined(CONFIG_BT_CTLR_DF_CONN_CTE_REQ)
 /*

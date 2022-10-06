@@ -196,6 +196,12 @@ static void lp_comm_tx(struct ll_conn *conn, struct proc_ctx *ctx)
 		ctx->rx_opcode = PDU_DATA_LLCTRL_TYPE_CTE_RSP;
 		break;
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_REQ */
+#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+	case PROC_SCA_UPDATE:
+		llcp_pdu_encode_clock_accuracy_req(ctx, pdu);
+		ctx->rx_opcode = PDU_DATA_LLCTRL_TYPE_CLOCK_ACCURACY_RSP;
+		break;
+#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
 	default:
 		/* Unknown procedure */
 		LL_ASSERT(0);
@@ -509,6 +515,23 @@ static void lp_comm_complete(struct ll_conn *conn, struct proc_ctx *ctx, uint8_t
 		lp_comm_complete_cte_req(conn, ctx);
 		break;
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_REQ */
+#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+	case PROC_SCA_UPDATE:
+		switch (ctx->response_opcode) {
+		case PDU_DATA_LLCTRL_TYPE_UNKNOWN_RSP:
+			/* Peer does not support SCA update, so disable on current connection */
+			feature_unmask_features(conn, LL_FEAT_BIT_SCA_UPDATE);
+			/* Fall through to complete procedure */
+		case PDU_DATA_LLCTRL_TYPE_CLOCK_ACCURACY_RSP:
+			llcp_lr_complete(conn);
+			ctx->state = LP_COMMON_STATE_IDLE;
+			break;
+		default:
+			/* Illegal response opcode */
+			lp_comm_terminate_invalid_pdu(conn, ctx);
+		}
+		break;
+#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
 	default:
 		/* Unknown procedure */
 		LL_ASSERT(0);
@@ -645,6 +668,16 @@ static void lp_comm_send_req(struct ll_conn *conn, struct proc_ctx *ctx, uint8_t
 		}
 		break;
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_REQ */
+#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+	case PROC_SCA_UPDATE:
+		if (llcp_lr_ispaused(conn) || !llcp_tx_alloc_peek(conn, ctx)) {
+			ctx->state = LP_COMMON_STATE_WAIT_TX;
+		} else {
+			lp_comm_tx(conn, ctx);
+			ctx->state = LP_COMMON_STATE_WAIT_RX;
+		}
+		break;
+#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
 	default:
 		/* Unknown procedure */
 		LL_ASSERT(0);
@@ -769,6 +802,11 @@ static void lp_comm_rx_decode(struct ll_conn *conn, struct proc_ctx *ctx, struct
 		llcp_pdu_decode_cte_rsp(ctx, pdu);
 		break;
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_REQ */
+#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+	case PDU_DATA_LLCTRL_TYPE_CLOCK_ACCURACY_RSP:
+		llcp_pdu_decode_clock_accuracy_rsp(ctx, pdu);
+		break;
+#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
 	case PDU_DATA_LLCTRL_TYPE_REJECT_EXT_IND:
 		llcp_pdu_decode_reject_ext_ind(ctx, pdu);
 		break;
@@ -957,6 +995,11 @@ static void rp_comm_rx_decode(struct ll_conn *conn, struct proc_ctx *ctx, struct
 		llcp_pdu_decode_cte_req(ctx, pdu);
 		break;
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_RSP */
+#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+	case PDU_DATA_LLCTRL_TYPE_CLOCK_ACCURACY_REQ:
+		llcp_pdu_decode_clock_accuracy_req(ctx, pdu);
+		break;
+#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
 	default:
 		/* Unknown opcode */
 		LL_ASSERT(0);
@@ -1031,6 +1074,13 @@ static void rp_comm_tx(struct ll_conn *conn, struct proc_ctx *ctx)
 		break;
 	}
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_RSP */
+#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+	case PROC_SCA_UPDATE:
+		llcp_pdu_encode_clock_accuracy_rsp(ctx, pdu);
+		ctx->tx_ack = tx;
+		ctx->rx_opcode = PDU_DATA_LLCTRL_TYPE_UNUSED;
+		break;
+#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
 	default:
 		/* Unknown procedure */
 		LL_ASSERT(0);
@@ -1219,6 +1269,19 @@ static void rp_comm_send_rsp(struct ll_conn *conn, struct proc_ctx *ctx, uint8_t
 		}
 		break;
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_RSP */
+#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+	case PROC_SCA_UPDATE:
+		/* Always respond to remote SCA */
+		if (llcp_rr_ispaused(conn) || !llcp_tx_alloc_peek(conn, ctx)) {
+			ctx->state = RP_COMMON_STATE_WAIT_TX;
+		} else {
+			rp_comm_tx(conn, ctx);
+
+			/* Wait for the peer to have ack'ed the RSP before completing */
+			ctx->state = RP_COMMON_STATE_WAIT_TX_ACK;
+		}
+		break;
+#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
 	default:
 		/* Unknown procedure */
 		LL_ASSERT(0);
@@ -1304,6 +1367,13 @@ static void rp_comm_st_wait_tx_ack(struct ll_conn *conn, struct proc_ctx *ctx, u
 			ctx->state = RP_COMMON_STATE_IDLE;
 		}
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_RSP */
+#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+		case PROC_SCA_UPDATE: {
+			ctx->tx_ack = NULL;
+			llcp_rr_complete(conn);
+			ctx->state = RP_COMMON_STATE_IDLE;
+		}
+#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
 		default:
 			/* Ignore other procedures */
 			break;
