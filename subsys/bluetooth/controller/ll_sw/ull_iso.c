@@ -156,7 +156,6 @@ uint8_t ll_read_iso_tx_sync(uint16_t handle, uint16_t *seq,
 			    uint32_t *timestamp, uint32_t *offset)
 {
 #if defined(CONFIG_BT_CTLR_ADV_ISO) || defined(CONFIG_BT_CTLR_CONN_ISO)
-	struct ll_iso_datapath *dp = NULL;
 
 	if (IS_CIS_HANDLE(handle)) {
 		struct ll_iso_datapath *dp = NULL;
