@@ -3,12 +3,17 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
+
+#include <errno.h>
+
 #include <zephyr/device.h>
+#include <zephyr/kernel.h>
+#include <zephyr/spinlock.h>
 
 #include <adsp-clk.h>
 #include <adsp_shim.h>
 
-static struct cavs_clock_info platform_clocks[CONFIG_MP_NUM_CPUS];
+static struct cavs_clock_info platform_clocks[CONFIG_MP_MAX_NUM_CPUS];
 static struct k_spinlock lock;
 
 int cavs_clock_freq_enc[] = CAVS_CLOCK_FREQ_ENC;

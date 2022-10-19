@@ -26,7 +26,7 @@ LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 #include <string.h>
 
 #include <zephyr/init.h>
-#include <zephyr/net/http_parser_url.h>
+#include <zephyr/net/http/parser_url.h>
 #include <zephyr/net/lwm2m.h>
 #include <zephyr/net/net_ip.h>
 #include <zephyr/net/socket.h>
@@ -687,13 +687,15 @@ static void socket_loop(void)
 		}
 
 		for (i = 0; i < sock_nfds; ++i) {
-			if (sys_slist_is_empty(&sock_ctx[i]->pending_sends)) {
+			if (sock_ctx[i] != NULL &&
+			    sys_slist_is_empty(&sock_ctx[i]->pending_sends)) {
 				next_retransmit = retransmit_request(sock_ctx[i], timestamp);
 				if (next_retransmit < timeout) {
 					timeout = next_retransmit;
 				}
 			}
-			if (sys_slist_is_empty(&sock_ctx[i]->pending_sends) &&
+			if (sock_ctx[i] != NULL &&
+			    sys_slist_is_empty(&sock_ctx[i]->pending_sends) &&
 			    lwm2m_rd_client_is_registred(sock_ctx[i])) {
 				check_notifications(sock_ctx[i], timestamp);
 			}
@@ -715,7 +717,7 @@ static void socket_loop(void)
 
 		for (i = 0; i < sock_nfds; i++) {
 
-			if (sock_ctx[i]->sock_fd < 0) {
+			if (sock_ctx[i] != NULL && sock_ctx[i]->sock_fd < 0) {
 				continue;
 			}
 
@@ -983,6 +985,11 @@ static int lwm2m_engine_init(const struct device *dev)
 	}
 
 	(void)memset(block1_contexts, 0, sizeof(block1_contexts));
+
+	if (IS_ENABLED(CONFIG_LWM2M_RESOURCE_DATA_CACHE_SUPPORT)) {
+		/* Init data cache */
+		lwm2m_engine_data_cache_init();
+	}
 
 	/* start sock receive thread */
 	engine_thread_id = k_thread_create(&engine_thread_data, &engine_thread_stack[0],

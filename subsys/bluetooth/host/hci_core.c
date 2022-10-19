@@ -2618,6 +2618,7 @@ static void read_buffer_size_v2_complete(struct net_buf *buf)
 		bt_dev.le.iso_mtu);
 
 	k_sem_init(&bt_dev.le.iso_pkts, rp->iso_max_num, rp->iso_max_num);
+	bt_dev.le.iso_limit = rp->iso_max_num;
 #endif /* CONFIG_BT_ISO */
 }
 
@@ -4020,7 +4021,7 @@ void bt_data_parse(struct net_buf_simple *ad,
 		}
 
 		if (len > ad->len) {
-			BT_WARN("Malformed data");
+			BT_WARN("malformed advertising data");
 			return;
 		}
 

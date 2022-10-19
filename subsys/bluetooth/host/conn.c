@@ -136,7 +136,7 @@ struct k_sem *bt_conn_get_pkts(struct bt_conn *conn)
 	 * dedicated ISO buffers.
 	 */
 	if (conn->type == BT_CONN_TYPE_ISO) {
-		if (bt_dev.le.iso_mtu && bt_dev.le.iso_pkts.limit) {
+		if (bt_dev.le.iso_mtu && bt_dev.le.iso_limit != 0) {
 			return &bt_dev.le.iso_pkts;
 		}
 
@@ -1152,7 +1152,7 @@ void bt_conn_unref(struct bt_conn *conn)
 	__ASSERT(old > 0, "Conn reference counter is 0");
 
 	if (IS_ENABLED(CONFIG_BT_PERIPHERAL) && conn->type == BT_CONN_TYPE_LE &&
-	    atomic_get(&conn->ref) == 0) {
+	    conn->role == BT_CONN_ROLE_PERIPHERAL && atomic_get(&conn->ref) == 0) {
 		bt_le_adv_resume();
 	}
 }

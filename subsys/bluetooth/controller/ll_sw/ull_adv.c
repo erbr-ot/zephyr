@@ -1367,7 +1367,15 @@ uint8_t ll_adv_enable(uint8_t enable)
 	}
 
 #if !defined(CONFIG_BT_HCI_MESH_EXT)
-	ticks_anchor = ticker_ticks_now_get() + HAL_TICKER_US_TO_TICKS(EVENT_OVERHEAD_START_US);
+	ticks_anchor = ticker_ticks_now_get();
+
+#if !defined(CONFIG_BT_TICKER_LOW_LAT)
+	/* NOTE: mesh bsim loopback_group_low_lat test needs both adv and scan
+	 * to not have that start overhead added to pass the test.
+	 */
+	ticks_anchor += HAL_TICKER_US_TO_TICKS(EVENT_OVERHEAD_START_US);
+#endif /* !CONFIG_BT_TICKER_LOW_LAT */
+
 #else /* CONFIG_BT_HCI_MESH_EXT */
 	if (!at_anchor) {
 		ticks_anchor = ticker_ticks_now_get();
@@ -2008,7 +2016,7 @@ void ull_adv_done(struct node_rx_event_done *done)
 		const uint32_t ticks_adv_airtime = adv->ticks_at_expire +
 			prepare_overhead;
 
-		ticks_elapsed = 0;
+		ticks_elapsed = 0U;
 
 		ticks_now = cntr_cnt_get();
 		if ((int32_t)(ticks_now - ticks_adv_airtime) > 0) {
@@ -2020,7 +2028,7 @@ void ull_adv_done(struct node_rx_event_done *done)
 			delay_remain = ULL_ADV_RANDOM_DELAY - (adv->delay_at_expire +
 							       ticks_elapsed);
 		} else {
-			delay_remain = 0;
+			delay_remain = 0U;
 		}
 
 		/* Check if we have enough time to re-schedule */
@@ -2067,14 +2075,14 @@ void ull_adv_done(struct node_rx_event_done *done)
 
 #if defined(CONFIG_BT_CTLR_ADV_EXT)
 	if (adv->max_events && (adv->event_counter >= adv->max_events)) {
-		adv->max_events = 0;
+		adv->max_events = 0U;
 
 		rx_hdr = (void *)lll->node_rx_adv_term;
 		rx_hdr->rx_ftr.param_adv_term.status = BT_HCI_ERR_LIMIT_REACHED;
 	} else if (adv->remain_duration_us &&
 		   (adv->remain_duration_us <=
 		    ((uint64_t)adv->interval * ADV_INT_UNIT_US))) {
-		adv->remain_duration_us = 0;
+		adv->remain_duration_us = 0U;
 
 		rx_hdr = (void *)lll->node_rx_adv_term;
 		rx_hdr->rx_ftr.param_adv_term.status = BT_HCI_ERR_ADV_TIMEOUT;
@@ -2377,13 +2385,13 @@ static void ticker_cb(uint32_t ticks_at_expire, uint32_t ticks_drift,
 						  0, 0, ticker_update_op_cb);
 
 #if defined(CONFIG_BT_CTLR_ADV_EXT)
-		if (adv->remain_duration_us && adv->event_counter > 0) {
+		if (adv->remain_duration_us && adv->event_counter > 0U) {
 #if defined(CONFIG_BT_CTLR_JIT_SCHEDULING)
 			/* ticks_drift is always 0 with JIT scheduling, populate manually */
 			ticks_drift = adv->delay_at_expire;
 #endif /* CONFIG_BT_CTLR_JIT_SCHEDULING */
 			uint32_t interval_us = (uint64_t)adv->interval * ADV_INT_UNIT_US;
-			uint32_t elapsed_us = interval_us * (lazy + 1) +
+			uint32_t elapsed_us = interval_us * (lazy + 1U) +
 						 HAL_TICKER_TICKS_TO_US(ticks_drift);
 
 			/* End advertising if the added random delay pushes us beyond the limit */
@@ -2395,7 +2403,7 @@ static void ticker_cb(uint32_t ticks_at_expire, uint32_t ticks_drift,
 			}
 		}
 
-		adv->event_counter += (lazy + 1);
+		adv->event_counter += (lazy + 1U);
 #endif /* CONFIG_BT_CTLR_ADV_EXT */
 	}
 
@@ -2585,7 +2593,7 @@ static void adv_max_events_duration_set(struct ll_adv_set *adv,
 {
 	adv->event_counter = 0;
 	adv->max_events = max_ext_adv_evts;
-	adv->remain_duration_us = (uint32_t)duration * 10 * USEC_PER_MSEC;
+	adv->remain_duration_us = (uint32_t)duration * 10U * USEC_PER_MSEC;
 }
 
 static void ticker_stop_aux_op_cb(uint32_t status, void *param)
@@ -3026,7 +3034,7 @@ static void init_set(struct ll_adv_set *adv)
 	adv->lll.chan_map = BT_LE_ADV_CHAN_MAP_ALL;
 	adv->lll.filter_policy = BT_LE_ADV_FP_NO_FILTER;
 #if defined(CONFIG_BT_CTLR_JIT_SCHEDULING)
-	adv->delay = 0;
+	adv->delay = 0U;
 #endif /* ONFIG_BT_CTLR_JIT_SCHEDULING */
 
 	init_pdu(lll_adv_data_peek(&ll_adv[0].lll), PDU_ADV_TYPE_ADV_IND);

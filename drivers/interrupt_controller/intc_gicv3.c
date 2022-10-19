@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <zephyr/arch/cpu.h>
 #include <zephyr/sys/__assert.h>
 #include <zephyr/sw_isr_table.h>
 #include <zephyr/dt-bindings/interrupt-controller/arm-gic.h>
@@ -14,7 +15,7 @@
 #include <string.h>
 
 /* Redistributor base addresses for each core */
-mem_addr_t gic_rdists[CONFIG_MP_NUM_CPUS];
+mem_addr_t gic_rdists[CONFIG_MP_MAX_NUM_CPUS];
 
 #if defined(CONFIG_ARMV8_A_NS) || defined(CONFIG_GIC_SINGLE_SECURITY_STATE)
 #define IGROUPR_VAL	0xFFFFFFFFU

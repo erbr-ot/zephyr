@@ -28,7 +28,6 @@
 #include "lll/lll_adv_types.h"
 #include "lll_adv.h"
 #include "lll/lll_adv_pdu.h"
-#include "lll_conn.h"
 #include "lll_adv_iso.h"
 #include "lll_iso_tx.h"
 
@@ -862,7 +861,8 @@ static uint32_t adv_iso_start(struct ll_adv_iso_set *adv_iso,
 		ticks_anchor += HAL_TICKER_US_TO_TICKS(
 			EVENT_TICKER_RES_MARGIN_US);
 	} else {
-		ticks_anchor = ticker_ticks_now_get();
+		ticks_anchor = ticker_ticks_now_get() +
+			       HAL_TICKER_US_TO_TICKS(EVENT_OVERHEAD_START_US);
 	}
 
 	/* setup to use ISO create prepare function for first radio event */
