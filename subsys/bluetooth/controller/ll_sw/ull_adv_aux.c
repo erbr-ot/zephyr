@@ -3015,6 +3015,18 @@ static void mfy_aux_offset_get(void *param)
 
 		LL_ASSERT((ticks_current == ticks_previous) || retry--);
 
+		if (id == TICKER_NULL && (adv == ull_disable_mark_get() ||
+#if defined(CONFIG_BT_PERIPHERAL)
+		    (adv->lll.conn &&
+		     (adv->lll.conn->periph.initiated || adv->lll.conn->periph.cancelled)))
+#else
+		    0)
+#endif /* !CONFIG_BT_PERIPHERAL */
+			) {
+			/* Ticker stopped by connection establishment or adv disabled */
+			return;
+		}
+
 		LL_ASSERT(id != TICKER_NULL);
 	} while (id != ticker_id);
 
