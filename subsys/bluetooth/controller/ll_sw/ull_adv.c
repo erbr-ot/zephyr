@@ -2402,8 +2402,17 @@ static void ticker_cb(uint32_t ticks_at_expire, uint32_t ticks_drift,
 
 static void ticker_update_op_cb(uint32_t status, void *param)
 {
+#if defined(CONFIG_BT_PERIPHERAL)
+	struct ll_adv_set *adv = param;
+#endif /* CONFIG_BT_PERIPHERAL */
+
 	LL_ASSERT(status == TICKER_STATUS_SUCCESS ||
-		  param == ull_disable_mark_get());
+		  param == ull_disable_mark_get() ||
+#if defined(CONFIG_BT_PERIPHERAL)
+		  (adv->lll.conn &&
+		   (adv->lll.conn->periph.initiated || adv->lll.conn->periph.cancelled)) ||
+#endif /* CONFIG_BT_PERIPHERAL */
+		  0);
 }
 
 #if defined(CONFIG_BT_PERIPHERAL)
