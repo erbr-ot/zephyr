@@ -16,13 +16,8 @@
 extern "C" {
 #endif
 
-/* Get list of capabilities by type */
-sys_slist_t *bt_audio_capability_get(enum bt_audio_dir dir);
-
 /** @brief Audio Capability structure. */
 struct bt_audio_capability {
-	/** Capability direction */
-	enum bt_audio_dir dir;
 	/** Capability codec reference */
 	struct bt_codec *codec;
 
@@ -30,25 +25,50 @@ struct bt_audio_capability {
 	sys_snode_t _node;
 };
 
+/** @typedef bt_audio_foreach_capability_func_t
+ *  @brief Capability iterator callback.
+ *
+ *  @param capability Capability found.
+ *  @param user_data Data given.
+ *
+ *  @return true to continue to the next capability
+ *  @return false to stop the iteration
+ */
+typedef bool (*bt_audio_foreach_capability_func_t)(const struct bt_audio_capability *capability,
+						   void *user_data);
+
+/** @brief Capability iterator.
+ *
+ *  Iterate capabilities with endpoint direction specified.
+ *
+ *  @param dir Direction of the endpoint to look capability for.
+ *  @param func Callback function.
+ *  @param user_data Data to pass to the callback.
+ */
+void bt_audio_foreach_capability(enum bt_audio_dir dir, bt_audio_foreach_capability_func_t func,
+				 void *user_data);
+
 /** @brief Register Audio Capability.
  *
  *  Register Audio Local Capability.
  *
+ *  @param dir Direction of the endpoint to register capability for.
  *  @param cap Capability structure.
  *
  *  @return 0 in case of success or negative value in case of error.
  */
-int bt_audio_capability_register(struct bt_audio_capability *cap);
+int bt_audio_capability_register(enum bt_audio_dir dir, struct bt_audio_capability *cap);
 
 /** @brief Unregister Audio Capability.
  *
  *  Unregister Audio Local Capability.
  *
+ *  @param dir Direction of the endpoint to unregister capability for.
  *  @param cap Capability structure.
  *
  *  @return 0 in case of success or negative value in case of error.
  */
-int bt_audio_capability_unregister(struct bt_audio_capability *cap);
+int bt_audio_capability_unregister(enum bt_audio_dir dir, struct bt_audio_capability *cap);
 
 /** @brief Set the location for an endpoint type
  *

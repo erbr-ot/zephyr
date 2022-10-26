@@ -8,8 +8,8 @@
 #include <cpu_init.h>
 
 #include <xtensa/corebits.h>
-
-#include <ace_v1x-regs.h>
+#include <adsp_boot.h>
+#include <adsp_power.h>
 
 #define LPSRAM_MAGIC_VALUE      0x13579BDF
 #define LPSCTL_BATTR_MASK       GENMASK(16, 12)
@@ -67,7 +67,7 @@ struct core_state {
 	uint32_t intenable;
 };
 
-static struct core_state core_desc[CONFIG_MP_NUM_CPUS] = { 0 };
+static struct core_state core_desc[CONFIG_MP_MAX_NUM_CPUS] = { 0 };
 
 struct lpsram_header {
 	uint32_t alt_reset_vector;

@@ -8,15 +8,32 @@
 #include <zephyr/sys/check.h>
 
 #include <soc.h>
-#include <ace_v1x-regs.h>
+#include <adsp_boot.h>
+#include <adsp_power.h>
 #include <adsp_ipc_regs.h>
 #include <adsp_memory.h>
+#include <adsp_interrupt.h>
+#include <zephyr/irq.h>
 
 #define CORE_POWER_CHECK_NUM 32
+#define ACE_INTC_IRQ DT_IRQN(DT_NODELABEL(ace_intc))
 
 static void ipc_isr(void *arg)
 {
-	IDC[arch_proc_id()].agents[0].ipc.tdr = BIT(31); /* clear BUSY bit */
+	uint32_t cpu_id = arch_proc_id();
+
+	/*
+	 * Clearing the BUSY bits in both TDR and TDA are needed to
+	 * complete an IDC message. If we do only one (and not both),
+	 * the other side will not be able to send another IDC
+	 * message as the hardware still thinks you are processing
+	 * the IDC message (and thus will not send another one).
+	 * On TDR, it is to write one to clear, while on TDA, it is
+	 * to write zero to clear.
+	 */
+	IDC[cpu_id].agents[0].ipc.tdr = BIT(31);
+	IDC[cpu_id].agents[0].ipc.tda = 0;
+
 #ifdef CONFIG_SMP
 	void z_sched_ipi(void);
 	z_sched_ipi();
@@ -25,13 +42,13 @@ static void ipc_isr(void *arg)
 
 void soc_mp_init(void)
 {
-	IRQ_CONNECT(MTL_IRQ_TO_ZEPHYR(MTL_INTL_IDCA), 0, ipc_isr, 0, 0);
+	IRQ_CONNECT(ACE_IRQ_TO_ZEPHYR(ACE_INTL_IDCA), 0, ipc_isr, 0, 0);
 
-	irq_enable(MTL_IRQ_TO_ZEPHYR(MTL_INTL_IDCA));
+	irq_enable(ACE_IRQ_TO_ZEPHYR(ACE_INTL_IDCA));
 
 	for (int i = 0; i < CONFIG_MP_NUM_CPUS; i++) {
 		/* DINT has one bit per IPC, unmask only IPC "Ax" on core "x" */
-		MTL_DINT[i].ie[MTL_INTL_IDCA] = BIT(i);
+		ACE_DINT[i].ie[ACE_INTL_IDCA] = BIT(i);
 
 		/* Agent A should signal only BUSY interrupts */
 		IDC[i].agents[0].ipc.ctl = BIT(0); /* IPCTBIE */

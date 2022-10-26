@@ -143,6 +143,220 @@ static struct named_lc3_preset lc3_broadcast_presets[] = {
 
 /* Default to 16_2_1 */
 static struct named_lc3_preset *default_preset = &lc3_unicast_presets[3];
+static bool initialized;
+
+static uint32_t get_next_seq_num(uint32_t interval_us)
+{
+	static int64_t last_ticks;
+	int64_t uptime_ticks, delta_ticks;
+	uint64_t delta_us;
+	uint64_t seq_num_incr;
+	uint64_t next_seq_num;
+
+	/* Note: This does not handle wrapping of ticks when they go above
+	 * 2^(62-1)
+	 */
+	uptime_ticks = k_uptime_ticks();
+	delta_ticks = uptime_ticks - last_ticks;
+	last_ticks = uptime_ticks;
+
+	delta_us = k_ticks_to_us_near64((uint64_t)delta_ticks);
+	seq_num_incr = delta_us / interval_us;
+	next_seq_num = (seq_num_incr + seq_num);
+
+	return (uint32_t)next_seq_num;
+}
+
+#if defined(CONFIG_LIBLC3)
+NET_BUF_POOL_FIXED_DEFINE(sine_tx_pool, CONFIG_BT_ISO_TX_BUF_COUNT,
+			  CONFIG_BT_ISO_TX_MTU + BT_ISO_CHAN_SEND_RESERVE,
+			  8, NULL);
+
+#include "lc3.h"
+#include "math.h"
+
+#define MAX_SAMPLE_RATE         48000
+#define MAX_FRAME_DURATION_US   10000
+#define MAX_NUM_SAMPLES         ((MAX_FRAME_DURATION_US * MAX_SAMPLE_RATE) / USEC_PER_SEC)
+#define AUDIO_VOLUME            (INT16_MAX - 3000) /* codec does clipping above INT16_MAX - 3000 */
+#define AUDIO_TONE_FREQUENCY_HZ   400
+
+static int16_t audio_buf[MAX_NUM_SAMPLES];
+static lc3_encoder_t lc3_encoder;
+static lc3_encoder_mem_48k_t lc3_encoder_mem;
+static int freq_hz;
+static int frame_duration_us;
+static int frame_duration_100us;
+static int frames_per_sdu;
+static int octets_per_frame;
+
+/**
+ * Use the math lib to generate a sine-wave using 16 bit samples into a buffer.
+ *
+ * @param buf Destination buffer
+ * @param length_us Length of the buffer in microseconds
+ * @param frequency_hz frequency in Hz
+ * @param sample_rate_hz sample-rate in Hz.
+ */
+static void fill_audio_buf_sin(int16_t *buf, int length_us, int frequency_hz, int sample_rate_hz)
+{
+	const uint32_t sine_period_samples = sample_rate_hz / frequency_hz;
+	const size_t num_samples = (length_us * sample_rate_hz) / USEC_PER_SEC;
+	const float step = 2 * 3.1415 / sine_period_samples;
+
+	for (size_t i = 0; i < num_samples; i++) {
+		const float sample = sin(i * step);
+
+		buf[i] = (int16_t)(AUDIO_VOLUME * sample);
+	}
+}
+
+static void init_lc3(void)
+{
+	size_t num_samples;
+
+	freq_hz = bt_codec_cfg_get_freq(&default_preset->preset.codec);
+	frame_duration_us = bt_codec_cfg_get_frame_duration_us(&default_preset->preset.codec);
+	octets_per_frame = bt_codec_cfg_get_octets_per_frame(&default_preset->preset.codec);
+	frames_per_sdu = bt_codec_cfg_get_frame_blocks_per_sdu(&default_preset->preset.codec, true);
+	octets_per_frame = bt_codec_cfg_get_octets_per_frame(&default_preset->preset.codec);
+
+	if (freq_hz < 0) {
+		printk("Error: Codec frequency not set, cannot start codec.");
+		return;
+	}
+
+	if (frame_duration_us < 0) {
+		printk("Error: Frame duration not set, cannot start codec.");
+		return;
+	}
+
+	if (octets_per_frame < 0) {
+		printk("Error: Octets per frame not set, cannot start codec.");
+		return;
+	}
+
+	frame_duration_100us = frame_duration_us / 100;
+
+	/* Fill audio buffer with Sine wave only once and repeat encoding the same tone frame */
+	fill_audio_buf_sin(audio_buf, frame_duration_us, AUDIO_TONE_FREQUENCY_HZ, freq_hz);
+
+	num_samples = ((frame_duration_us * freq_hz) / USEC_PER_SEC);
+	for (size_t i = 0; i < num_samples; i++) {
+		printk("%zu: %6i\n", i, audio_buf[i]);
+	}
+
+	/* Create the encoder instance. This shall complete before stream_started() is called. */
+	lc3_encoder = lc3_setup_encoder(frame_duration_us, freq_hz,
+					0, /* No resampling */
+					&lc3_encoder_mem);
+
+	if (lc3_encoder == NULL) {
+		printk("ERROR: Failed to setup LC3 encoder - wrong parameters?\n");
+	}
+}
+
+static void lc3_audio_timer_timeout(struct k_work *work)
+{
+	/* For the first call-back we push multiple audio frames to the buffer to use the
+	 * controller ISO buffer to handle jitter.
+	 */
+	const uint8_t prime_count = 2;
+	static bool lc3_initialized;
+	static int64_t start_time;
+	static int32_t sdu_cnt;
+	int64_t run_time_100us;
+	int32_t sdu_goal_cnt;
+	int64_t run_time_ms;
+	int64_t uptime;
+
+	if (!lc3_initialized) {
+		init_lc3();
+		lc3_initialized = true;
+	}
+
+	if (lc3_encoder == NULL) {
+		printk("LC3 encoder not setup, cannot encode data.\n");
+		return;
+	}
+
+	k_work_schedule(k_work_delayable_from_work(work),
+			K_USEC(default_preset->preset.qos.interval));
+
+	if (start_time == 0) {
+		/* Read start time and produce the number of frames needed to catch up with any
+		 * inaccuracies in the timer. by calculating the number of frames we should
+		 * have sent and compare to how many were actually sent.
+		 */
+		start_time = k_uptime_get();
+	}
+
+	uptime = k_uptime_get();
+	run_time_ms = uptime - start_time;
+
+	/* PDU count calculations done in 100us units to allow 7.5ms framelength in fixed-point */
+	run_time_100us = run_time_ms * 10;
+	sdu_goal_cnt = run_time_100us / (frame_duration_100us * frames_per_sdu);
+
+	/* Add primer value to ensure the controller do not run low on data due to jitter */
+	sdu_goal_cnt += prime_count;
+
+	if ((sdu_cnt % 100) == 0) {
+		printk("LC3 encode %d frames in %d SDUs\n",
+		       (sdu_goal_cnt - sdu_cnt) * frames_per_sdu,
+		       (sdu_goal_cnt - sdu_cnt));
+	}
+
+	seq_num = get_next_seq_num(default_preset->preset.qos.interval);
+
+	while (sdu_cnt < sdu_goal_cnt) {
+		const uint16_t tx_sdu_len = frames_per_sdu * octets_per_frame;
+		struct net_buf *buf;
+		uint8_t *net_buffer;
+		off_t offset = 0;
+		int err;
+
+		buf = net_buf_alloc(&sine_tx_pool, K_FOREVER);
+		net_buf_reserve(buf, BT_ISO_CHAN_SEND_RESERVE);
+
+		net_buffer = net_buf_tail(buf);
+		buf->len += tx_sdu_len;
+
+		for (int i = 0; i < frames_per_sdu; i++) {
+			int lc3_ret;
+
+			lc3_ret = lc3_encode(lc3_encoder, LC3_PCM_FORMAT_S16,
+					     audio_buf, 1, octets_per_frame,
+					     net_buffer + offset);
+			offset += octets_per_frame;
+
+			if (lc3_ret == -1) {
+				printk("LC3 encoder failed - wrong parameters?: %d",
+					lc3_ret);
+				net_buf_unref(buf);
+				return;
+			}
+		}
+
+		err = bt_audio_stream_send(default_stream, buf, seq_num,
+					   BT_ISO_TIMESTAMP_NONE);
+		if (err < 0) {
+			printk("Failed to send LC3 audio data (%d)\n",
+				err);
+			net_buf_unref(buf);
+			return;
+		}
+
+		if ((sdu_cnt % 100) == 0) {
+			printk("TX LC3: %zu\n", tx_sdu_len);
+		}
+		sdu_cnt++;
+		seq_num++;
+	}
+}
+
+static K_WORK_DELAYABLE_DEFINE(audio_send_work, lc3_audio_timer_timeout);
+#endif /* CONFIG_LIBLC3 */
 
 static void print_codec(const struct bt_codec *codec)
 {
@@ -470,17 +684,12 @@ static const struct bt_audio_unicast_server_cb unicast_server_cb = {
 	.release = lc3_release,
 };
 
-static struct bt_audio_capability caps[] = {
-#if defined(CONFIG_BT_AUDIO_UNICAST_SERVER)
-	{
-		.dir = BT_AUDIO_DIR_SOURCE,
-		.codec = &lc3_codec,
-	},
-#endif /* CONFIG_BT_AUDIO_UNICAST_SERVER */
-	{
-		.dir = BT_AUDIO_DIR_SINK,
-		.codec = &lc3_codec,
-	},
+static struct bt_audio_capability caps_sink = {
+	.codec = &lc3_codec,
+};
+
+static struct bt_audio_capability caps_source = {
+	.codec = &lc3_codec,
 };
 
 #if defined(CONFIG_BT_AUDIO_UNICAST_CLIENT)
@@ -615,6 +824,11 @@ static int cmd_discover(const struct shell *sh, size_t argc, char *argv[])
 
 	if (!default_conn) {
 		shell_error(sh, "Not connected");
+		return -ENOEXEC;
+	}
+
+	if (!initialized) {
+		shell_error(sh, "Not initialized");
 		return -ENOEXEC;
 	}
 
@@ -1014,12 +1228,16 @@ static uint32_t accepted_broadcast_id;
 static struct bt_audio_base received_base;
 static bool sink_syncable;
 
-static bool scan_recv(const struct bt_le_scan_recv_info *info,
-		      struct net_buf_simple *ad,
-		      uint32_t broadcast_id)
+static bool broadcast_scan_recv(const struct bt_le_scan_recv_info *info,
+				struct net_buf_simple *ad,
+				uint32_t broadcast_id)
 {
-	shell_print(ctx_shell, "Found broadcaster with ID 0x%06X",
-		    broadcast_id);
+	char le_addr[BT_ADDR_LE_STR_LEN];
+
+	bt_addr_le_to_str(info->addr, le_addr, sizeof(le_addr));
+
+	shell_print(ctx_shell, "Found broadcaster with ID 0x%06X and addr %s",
+		    broadcast_id, le_addr);
 
 	if (broadcast_id == accepted_broadcast_id) {
 		shell_print(ctx_shell, "PA syncing to broadcaster");
@@ -1133,13 +1351,14 @@ static void pa_sync_lost(struct bt_audio_broadcast_sink *sink)
 	if (default_sink == sink) {
 		default_sink = NULL;
 		sink_syncable = false;
+		(void)memset(&received_base, 0, sizeof(received_base));
 	}
 }
 #endif /* CONFIG_BT_AUDIO_BROADCAST_SINK */
 
 #if defined(CONFIG_BT_AUDIO_BROADCAST_SINK)
 static struct bt_audio_broadcast_sink_cb sink_cbs = {
-	.scan_recv = scan_recv,
+	.scan_recv = broadcast_scan_recv,
 	.pa_synced = pa_synced,
 	.base_recv = base_recv,
 	.syncable = syncable,
@@ -1155,11 +1374,60 @@ static void audio_recv(struct bt_audio_stream *stream,
 {
 	shell_print(ctx_shell, "Incoming audio on stream %p len %u\n", stream, buf->len);
 }
+#endif /* CONFIG_BT_AUDIO_UNICAST || CONFIG_BT_AUDIO_BROADCAST_SINK */
+
+static void stream_started_cb(struct bt_audio_stream *stream)
+{
+	printk("Stream %p started\n", stream);
+}
+
+static void stream_stopped_cb(struct bt_audio_stream *stream)
+{
+	printk("Stream %p stopped\n", stream);
+
+
+#if defined(CONFIG_LIBLC3)
+	if (stream == default_stream) {
+		k_work_cancel_delayable(&audio_send_work);
+	}
+#endif /* CONFIG_LIBLC3 */
+}
+
+#if defined(CONFIG_BT_AUDIO_UNICAST)
+static void stream_released_cb(struct bt_audio_stream *stream)
+{
+	shell_print(ctx_shell, "Stream %p released\n", stream);
+
+#if defined(CONFIG_BT_AUDIO_UNICAST_CLIENT)
+	/* The current shell application only supports a single stream in
+	 * the unicast group, so when that gets disconnected, we delete the
+	 * unicast group so that it can be recreated when settings the QoS
+	 */
+	if (default_unicast_group != NULL) {
+		int err = bt_audio_unicast_group_delete(default_unicast_group);
+
+		if (err != 0) {
+			shell_error(ctx_shell,
+				    "Failed to delete unicast group: %d",
+				    err);
+		} else {
+			default_unicast_group = NULL;
+		}
+	}
+#endif /* CONFIG_BT_AUDIO_UNICAST_CLIENT */
+}
+#endif /* CONFIG_BT_AUDIO_UNICAST */
 
 static struct bt_audio_stream_ops stream_ops = {
-	.recv = audio_recv
-};
+#if defined(CONFIG_BT_AUDIO_UNICAST) || defined(CONFIG_BT_AUDIO_BROADCAST_SINK)
+	.recv = audio_recv,
 #endif /* CONFIG_BT_AUDIO_UNICAST || CONFIG_BT_AUDIO_BROADCAST_SINK */
+#if defined(CONFIG_BT_AUDIO_UNICAST)
+	.released = stream_released_cb,
+#endif /* CONFIG_BT_AUDIO_UNICAST */
+	.started = stream_started_cb,
+	.stopped = stream_stopped_cb,
+};
 
 #if defined(CONFIG_BT_AUDIO_BROADCAST_SOURCE)
 static int cmd_select_broadcast_source(const struct shell *sh, size_t argc,
@@ -1231,14 +1499,21 @@ static int cmd_create_broadcast(const struct shell *sh, size_t argc,
 static int cmd_start_broadcast(const struct shell *sh, size_t argc,
 			       char *argv[])
 {
+	struct bt_le_ext_adv *adv = adv_sets[selected_adv];
 	int err;
+
+	if (adv == NULL) {
+		shell_info(sh, "Extended advertising set is NULL");
+		return -ENOEXEC;
+	}
 
 	if (default_source == NULL) {
 		shell_info(sh, "Broadcast source not created");
 		return -ENOEXEC;
 	}
 
-	err = bt_audio_broadcast_source_start(default_source);
+	err = bt_audio_broadcast_source_start(default_source,
+					      adv_sets[selected_adv]);
 	if (err != 0) {
 		shell_error(sh, "Unable to start broadcast source: %d", err);
 		return err;
@@ -1297,6 +1572,11 @@ static int cmd_broadcast_scan(const struct shell *sh, size_t argc, char *argv[])
 			.window     = BT_GAP_SCAN_FAST_WINDOW,
 			.timeout    = 0 };
 
+	if (!initialized) {
+		shell_error(sh, "Not initialized");
+		return -ENOEXEC;
+	}
+
 	if (strcmp(argv[1], "on") == 0) {
 		err =  bt_audio_broadcast_sink_scan_start(&param);
 		if (err != 0) {
@@ -1331,7 +1611,7 @@ static int cmd_sync_broadcast(const struct shell *sh, size_t argc, char *argv[])
 
 	bis_bitfield = 0;
 	for (int i = 1; i < argc; i++) {
-		unsigned long val = strtoul(argv[1], NULL, 16);
+		unsigned long val = strtoul(argv[i], NULL, 16);
 
 		if (val < 0x01 || val > 0x1F) {
 			shell_error(sh, "Invalid index: %ld", val);
@@ -1462,10 +1742,9 @@ static int cmd_init(const struct shell *sh, size_t argc, char *argv[])
 
 	ctx_shell = sh;
 
-	err = bt_enable(NULL);
-	if (err && err != -EALREADY) {
-		shell_error(sh, "Bluetooth init failed (err %d)", err);
-		return err;
+	if (initialized) {
+		shell_print(sh, "Already initialized");
+		return -ENOEXEC;
 	}
 
 	if (IS_ENABLED(CONFIG_BT_AUDIO_UNICAST_SERVER)) {
@@ -1474,9 +1753,11 @@ static int cmd_init(const struct shell *sh, size_t argc, char *argv[])
 
 	if (IS_ENABLED(CONFIG_BT_AUDIO_UNICAST_SERVER) ||
 	    IS_ENABLED(CONFIG_BT_AUDIO_BROADCAST_SINK)) {
-		for (i = 0; i < ARRAY_SIZE(caps); i++) {
-			bt_audio_capability_register(&caps[i]);
-		}
+		bt_audio_capability_register(BT_AUDIO_DIR_SINK, &caps_sink);
+	}
+
+	if (IS_ENABLED(CONFIG_BT_AUDIO_UNICAST_SERVER)) {
+		bt_audio_capability_register(BT_AUDIO_DIR_SOURCE, &caps_source);
 	}
 
 	if (IS_ENABLED(CONFIG_BT_AUDIO_CAPABILITY)) {
@@ -1515,39 +1796,32 @@ static int cmd_init(const struct shell *sh, size_t argc, char *argv[])
 					    &stream_ops);
 	}
 #endif /* CONFIG_BT_AUDIO_BROADCAST_SOURCE */
+
+#if defined(CONFIG_BT_AUDIO_BROADCAST_SOURCE)
+	for (i = 0; i < ARRAY_SIZE(broadcast_source_streams); i++) {
+		bt_audio_stream_cb_register(&broadcast_source_streams[i],
+					    &stream_ops);
+	}
+#endif /* CONFIG_BT_AUDIO_BROADCAST_SOURCE */
+
+	initialized = true;
+
 	return 0;
 }
 
 #define DATA_MTU CONFIG_BT_ISO_TX_MTU
 NET_BUF_POOL_FIXED_DEFINE(tx_pool, 1, DATA_MTU, 8, NULL);
 
-static uint32_t get_next_seq_num(uint32_t interval_us)
-{
-	static int64_t last_ticks;
-	int64_t uptime_ticks, delta_ticks;
-	uint64_t delta_us;
-	uint64_t seq_num_incr;
-	uint64_t next_seq_num;
-
-	/* Note: This does not handle wrapping of ticks when they go above
-	 * 2^(62-1)
-	 */
-	uptime_ticks = k_uptime_ticks();
-	delta_ticks = uptime_ticks - last_ticks;
-	last_ticks = uptime_ticks;
-
-	delta_us = k_ticks_to_us_near64((uint64_t)delta_ticks);
-	seq_num_incr = delta_us / interval_us;
-	next_seq_num = (seq_num_incr + seq_num);
-
-	return (uint32_t)next_seq_num;
-}
-
 static int cmd_send(const struct shell *sh, size_t argc, char *argv[])
 {
 	static uint8_t data[DATA_MTU - BT_ISO_CHAN_SEND_RESERVE];
 	int ret, len;
 	struct net_buf *buf;
+
+	if (default_stream->iso->qos->tx == NULL) {
+		shell_error(sh, "Stream %p cannot send", default_stream);
+		return -ENOEXEC;
+	}
 
 	if (argc > 1) {
 		len = hex2bin(argv[1], strlen(argv[1]), data, sizeof(data));
@@ -1581,6 +1855,22 @@ static int cmd_send(const struct shell *sh, size_t argc, char *argv[])
 	return 0;
 }
 
+#if defined(CONFIG_LIBLC3)
+static int cmd_start_sine(const struct shell *sh, size_t argc, char *argv[])
+{
+	k_work_schedule(&audio_send_work, K_MSEC(0));
+
+	return 0;
+}
+
+static int cmd_stop_sine(const struct shell *sh, size_t argc, char *argv[])
+{
+	k_work_cancel_delayable(&audio_send_work);
+
+	return 0;
+}
+#endif /* CONFIG_LIBLC3 */
+
 SHELL_STATIC_SUBCMD_SET_CREATE(audio_cmds,
 	SHELL_CMD_ARG(init, NULL, NULL, cmd_init, 1, 0),
 #if defined(CONFIG_BT_AUDIO_BROADCAST_SOURCE)
@@ -1597,8 +1887,10 @@ SHELL_STATIC_SUBCMD_SET_CREATE(audio_cmds,
 		      cmd_broadcast_scan, 2, 0),
 	SHELL_CMD_ARG(accept_broadcast, NULL, "0x<broadcast_id>",
 		      cmd_accept_broadcast, 2, 0),
-	SHELL_CMD_ARG(sync_broadcast, NULL, "0x<bis_bitfield>",
-		      cmd_sync_broadcast, 2, 0),
+	SHELL_CMD_ARG(sync_broadcast, NULL,
+		      "0x<bis_index> [[[0x<bis_index>] 0x<bis_index>] ...]",
+		      cmd_sync_broadcast, 2,
+		      ARRAY_SIZE(broadcast_sink_streams) - 1),
 	SHELL_CMD_ARG(stop_broadcast_sink, NULL, "Stops broadcast sink",
 		      cmd_stop_broadcast_sink, 1, 0),
 	SHELL_CMD_ARG(term_broadcast_sink, NULL, "",
@@ -1629,6 +1921,12 @@ SHELL_STATIC_SUBCMD_SET_CREATE(audio_cmds,
 			   "<stream>", cmd_select_unicast, 2, 0),
 	SHELL_CMD_ARG(send, NULL, "Send to Audio Stream [data]",
 		      cmd_send, 1, 1),
+#if defined(CONFIG_LIBLC3)
+	SHELL_CMD_ARG(start_sine, NULL, "Start sending a LC3 encoded sine wave",
+			   cmd_start_sine, 1, 0),
+	SHELL_CMD_ARG(stop_sine, NULL, "Stop sending a LC3 encoded sine wave",
+			   cmd_stop_sine, 1, 0),
+#endif /* CONFIG_LIBLC3 */
 	SHELL_COND_CMD_ARG(CONFIG_BT_AUDIO_CAPABILITY, set_location, NULL,
 			   "<direction: sink, source> <location bitmask>",
 			   cmd_set_loc, 3, 0),
