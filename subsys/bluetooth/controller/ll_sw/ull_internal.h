@@ -165,3 +165,13 @@ void ull_rxfifo_alloc(uint8_t s, uint8_t n, uint8_t f, uint8_t *l, uint8_t *m,
 		      void *mem_free, void *link_free, uint8_t max);
 void *ull_rxfifo_release(uint8_t s, uint8_t n, uint8_t f, uint8_t *l, uint8_t *m,
 			 memq_link_t *link, struct node_rx_hdr *rx);
+
+/* Used by LISTIFY in the DECLARE_MAYFLY_ARRAY macro below */
+#define _INIT_MAYFLY_ARRAY(_i, _l, _fp) \
+	{ ._link = &_l[_i], .fp = _fp },
+
+/* Declare static initialized array of mayflies with associated link element */
+#define DECLARE_MAYFLY_ARRAY(_name, _fp, _cnt) \
+	static memq_link_t _links[_cnt]; \
+	static struct mayfly _name[_cnt] = \
+		{ LISTIFY(_cnt, _INIT_MAYFLY_ARRAY, (), _links, _fp) }

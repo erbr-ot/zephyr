@@ -1476,6 +1476,13 @@ uint8_t ll_adv_enable(uint8_t enable)
 			ticks_slot_overhead_aux =
 				ull_adv_aux_evt_init(aux, &ticks_anchor_aux);
 
+			lll_aux->ticks_pri_pdu_offset = ticks_anchor_aux - ticks_anchor;
+			lll_aux->us_pri_pdu_offset = 0;
+
+			/* Update aux ptr for initial primary PDU */
+			ull_adv_aux_ptr_update(adv, pdu_adv, lll_aux->ticks_pri_pdu_offset, 0,
+					       lll_aux->data_chan_counter);
+
 #if defined(CONFIG_BT_CTLR_ADV_PERIODIC)
 			/* Start periodic advertising if enabled and not already
 			 * started.
@@ -1562,8 +1569,16 @@ uint8_t ll_adv_enable(uint8_t enable)
 		ret_cb = TICKER_STATUS_BUSY;
 
 #if defined(CONFIG_BT_TICKER_EXT)
-		ll_adv_ticker_ext[handle].ticks_slot_window =
-			ULL_ADV_RANDOM_DELAY + ticks_slot;
+#if defined(CONFIG_BT_CTLR_ADV_EXT)
+		if (lll->aux) {
+			/* disable re-scheduling when we have an aux ptr */
+			ll_adv_ticker_ext[handle].ticks_slot_window = 0;
+		} else
+#endif /* CONFIG_BT_CTLR_ADV_EXT */
+		{
+			ll_adv_ticker_ext[handle].ticks_slot_window =
+				ULL_ADV_RANDOM_DELAY + ticks_slot;
+		}
 
 		ret = ticker_start_ext(
 #else
@@ -1650,6 +1665,13 @@ failure_cleanup:
 
 	return BT_HCI_ERR_CMD_DISALLOWED;
 }
+
+#if defined(CONFIG_BT_CTLR_ADV_EXT) && defined(CONFIG_BT_TICKER_EXT)
+void ull_adv_set_ticks_slot_window(struct ll_adv_set *adv, uint32_t ticks_slot_window)
+{
+	ll_adv_ticker_ext[ull_adv_handle_get(adv)].ticks_slot_window = ticks_slot_window;
+}
+#endif /* CONFIG_BT_CTLR_ADV_EXT && CONFIG_BT_TICKER_EXT */
 
 int ull_adv_init(void)
 {
@@ -2002,6 +2024,14 @@ void ull_adv_done(struct node_rx_event_done *done)
 	adv = CONTAINER_OF(done->param, struct ll_adv_set, ull);
 	lll = &adv->lll;
 
+#if defined(CONFIG_BT_CTLR_ADV_EXT)
+	if (done->extra.type == EVENT_DONE_EXTRA_TYPE_ADV && adv->lll.aux) {
+		/* Primary event done - calculate next offset and wait for aux done */
+		ull_adv_aux_offset_get(adv);
+		return;
+	}
+#endif /* CONFIG_BT_CTLR_ADV_EXT */
+
 #if defined(CONFIG_BT_CTLR_JIT_SCHEDULING)
 	if (done->extra.result != DONE_COMPLETED) {
 		/* Event aborted or too late - try to re-schedule */
@@ -2207,6 +2237,13 @@ uint8_t ull_adv_time_update(struct ll_adv_set *adv, struct pdu_adv *pdu,
 	if (ret != TICKER_STATUS_SUCCESS) {
 		return BT_HCI_ERR_CMD_DISALLOWED;
 	}
+
+#if defined(CONFIG_BT_CTLR_ADV_EXT)
+	if (adv->lll.aux) {
+		/* Re-calculate aux ptr */
+		ull_adv_aux_offset_get(adv);
+	}
+#endif /* CONFIG_BT_CTLR_ADV_EXT */
 #endif /* !CONFIG_BT_CTLR_JIT_SCHEDULING */
 
 	adv->ull.ticks_slot = time_ticks;
@@ -2361,17 +2398,17 @@ static void ticker_cb(uint32_t ticks_at_expire, uint32_t ticks_drift,
 				     TICKER_USER_ID_LLL, 0, &mfy);
 		LL_ASSERT(!ret);
 
-#if defined(CONFIG_BT_CTLR_ADV_EXT) && (CONFIG_BT_CTLR_ADV_AUX_SET > 0)
-		if (adv->lll.aux) {
-			ull_adv_aux_offset_get(adv);
-		}
-#endif /* CONFIG_BT_CTLR_ADV_EXT && (CONFIG_BT_CTLR_ADV_AUX_SET > 0) */
-
 #if defined(CONFIG_BT_CTLR_JIT_SCHEDULING)
 		adv->ticks_at_expire = ticks_at_expire;
 		adv->delay_at_expire = adv->delay;
 #endif /* CONFIG_BT_CTLR_JIT_SCHEDULING */
 	}
+#if defined(CONFIG_BT_CTLR_ADV_EXT) && (CONFIG_BT_CTLR_ADV_AUX_SET > 0)
+	else if (adv->lll.aux) {
+		/* Re-calculate aux ptr */
+		ull_adv_aux_offset_get(adv);
+	}
+#endif /* CONFIG_BT_CTLR_ADV_EXT && (CONFIG_BT_CTLR_ADV_AUX_SET > 0) */
 
 	/* Apply adv random delay */
 #if defined(CONFIG_BT_PERIPHERAL)

@@ -639,6 +639,11 @@ uint8_t ll_adv_aux_ad_data_set(uint8_t handle, uint8_t op, uint8_t frag_pref,
 	    op == BT_HCI_LE_EXT_ADV_OP_COMPLETE_DATA ||
 	    op == BT_HCI_LE_EXT_ADV_OP_UNCHANGED_DATA) {
 		lll_adv_data_enqueue(&adv->lll, pri_idx);
+
+		if (adv->is_enabled) {
+			/* Re-calculate aux ptr */
+			ull_adv_aux_offset_get(adv);
+		}
 	}
 
 	/* Check if Extended Advertising Data is complete */
@@ -1371,7 +1376,7 @@ uint8_t ull_adv_aux_chm_update(void)
 {
 	/* For each created extended advertising set */
 	for (uint8_t handle = 0; handle < BT_CTLR_ADV_SET; ++handle) {
-		struct ll_adv_aux_set *aux;
+		struct lll_adv_aux *aux;
 		struct ll_adv_set *adv;
 		uint8_t chm_last;
 
@@ -1380,7 +1385,7 @@ uint8_t ull_adv_aux_chm_update(void)
 			continue;
 		}
 
-		aux = HDR_LLL2ULL(adv->lll.aux);
+		aux = adv->lll.aux;
 		if (aux->chm_last != aux->chm_first) {
 			/* TODO: Handle previous Channel Map Update being in
 			 * progress
@@ -1493,6 +1498,11 @@ uint8_t ull_adv_aux_hdr_set_clear(struct ll_adv_set *adv,
 		}
 
 		lll_aux = &aux->lll;
+
+#if defined(CONFIG_BT_TICKER_EXT)
+		/* Disable re-scheduling when we have an aux ptr */
+		ull_adv_set_ticks_slot_window(adv, 0);
+#endif /* CONFIG_BT_TICKER_EXT */
 
 		is_aux_new = 1U;
 	} else {
@@ -2555,11 +2565,11 @@ struct ll_adv_aux_set *ull_adv_aux_acquire(struct lll_adv *lll)
 	 */
 	lll_csrand_get(&lll_aux->data_chan_counter,
 		       sizeof(lll_aux->data_chan_counter));
-	lll_csrand_get(&aux->data_chan_id, sizeof(aux->data_chan_id));
-	chm_last = aux->chm_first;
-	aux->chm_last = chm_last;
-	aux->chm[chm_last].data_chan_count =
-		ull_chan_map_get(aux->chm[chm_last].data_chan_map);
+	lll_csrand_get(&lll_aux->data_chan_id, sizeof(lll_aux->data_chan_id));
+	chm_last = lll_aux->chm_first;
+	lll_aux->chm_last = chm_last;
+	lll_aux->chm[chm_last].data_chan_count =
+		ull_chan_map_get(lll_aux->chm[chm_last].data_chan_map);
 
 
 	/* NOTE: ull_hdr_init(&aux->ull); is done on start */
@@ -2637,19 +2647,13 @@ uint32_t ull_adv_aux_time_get(const struct ll_adv_aux_set *aux, uint8_t pdu_len,
 
 void ull_adv_aux_offset_get(struct ll_adv_set *adv)
 {
-	static memq_link_t link;
-	static struct mayfly mfy = {0, 0, &link, NULL, mfy_aux_offset_get};
-	uint32_t ret;
+	DECLARE_MAYFLY_ARRAY(mfys, mfy_aux_offset_get, CONFIG_BT_EXT_ADV_MAX_ADV_SET);
+	uint16_t handle = ull_adv_handle_get(adv);
 
-	/* NOTE: Single mayfly instance is sufficient as primary channel PDUs
-	 *       use time reservation, and this mayfly shall complete within
-	 *       the radio event. Multiple advertising sets do not need
-	 *       independent mayfly allocations.
-	 */
-	mfy.param = adv;
-	ret = mayfly_enqueue(TICKER_USER_ID_ULL_HIGH, TICKER_USER_ID_ULL_LOW, 1,
-			     &mfy);
-	LL_ASSERT(!ret);
+	mfys[handle].param = adv;
+	/* Ignoring multiple enqueues for the same advertising set */
+	(void)mayfly_enqueue(TICKER_USER_ID_ULL_HIGH, TICKER_USER_ID_ULL_LOW, 1,
+			     &mfys[handle]);
 }
 
 struct pdu_adv_aux_ptr *ull_adv_aux_lll_offset_fill(struct pdu_adv *pdu,
@@ -2929,6 +2933,7 @@ static uint8_t aux_time_update(struct ll_adv_aux_set *aux, struct pdu_adv *pdu,
 
 #if !defined(CONFIG_BT_CTLR_JIT_SCHEDULING)
 	uint32_t volatile ret_cb;
+	struct ll_adv_set *adv;
 	uint32_t ticks_minus;
 	uint32_t ticks_plus;
 	uint32_t ret;
@@ -2954,6 +2959,10 @@ static uint8_t aux_time_update(struct ll_adv_aux_set *aux, struct pdu_adv *pdu,
 	if (ret != TICKER_STATUS_SUCCESS) {
 		return BT_HCI_ERR_CMD_DISALLOWED;
 	}
+
+	/* Re-calculate aux ptr for primary packet */
+	adv = HDR_LLL2ULL(aux->lll.adv);
+	ull_adv_aux_offset_get(adv);
 #endif /* !CONFIG_BT_CTLR_JIT_SCHEDULING */
 
 	aux->ull.ticks_slot = time_ticks;
@@ -2963,18 +2972,20 @@ static uint8_t aux_time_update(struct ll_adv_aux_set *aux, struct pdu_adv *pdu,
 
 static void mfy_aux_offset_get(void *param)
 {
-	struct pdu_adv_aux_ptr *aux_ptr;
+	uint32_t adv_ticks_to_expire = 0;
+	uint32_t aux_ticks_to_expire = 0;
 	struct lll_adv_aux *lll_aux;
 	struct ll_adv_aux_set *aux;
-	uint32_t ticks_to_expire;
-	uint8_t data_chan_count;
-	uint8_t *data_chan_map;
+	uint32_t adv_remainder = 0;
+	uint32_t aux_remainder = 0;
 	uint32_t ticks_current;
 	struct ll_adv_set *adv;
 	uint16_t chan_counter;
+	uint8_t adv_ticker_id;
+	uint8_t aux_ticker_id;
+	uint8_t tickers_found;
 	struct pdu_adv *pdu;
-	uint32_t remainder;
-	uint8_t ticker_id;
+	uint32_t offset_us;
 	uint16_t pdu_us;
 	uint8_t retry;
 	uint8_t id;
@@ -2982,15 +2993,18 @@ static void mfy_aux_offset_get(void *param)
 	adv = param;
 	lll_aux = adv->lll.aux;
 	aux = HDR_LLL2ULL(lll_aux);
-	ticker_id = TICKER_ID_ADV_AUX_BASE + ull_adv_aux_handle_get(aux);
+	adv_ticker_id = TICKER_ID_ADV_BASE + ull_adv_handle_get(adv);
+	aux_ticker_id = TICKER_ID_ADV_AUX_BASE + ull_adv_aux_handle_get(aux);
 
+	tickers_found = 0U;
 	id = TICKER_NULL;
-	ticks_to_expire = 0U;
 	ticks_current = 0U;
 	retry = 4U;
 	do {
 		uint32_t volatile ret_cb;
 		uint32_t ticks_previous;
+		uint32_t ticks_to_expire;
+		uint32_t remainder;
 		uint32_t ret;
 		bool success;
 
@@ -3013,47 +3027,65 @@ static void mfy_aux_offset_get(void *param)
 		success = (ret_cb == TICKER_STATUS_SUCCESS);
 		LL_ASSERT(success);
 
-		LL_ASSERT((ticks_current == ticks_previous) || retry--);
-
-		if (id == TICKER_NULL && (adv == ull_disable_mark_get() ||
-#if defined(CONFIG_BT_PERIPHERAL)
-		    (adv->lll.conn &&
-		     (adv->lll.conn->periph.initiated || adv->lll.conn->periph.cancelled)))
-#else
-		    0)
-#endif /* !CONFIG_BT_PERIPHERAL */
-			) {
-			/* Ticker stopped by connection establishment or adv disabled */
+		if (id == TICKER_NULL && tickers_found == 0) {
+			/* Tickers stopped by connection establishment or adv disabled */
 			return;
 		}
 
-		LL_ASSERT(id != TICKER_NULL);
-	} while (id != ticker_id);
+		LL_ASSERT(id != TICKER_NULL || ull_disable_mark_get() == adv);
+
+		if (tickers_found > 0 && ticks_current != ticks_previous) {
+			/* ticker changed since we read the first value, try again */
+			LL_ASSERT(retry--);
+			tickers_found = 0;
+			id = TICKER_NULL;
+		} else if (id == adv_ticker_id) {
+			adv_ticks_to_expire = ticks_to_expire;
+			adv_remainder = remainder;
+			tickers_found++;
+		} else if (id == aux_ticker_id) {
+			aux_ticks_to_expire = ticks_to_expire;
+			aux_remainder = remainder;
+			tickers_found++;
+		}
+
+	} while (tickers_found < 2);
 
 	/* Adjust ticks to expire based on remainder value */
-	hal_ticker_remove_jitter(&ticks_to_expire, &remainder);
+	hal_ticker_remove_jitter(&adv_ticks_to_expire, &adv_remainder);
+	hal_ticker_remove_jitter(&aux_ticks_to_expire, &aux_remainder);
 
 	pdu = lll_adv_data_latest_peek(&adv->lll);
 	chan_counter = lll_aux->data_chan_counter;
 
-	/* The offset has to be at least T_MAFS microseconds from the end of packet */
+	/* Calculate offset in microseconds */
+	/* Note: The offset has to be at least T_MAFS microseconds from the end of packet */
 	pdu_us = PDU_AC_US(pdu->len, adv->lll.phy_s, adv->lll.phy_flags);
-	if (HAL_TICKER_TICKS_TO_US(ticks_to_expire) + remainder < EVENT_MAFS_US + pdu_us) {
-		uint32_t offset_us;
+	if (HAL_TICKER_TICKS_TO_US(adv_ticks_to_expire) + adv_remainder + pdu_us + EVENT_MAFS_US >
+	    HAL_TICKER_TICKS_TO_US(aux_ticks_to_expire) + aux_remainder) {
 		uint32_t interval_us;
 
-		/* Offset too small, point to next aux packet instead */
+		/* Offset negative or too small, point to next aux packet instead */
 		interval_us = aux->interval * PERIODIC_INT_UNIT_US;
-		offset_us = HAL_TICKER_TICKS_TO_US(ticks_to_expire) + remainder + interval_us;
-		ticks_to_expire = HAL_TICKER_US_TO_TICKS(offset_us);
-		remainder = offset_us - HAL_TICKER_TICKS_TO_US(ticks_to_expire);
+		offset_us = HAL_TICKER_TICKS_TO_US(aux_ticks_to_expire) + aux_remainder +
+			    interval_us - (HAL_TICKER_TICKS_TO_US(adv_ticks_to_expire) +
+					   adv_remainder);
 		chan_counter++;
+	} else {
+		offset_us = HAL_TICKER_TICKS_TO_US(aux_ticks_to_expire) + aux_remainder -
+			    (HAL_TICKER_TICKS_TO_US(adv_ticks_to_expire) + adv_remainder);
 	}
 
 	/* Store the ticks offset for population in other advertising primary
 	 * channel PDUs.
 	 */
-	lll_aux->ticks_pri_pdu_offset = ticks_to_expire;
+	lll_aux->ticks_pri_pdu_offset = HAL_TICKER_US_TO_TICKS(offset_us);
+
+	/* Store the microsecond remainder offset for population in other
+	 * advertising primary channel PDUs.
+	 */
+	lll_aux->us_pri_pdu_offset = offset_us -
+				     HAL_TICKER_TICKS_TO_US(lll_aux->ticks_pri_pdu_offset);
 
 	/* NOTE: as first primary channel PDU does not use remainder, the packet
 	 * timer is started one tick in advance to start the radio with
@@ -3062,27 +3094,35 @@ static void mfy_aux_offset_get(void *param)
 	 */
 	lll_aux->ticks_pri_pdu_offset += 1U;
 
-	/* Store the microsecond remainder offset for population in other
-	 * advertising primary channel PDUs.
-	 */
-	lll_aux->us_pri_pdu_offset = remainder;
-
-	/* Fill the aux offset in the first Primary channel PDU */
+	/* Update the aux offset and channel index in the first Primary channel PDU */
 	/* FIXME: we are in ULL_LOW context, fill offset in LLL context? */
-	aux_ptr = ull_adv_aux_lll_offset_fill(pdu, ticks_to_expire, remainder,
-					      0U);
+	ull_adv_aux_ptr_update(adv, pdu, lll_aux->ticks_pri_pdu_offset - 1,
+			       lll_aux->us_pri_pdu_offset, chan_counter);
+}
+
+void ull_adv_aux_ptr_update(struct ll_adv_set *adv, struct pdu_adv *pdu, uint32_t ticks_offset,
+			    uint32_t remainder_us, uint16_t chan_counter)
+{
+	struct pdu_adv_aux_ptr *aux_ptr;
+	struct lll_adv_aux *lll_aux;
+	uint8_t data_chan_count;
+	uint8_t *data_chan_map;
+
+	lll_aux = adv->lll.aux;
+
+	aux_ptr = ull_adv_aux_lll_offset_fill(pdu, ticks_offset, remainder_us, 0U);
 
 	/* Process channel map update, if any */
-	if (aux->chm_first != aux->chm_last) {
+	if (lll_aux->chm_first != lll_aux->chm_last) {
 		/* Use channelMapNew */
-		aux->chm_first = aux->chm_last;
+		lll_aux->chm_first = lll_aux->chm_last;
 	}
 
 	/* Calculate the radio channel to use */
-	data_chan_map = aux->chm[aux->chm_first].data_chan_map;
-	data_chan_count = aux->chm[aux->chm_first].data_chan_count;
+	data_chan_map = lll_aux->chm[lll_aux->chm_first].data_chan_map;
+	data_chan_count = lll_aux->chm[lll_aux->chm_first].data_chan_count;
 	aux_ptr->chan_idx = lll_chan_sel_2(chan_counter,
-					   aux->data_chan_id,
+					   lll_aux->data_chan_id,
 					   data_chan_map, data_chan_count);
 }
 

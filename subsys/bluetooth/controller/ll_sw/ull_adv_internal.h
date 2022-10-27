@@ -56,6 +56,11 @@ const uint8_t *ull_adv_pdu_update_addrs(struct ll_adv_set *adv,
 uint8_t ull_adv_time_update(struct ll_adv_set *adv, struct pdu_adv *pdu,
 			    struct pdu_adv *pdu_scan);
 
+#if defined(CONFIG_BT_CTLR_ADV_EXT) && defined(CONFIG_BT_TICKER_EXT)
+/* Set ticks slot window for the given advertising set */
+void ull_adv_set_ticks_slot_window(struct ll_adv_set *adv, uint32_t ticks_slot_window);
+#endif /* CONFIG_BT_CTLR_ADV_EXT && CONFIG_BT_TICKER_EXT */
+
 #if defined(CONFIG_BT_CTLR_ADV_EXT) || defined(CONFIG_BT_CTLR_JIT_SCHEDULING)
 /* helper function to handle adv done events */
 void ull_adv_done(struct node_rx_event_done *done);
@@ -109,6 +114,10 @@ uint32_t ull_adv_aux_time_get(const struct ll_adv_aux_set *aux, uint8_t pdu_len,
 
 /* helper function to schedule a mayfly to get aux offset */
 void ull_adv_aux_offset_get(struct ll_adv_set *adv);
+
+/* helper function for updating the aux ptr with offset and channel index */
+void ull_adv_aux_ptr_update(struct ll_adv_set *adv, struct pdu_adv *pdu, uint32_t ticks_offset,
+			    uint32_t remainder_us, uint16_t chan_counter);
 
 /* Below are BT Spec v5.2, Vol 6, Part B Section 2.3.4 Table 2.12 defined */
 #define ULL_ADV_PDU_HDR_FIELD_NONE           0

@@ -45,16 +45,6 @@
 #include "common/log.h"
 #include "hal/debug.h"
 
-/* Used by LISTIFY */
-#define _INIT_MAYFLY_ARRAY(_i, _l, _fp) \
-	{ ._link = &_l[_i], .fp = _fp },
-
-/* Declare static initialized array of mayflies with associated link element */
-#define DECLARE_MAYFLY_ARRAY(_name, _fp, _cnt) \
-	static memq_link_t _links[_cnt]; \
-	static struct mayfly _name[_cnt] = \
-		{ LISTIFY(_cnt, _INIT_MAYFLY_ARRAY, (), _links, _fp) }
-
 
 static int init_reset(void);
 static void ticker_update_cig_op_cb(uint32_t status, void *param);

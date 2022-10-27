@@ -127,6 +127,14 @@ struct lll_adv_aux {
 	 */
 	uint16_t data_chan_counter;
 
+	uint16_t data_chan_id;
+	struct {
+		uint8_t data_chan_map[PDU_CHANNEL_MAP_SIZE];
+		uint8_t data_chan_count:6;
+	} chm[DOUBLE_BUFFER_SIZE];
+	uint8_t  chm_first;
+	uint8_t  chm_last;
+
 	/* Store used by primary channel PDU event to fill the
 	 * auxiliary offset to this auxiliary PDU event.
 	 */

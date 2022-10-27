@@ -1321,7 +1321,7 @@ static inline void ticker_job_node_update(struct ticker_node *ticker,
 	 */
 	struct ticker_ext *ext_data = ticker->ext_data;
 
-	if (ext_data && ext_data->ticks_slot_window != 0U) {
+	if (ext_data) {
 		ext_data->ticks_drift =
 			user_op->params.update.ticks_drift_plus -
 			user_op->params.update.ticks_drift_minus;
