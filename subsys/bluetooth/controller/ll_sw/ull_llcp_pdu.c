@@ -946,14 +946,14 @@ void llcp_pdu_decode_clock_accuracy_req(struct proc_ctx *ctx, struct pdu_data *p
 {
 	struct pdu_data_llctrl_clock_accuracy_req *p = &pdu->llctrl.sca_req;
 
-	ctx->data.scau.sca = p->sca;
+	ctx->data.sca_update.sca = p->sca;
 }
 
 void llcp_pdu_decode_clock_accuracy_rsp(struct proc_ctx *ctx, struct pdu_data *pdu)
 {
 	struct pdu_data_llctrl_clock_accuracy_rsp *p = &pdu->llctrl.sca_rsp;
 
-	ctx->data.scau.sca = p->sca;
+	ctx->data.sca_update.sca = p->sca;
 }
 #endif /* CONFIG_BT_CTLR_SCA_UPDATE */
 

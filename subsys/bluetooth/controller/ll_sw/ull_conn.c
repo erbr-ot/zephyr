@@ -570,7 +570,7 @@ uint8_t ll_req_peer_sca(uint16_t handle)
 		return BT_HCI_ERR_UNKNOWN_CONN_ID;
 	}
 
-	return ull_cp_request_peer_sca(conn);
+	return ull_cp_req_peer_sca(conn);
 }
 #endif /* CONFIG_BT_CTLR_SCA_UPDATE */
 
