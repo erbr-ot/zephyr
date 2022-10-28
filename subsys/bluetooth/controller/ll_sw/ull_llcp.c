@@ -24,6 +24,7 @@
 #include "ll_settings.h"
 
 #include "lll.h"
+#include "lll_clock.h"
 #include "lll/lll_df_types.h"
 #include "lll_conn.h"
 #include "lll_conn_iso.h"
@@ -370,11 +371,11 @@ struct proc_ctx *llcp_create_local_procedure(enum llcp_proc proc)
 		llcp_lp_comm_init_proc(ctx);
 		break;
 #endif /* defined(CONFIG_BT_CTLR_CENTRAL_ISO) || defined(CONFIG_BT_CTLR_PERIPHERAL_ISO) */
-#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+#if defined(CONFIG_BT_CTLR_REQUEST_PEER_SCA)
 	case PROC_SCA_UPDATE:
 		llcp_lp_comm_init_proc(ctx);
 		break;
-#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
+#endif /* CONFIG_BT_CTLR_REQUEST_PEER_SCA */
 	default:
 		/* Unknown procedure */
 		LL_ASSERT(0);
@@ -456,11 +457,11 @@ struct proc_ctx *llcp_create_remote_procedure(enum llcp_proc proc)
 		llcp_rp_comm_init_proc(ctx);
 		break;
 #endif /* defined(CONFIG_BT_CTLR_CENTRAL_ISO) || defined(CONFIG_BT_CTLR_PERIPHERAL_ISO) */
-#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+#if defined(CONFIG_BT_CTLR_REQUEST_PEER_SCA)
 	case PROC_SCA_UPDATE:
 		llcp_rp_comm_init_proc(ctx);
 		break;
-#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
+#endif /* CONFIG_BT_CTLR_REQUEST_PEER_SCA */
 
 	default:
 		/* Unknown procedure */
@@ -920,10 +921,14 @@ uint8_t ull_cp_data_length_update(struct ll_conn *conn, uint16_t max_tx_octets,
 }
 #endif /* CONFIG_BT_CTLR_DATA_LENGTH */
 
-#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
-uint8_t ull_cp_sca_update(struct ll_conn *conn, uint8_t sca)
+#if defined(CONFIG_BT_CTLR_REQUEST_PEER_SCA)
+uint8_t ull_cp_request_peer_sca(struct ll_conn *conn)
 {
 	struct proc_ctx *ctx;
+
+	if (!feature_sca(conn)) {
+		return BT_HCI_ERR_UNSUPP_REMOTE_FEATURE;
+	}
 
 	ctx = llcp_create_local_procedure(PROC_SCA_UPDATE);
 
@@ -931,13 +936,11 @@ uint8_t ull_cp_sca_update(struct ll_conn *conn, uint8_t sca)
 		return BT_HCI_ERR_CMD_DISALLOWED;
 	}
 
-	ctx->data.scau.sca = sca;
-
 	llcp_lr_enqueue(conn, ctx);
 
 	return BT_HCI_ERR_SUCCESS;
 }
-#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
+#endif /* CONFIG_BT_CTLR_REQUEST_PEER_SCA */
 
 #if defined(CONFIG_BT_CTLR_LE_ENC)
 uint8_t ull_cp_ltk_req_reply(struct ll_conn *conn, const uint8_t ltk[16])
@@ -1563,7 +1566,7 @@ static bool pdu_validate_cte_resp(struct pdu_data *pdu)
 }
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_RSP */
 
-#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+#if defined(CONFIG_BT_CTLR_REQUEST_PEER_SCA)
 static bool pdu_validate_clock_accuracy_req(struct pdu_data *pdu)
 {
 	if (pdu->len != sizeof(pdu->llctrl.sca_req) + 1) {
@@ -1651,9 +1654,9 @@ static const struct pdu_validate pdu_validate[] = {
 #if defined(CONFIG_BT_CTLR_DF_CONN_CTE_RSP)
 	[PDU_DATA_LLCTRL_TYPE_CTE_RSP] = { pdu_validate_cte_resp },
 #endif /* PDU_DATA_LLCTRL_TYPE_CTE_RSP */
-#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+#if defined(CONFIG_BT_CTLR_REQUEST_PEER_SCA)
 	[PDU_DATA_LLCTRL_TYPE_CLOCK_ACCURACY_REQ] = { pdu_validate_clock_accuracy_req },
-#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
+#endif /* CONFIG_BT_CTLR_REQUEST_PEER_SCA */
 	[PDU_DATA_LLCTRL_TYPE_CLOCK_ACCURACY_RSP] = { pdu_validate_clock_accuracy_rsp },
 };
 

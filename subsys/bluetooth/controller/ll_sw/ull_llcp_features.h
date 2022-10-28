@@ -128,7 +128,7 @@ static inline bool feature_cte_req(struct ll_conn *conn)
 
 static inline bool feature_sca(struct ll_conn *conn)
 {
-#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+#if defined(CONFIG_BT_CTLR_REQUEST_PEER_SCA)
 	return (conn->llcp.fex.features_used & LL_FEAT_BIT_SCA_UPDATE) != 0;
 #else
 	return 0;

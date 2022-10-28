@@ -215,6 +215,7 @@ helper_node_verify_func_t *const helper_node_verify[] = {
 	[NODE_CTE_RSP] = helper_node_verify_cte_rsp,
 	[NODE_CIS_REQUEST] = helper_node_verify_cis_request,
 	[NODE_CIS_ESTABLISHED] = helper_node_verify_cis_established,
+	[NODE_PEER_SCA_UPDATE] = helper_node_verify_peer_sca_update,
 };
 
 /*

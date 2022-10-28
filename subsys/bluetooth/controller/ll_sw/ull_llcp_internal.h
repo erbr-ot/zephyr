@@ -285,11 +285,12 @@ struct proc_ctx {
 			uint8_t  cis_id;
 			uint8_t error_code;
 		} cis_term;
-#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+#if defined(CONFIG_BT_CTLR_REQUEST_PEER_SCA)
 		struct {
 			uint8_t sca;
+			uint8_t error_code;
 		} scau;
-#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
+#endif /* CONFIG_BT_CTLR_REQUEST_PEER_SCA */
 	} data;
 
 	struct {
@@ -673,7 +674,7 @@ void llcp_ntf_encode_length_change(struct ll_conn *conn,
 
 #endif /* CONFIG_BT_CTLR_DATA_LENGTH */
 
-#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+#if defined(CONFIG_BT_CTLR_REQUEST_PEER_SCA)
 /*
  * Sleep Clock Accuracy Update Procedure Helper
  */
@@ -682,7 +683,7 @@ void llcp_pdu_encode_clock_accuracy_rsp(struct proc_ctx *ctx, struct pdu_data *p
 void llcp_pdu_decode_clock_accuracy_req(struct proc_ctx *ctx, struct pdu_data *pdu);
 void llcp_pdu_decode_clock_accuracy_rsp(struct proc_ctx *ctx, struct pdu_data *pdu);
 
-#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
+#endif /* CONFIG_BT_CTLR_REQUEST_PEER_SCA */
 
 #if defined(CONFIG_BT_CTLR_DF_CONN_CTE_REQ)
 /*

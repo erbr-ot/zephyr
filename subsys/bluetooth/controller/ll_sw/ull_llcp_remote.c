@@ -279,11 +279,11 @@ void llcp_rr_rx(struct ll_conn *conn, struct proc_ctx *ctx, struct node_rx_pdu *
 		llcp_rp_comm_rx(conn, ctx, rx);
 		break;
 #endif /* CONFIG_BT_CTLR_CENTRAL_ISO || CONFIG_BT_CTLR_PERIPHERAL_ISO */
-#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+#if defined(CONFIG_BT_CTLR_REQUEST_PEER_SCA)
 	case PROC_SCA_UPDATE:
 		llcp_rp_comm_rx(conn, ctx, rx);
 		break;
-#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
+#endif /* CONFIG_BT_CTLR_REQUEST_PEER_SCA */
 	default:
 		/* Unknown procedure */
 		LL_ASSERT(0);
@@ -310,7 +310,7 @@ void llcp_rr_tx_ack(struct ll_conn *conn, struct proc_ctx *ctx, struct node_tx *
 		llcp_rp_comm_tx_ack(conn, ctx, tx);
 		break;
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_RSP */
-#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+#if defined(CONFIG_BT_CTLR_REQUEST_PEER_SCA)
 	case PROC_SCA_UPDATE:
 		llcp_rp_comm_tx_ack(conn, ctx, tx);
 		break;
@@ -410,11 +410,11 @@ static void rr_act_run(struct ll_conn *conn)
 		llcp_rp_comm_run(conn, ctx, NULL);
 		break;
 #endif /* CONFIG_BT_CTLR_CENTRAL_ISO || CONFIG_BT_CTLR_PERIPHERAL_ISO */
-#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+#if defined(CONFIG_BT_CTLR_REQUEST_PEER_SCA)
 	case PROC_SCA_UPDATE:
 		llcp_rp_comm_run(conn, ctx, NULL);
 		break;
-#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
+#endif /* CONFIG_BT_CTLR_REQUEST_PEER_SCA */
 	default:
 		/* Unknown procedure */
 		LL_ASSERT(0);
@@ -840,9 +840,9 @@ static const struct proc_role new_proc_lut[] = {
 #if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
 	[PDU_DATA_LLCTRL_TYPE_CIS_REQ] = { PROC_CIS_CREATE, ACCEPT_ROLE_PERIPHERAL },
 #endif /* CONFIG_BT_CTLR_CENTRAL_ISO */
-#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+#if defined(CONFIG_BT_CTLR_REQUEST_PEER_SCA)
 	[PDU_DATA_LLCTRL_TYPE_CLOCK_ACCURACY_REQ] = { PROC_SCA_UPDATE, ACCEPT_ROLE_BOTH },
-#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
+#endif /* CONFIG_BT_CTLR_REQUEST_PEER_SCA */
 };
 
 void llcp_rr_new(struct ll_conn *conn, struct node_rx_pdu *rx, bool valid_pdu)
