@@ -288,7 +288,8 @@ struct proc_ctx {
 #if defined(CONFIG_BT_CTLR_SCA_UPDATE)
 		struct {
 			uint8_t sca;
-		} scau;
+			uint8_t error_code;
+		} sca_update;
 #endif /* CONFIG_BT_CTLR_SCA_UPDATE */
 	} data;
 

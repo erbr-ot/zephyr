@@ -78,7 +78,7 @@ config BT_CTLR_MIN_USED_CHAN_SUPPORT
 config BT_CTLR_SMI_SUPPORT
 	bool
 
-config BT_CTLR_SCA_UPDATE_SUPPORT
+config BT_CTLR_REQUEST_PEER_SCA_SUPPORT
 	bool
 
 config BT_CTLR_CONN_RSSI_SUPPORT
@@ -454,12 +454,12 @@ config BT_CTLR_MIN_USED_CHAN
 	  Procedure in the Controller.
 
 config BT_CTLR_SCA_UPDATE
-	bool "Sleep clock accuracy update procedure"
-	depends on BT_CTLR_SCA_UPDATE_SUPPORT
+	bool "Sleep Clock Accuracy Update procedure"
+	depends on BT_SCA_UPDATE && BT_CTLR_SCA_UPDATE_SUPPORT
 	default y if BT_CTLR_CONN_ISO
 	help
-	  Enable support for Bluetooth 5.1 Sleep clock accuracy
-	  Procedure in the Controller.
+	  Enable support for Bluetooth 5.1 Sleep Clock Accuracy
+	  procedure in the Controller.
 
 config BT_CTLR_CONN_RSSI
 	bool "Connection RSSI"

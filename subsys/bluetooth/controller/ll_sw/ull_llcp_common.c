@@ -360,6 +360,29 @@ static void lp_comm_complete_cte_req(struct ll_conn *conn, struct proc_ctx *ctx)
 }
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_REQ */
 
+#if defined(CONFIG_BT_CTLR_SCA_UPDATE)
+static void lp_sca_ntf(struct ll_conn *conn, struct proc_ctx *ctx)
+{
+	struct node_rx_pdu *ntf;
+	struct node_rx_sca *pdu;
+
+	/* Allocate ntf node */
+	ntf = llcp_ntf_alloc();
+	LL_ASSERT(ntf);
+
+	ntf->hdr.type = NODE_RX_TYPE_REQ_PEER_SCA_COMPLETE;
+	ntf->hdr.handle = conn->lll.handle;
+	pdu = (struct node_rx_sca *)ntf->pdu;
+
+	pdu->status = ctx->data.sca_update.error_code;
+	pdu->sca = ctx->data.sca_update.sca;
+
+	/* Enqueue notification towards LL */
+	ll_rx_put(ntf->hdr.link, ntf);
+	ll_rx_sched();
+}
+#endif /* CONFIG_BT_CTLR_SCA_UPDATE */
+
 static void lp_comm_ntf(struct ll_conn *conn, struct proc_ctx *ctx)
 {
 	struct node_rx_pdu *ntf;
@@ -521,8 +544,10 @@ static void lp_comm_complete(struct ll_conn *conn, struct proc_ctx *ctx, uint8_t
 		case PDU_DATA_LLCTRL_TYPE_UNKNOWN_RSP:
 			/* Peer does not support SCA update, so disable on current connection */
 			feature_unmask_features(conn, LL_FEAT_BIT_SCA_UPDATE);
+			ctx->data.sca_update.error_code = BT_HCI_ERR_UNSUPP_FEATURE_PARAM_VAL;
 			/* Fall through to complete procedure */
 		case PDU_DATA_LLCTRL_TYPE_CLOCK_ACCURACY_RSP:
+			lp_sca_ntf(conn, ctx);
 			llcp_lr_complete(conn);
 			ctx->state = LP_COMMON_STATE_IDLE;
 			break;

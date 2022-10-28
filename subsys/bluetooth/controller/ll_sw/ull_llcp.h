@@ -249,6 +249,6 @@ void ull_cp_cte_rsp_enable(struct ll_conn *conn, bool enable, uint8_t max_cte_le
 /**
  * @brief Initiate a Sleep Clock Accuracy Update Procedure.
  */
-uint8_t ull_cp_sca_update(struct ll_conn *conn, uint8_t sca);
+uint8_t ull_cp_req_peer_sca(struct ll_conn *conn);
 #endif /* CONFIG_BT_CTLR_SCA_UPDATE */
 

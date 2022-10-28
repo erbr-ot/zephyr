@@ -79,11 +79,10 @@ void test_sca_central_loc(void)
 {
 	uint8_t err;
 	struct node_tx *tx;
-
+	struct node_rx_pdu *ntf;
+	struct node_rx_sca scau = { .status = BT_HCI_ERR_SUCCESS, .sca = 2 };
 	struct pdu_data_llctrl_clock_accuracy_req local_sca_req = { };
-
-	struct pdu_data_llctrl_clock_accuracy_rsp remote_sca_rsp = { };
-
+	struct pdu_data_llctrl_clock_accuracy_rsp remote_sca_rsp = { .sca = 2 };
 	struct pdu_data_llctrl_unknown_rsp unknown_rsp = {
 		.type = PDU_DATA_LLCTRL_TYPE_CLOCK_ACCURACY_REQ
 	};
@@ -95,7 +94,7 @@ void test_sca_central_loc(void)
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
 
 	/* Initiate an SCA Procedure */
-	err = ull_cp_sca_update(&conn, 1);
+	err = ull_cp_req_peer_sca(&conn);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Confirm SCA Update is indicated as supported */
@@ -121,14 +120,15 @@ void test_sca_central_loc(void)
 	zassert_equal(conn.llcp_terminate.reason_final, 0,
 		      "Terminate reason %d", conn.llcp_terminate.reason_final);
 
-	/* There should not be a host notifications */
+	/* There should be one notification due to Peer SCA Request */
+	ut_rx_node(NODE_PEER_SCA_UPDATE, &ntf, &scau);
 	ut_rx_q_is_empty();
 
 	zassert_equal(ctx_buffers_free(), test_ctx_buffers_cnt(),
 		      "Free CTX buffers %d", ctx_buffers_free());
 
 	/* Initiate another SCA Procedure */
-	err = ull_cp_sca_update(&conn, 1);
+	err = ull_cp_req_peer_sca(&conn);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -154,7 +154,11 @@ void test_sca_central_loc(void)
 	zassert_equal(conn.llcp_terminate.reason_final, 0,
 		      "Terminate reason %d", conn.llcp_terminate.reason_final);
 
-	/* There should not be a host notifications */
+	scau.status = BT_HCI_ERR_UNSUPP_FEATURE_PARAM_VAL;
+	scau.sca = 0;
+
+	/* There should be one notification due to Peer SCA Request */
+	ut_rx_node(NODE_PEER_SCA_UPDATE, &ntf, &scau);
 	ut_rx_q_is_empty();
 
 	zassert_equal(ctx_buffers_free(), test_ctx_buffers_cnt(),
@@ -200,7 +204,7 @@ void test_sca_central_loc_invalid_rsp(void)
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
 
 	/* Initiate an SCA Procedure */
-	err = ull_cp_sca_update(&conn, 1);
+	err = ull_cp_req_peer_sca(&conn);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -233,7 +237,7 @@ void test_sca_central_loc_invalid_rsp(void)
 		      "Free CTX buffers %d", ctx_buffers_free());
 
 	/* Initiate another SCA Procedure */
-	err = ull_cp_sca_update(&conn, 1);
+	err = ull_cp_req_peer_sca(&conn);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -302,7 +306,7 @@ void test_sca_peripheral_loc_invalid_rsp(void)
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
 
 	/* Initiate an SCA Procedure */
-	err = ull_cp_sca_update(&conn, 1);
+	err = ull_cp_req_peer_sca(&conn);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -335,7 +339,7 @@ void test_sca_peripheral_loc_invalid_rsp(void)
 		      "Free CTX buffers %d", ctx_buffers_free());
 
 	/* Initiate another SCA Procedure */
-	err = ull_cp_sca_update(&conn, 1);
+	err = ull_cp_req_peer_sca(&conn);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -386,10 +390,10 @@ void test_ping_periph_loc(void)
 {
 	uint8_t err;
 	struct node_tx *tx;
-
+	struct node_rx_pdu *ntf;
+	struct node_rx_sca scau = { .status = BT_HCI_ERR_SUCCESS, .sca = 2 };
 	struct pdu_data_llctrl_clock_accuracy_req local_sca_req = { };
-
-	struct pdu_data_llctrl_clock_accuracy_rsp remote_sca_rsp = { };
+	struct pdu_data_llctrl_clock_accuracy_rsp remote_sca_rsp = { .sca = 2 };
 
 	/* Role */
 	test_set_role(&conn, BT_HCI_ROLE_PERIPHERAL);
@@ -398,7 +402,7 @@ void test_ping_periph_loc(void)
 	ull_cp_state_set(&conn, ULL_CP_CONNECTED);
 
 	/* Initiate an SCA Procedure */
-	err = ull_cp_sca_update(&conn, 1);
+	err = ull_cp_req_peer_sca(&conn);
 	zassert_equal(err, BT_HCI_ERR_SUCCESS);
 
 	/* Prepare */
@@ -421,7 +425,8 @@ void test_ping_periph_loc(void)
 	zassert_equal(conn.llcp_terminate.reason_final, 0,
 		      "Terminate reason %d", conn.llcp_terminate.reason_final);
 
-	/* There should not be a host notifications */
+	/* There should be one notification due to Peer SCA Request */
+	ut_rx_node(NODE_PEER_SCA_UPDATE, &ntf, &scau);
 	ut_rx_q_is_empty();
 
 	zassert_equal(ctx_buffers_free(), test_ctx_buffers_cnt(),

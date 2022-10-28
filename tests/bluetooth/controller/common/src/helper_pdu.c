@@ -785,6 +785,18 @@ void helper_node_verify_phy_update(const char *file, uint32_t line, struct node_
 	zassert_equal(pdu->status, p->status, "Status mismatch.\nCalled at %s:%d\n", file, line);
 }
 
+void helper_node_verify_peer_sca_update(const char *file, uint32_t line, struct node_rx_pdu *rx,
+				   void *param)
+{
+	struct node_rx_sca *pdu = (struct node_rx_sca *)rx->pdu;
+	struct node_rx_sca *p = param;
+
+	zassert_equal(rx->hdr.type, NODE_RX_TYPE_REQ_PEER_SCA_COMPLETE,
+		      "Not an SCA node.\nCalled at %s:%d\n", file, line);
+	zassert_equal(pdu->status, p->status, "Status mismatch.\nCalled at %s:%d\n", file, line);
+	zassert_equal(pdu->sca, p->sca, "SCA mismatch.\nCalled at %s:%d\n", file, line);
+}
+
 void helper_pdu_verify_unknown_rsp(const char *file, uint32_t line, struct pdu_data *pdu,
 				   void *param)
 {

@@ -926,7 +926,8 @@ void llcp_pdu_encode_clock_accuracy_req(struct proc_ctx *ctx, struct pdu_data *p
 	pdu->len = offsetof(struct pdu_data_llctrl, sca_req) +
 		   sizeof(struct pdu_data_llctrl_clock_accuracy_req);
 	pdu->llctrl.opcode = PDU_DATA_LLCTRL_TYPE_CLOCK_ACCURACY_REQ;
-	p->sca = ctx->data.scau.sca;
+	/* Currently we do not support variable SCA, so we always 'report' current SCA */
+	p->sca = lll_clock_sca_local_get();
 }
 
 void llcp_pdu_encode_clock_accuracy_rsp(struct proc_ctx *ctx, struct pdu_data *pdu)
@@ -937,7 +938,8 @@ void llcp_pdu_encode_clock_accuracy_rsp(struct proc_ctx *ctx, struct pdu_data *p
 	pdu->len = offsetof(struct pdu_data_llctrl, sca_rsp) +
 		   sizeof(struct pdu_data_llctrl_clock_accuracy_rsp);
 	pdu->llctrl.opcode = PDU_DATA_LLCTRL_TYPE_CLOCK_ACCURACY_RSP;
-	p->sca = ctx->data.scau.sca;
+	/* Currently we do not support variable SCA, so we always 'report' current SCA */
+	p->sca = lll_clock_sca_local_get();
 }
 
 void llcp_pdu_decode_clock_accuracy_req(struct proc_ctx *ctx, struct pdu_data *pdu)

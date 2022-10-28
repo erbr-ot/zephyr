@@ -921,17 +921,19 @@ uint8_t ull_cp_data_length_update(struct ll_conn *conn, uint16_t max_tx_octets,
 #endif /* CONFIG_BT_CTLR_DATA_LENGTH */
 
 #if defined(CONFIG_BT_CTLR_SCA_UPDATE)
-uint8_t ull_cp_sca_update(struct ll_conn *conn, uint8_t sca)
+uint8_t ull_cp_req_peer_sca(struct ll_conn *conn)
 {
 	struct proc_ctx *ctx;
+
+	if (!feature_sca(conn)) {
+		return BT_HCI_ERR_UNSUPP_REMOTE_FEATURE;
+	}
 
 	ctx = llcp_create_local_procedure(PROC_SCA_UPDATE);
 
 	if (!ctx) {
 		return BT_HCI_ERR_CMD_DISALLOWED;
 	}
-
-	ctx->data.scau.sca = sca;
 
 	llcp_lr_enqueue(conn, ctx);
 
