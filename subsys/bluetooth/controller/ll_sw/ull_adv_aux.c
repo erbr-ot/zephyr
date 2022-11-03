@@ -3060,7 +3060,7 @@ static void mfy_aux_offset_get(void *param)
 
 	/* Calculate offset in microseconds */
 	/* Note: The offset has to be at least T_MAFS microseconds from the end of packet */
-	pdu_us = PDU_AC_US(pdu->len, adv->lll.phy_s, adv->lll.phy_flags);
+	pdu_us = PDU_AC_US(pdu->len, adv->lll.phy_p, adv->lll.phy_flags);
 	if (HAL_TICKER_TICKS_TO_US(adv_ticks_to_expire) + adv_remainder + pdu_us + EVENT_MAFS_US >
 	    HAL_TICKER_TICKS_TO_US(aux_ticks_to_expire) + aux_remainder) {
 		uint32_t interval_us;
