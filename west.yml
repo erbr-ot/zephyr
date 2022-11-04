@@ -78,7 +78,7 @@ manifest:
       groups:
         - hal
     - name: hal_nordic
-      revision: 249199ec5a5c31d170659921048764e96d05cc0e
+      revision: 4ee20fd6ca25cd4bf78918f4fffee016a4ef47b9
       path: modules/hal/nordic
       groups:
         - hal
@@ -88,7 +88,7 @@ manifest:
       groups:
         - hal
     - name: hal_nxp
-      revision: 3e3648526824cc5b52ab59d5dd308473e291b760
+      revision: 9bc1e797921b2a4b246ce7647dc426549985e76a
       path: modules/hal/nxp
       groups:
         - hal
@@ -135,7 +135,7 @@ manifest:
       groups:
         - hal
     - name: hal_ti
-      revision: 000b944a788b6005d7776198e1348f5c8a657259
+      revision: a5ffc6dc73c2ee4c4eaa813418453cd3094c33dd
       path: modules/hal/ti
       groups:
         - hal
@@ -225,12 +225,12 @@ manifest:
       groups:
         - crypto
     - name: TraceRecorderSource
-      revision: 9893bf1cf649a2c4ee2e27293f887994f3d0da5b
+      revision: d92607521335eaaaedb01b241cdd26fda48a5ca6
       path: modules/debug/TraceRecorder
       groups:
         - debug
     - name: trusted-firmware-m
-      revision: d7c82cb813e283b96770ba19b68a50d6bcc9931f
+      revision: 887798f6e67203e6a77059a86edf41bb136a3c0b
       path: modules/tee/tf-m/trusted-firmware-m
       groups:
         - tee
@@ -253,7 +253,7 @@ manifest:
       revision: e8920192b66db4f909eb9cd3f155d5245c1ae825
       path: modules/lib/uoscore-uedhoc
     - name: zcbor
-      revision: a0d6981f14d4001d6f0d608d1a427f9bc6bb6d02
+      revision: 0.6.0
       path: modules/lib/zcbor
     - name: zscilib
       path: modules/lib/zscilib

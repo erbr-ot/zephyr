@@ -28,6 +28,7 @@
 #define BT_DBG_ENABLED IS_ENABLED(CONFIG_BT_DEBUG_CONN)
 #define LOG_MODULE_NAME bt_conn
 #include "common/log.h"
+#include "common/assert.h"
 
 #include "hci_core.h"
 #include "id.h"
@@ -2180,16 +2181,16 @@ bool bt_conn_is_peer_addr_le(const struct bt_conn *conn, uint8_t id,
 	}
 
 	/* Check against conn dst address as it may be the identity address */
-	if (!bt_addr_le_cmp(peer, &conn->le.dst)) {
+	if (bt_addr_le_eq(peer, &conn->le.dst)) {
 		return true;
 	}
 
 	/* Check against initial connection address */
 	if (conn->role == BT_HCI_ROLE_CENTRAL) {
-		return bt_addr_le_cmp(peer, &conn->le.resp_addr) == 0;
+		return bt_addr_le_eq(peer, &conn->le.resp_addr);
 	}
 
-	return bt_addr_le_cmp(peer, &conn->le.init_addr) == 0;
+	return bt_addr_le_eq(peer, &conn->le.init_addr);
 }
 
 struct bt_conn *bt_conn_lookup_addr_le(uint8_t id, const bt_addr_le_t *peer)

@@ -64,8 +64,8 @@ void arch_start_cpu(int cpu_num, k_thread_stack_t *stack, int sz,
 	master_core_mpid = MPIDR_TO_CORE(GET_MPIDR());
 
 	cpu_count = ARRAY_SIZE(cpu_node_list);
-	__ASSERT(cpu_count == CONFIG_MP_NUM_CPUS,
-		"The count of CPU Cores nodes in dts is not equal to CONFIG_MP_NUM_CPUS\n");
+	__ASSERT(cpu_count == CONFIG_MP_MAX_NUM_CPUS,
+		"The count of CPU Cores nodes in dts is not equal to CONFIG_MP_MAX_NUM_CPUS\n");
 
 	for (i = 0, j = 0; i < cpu_count; i++) {
 		if (cpu_node_list[i] == master_core_mpid) {
@@ -160,7 +160,9 @@ static void broadcast_ipi(unsigned int ipi)
 	/*
 	 * Send SGI to all cores except itself
 	 */
-	for (int i = 0; i < CONFIG_MP_NUM_CPUS; i++) {
+	unsigned int num_cpus = arch_num_cpus();
+
+	for (int i = 0; i < num_cpus; i++) {
 		uint64_t target_mpidr = cpu_node_list[i];
 		uint8_t aff0 = MPIDR_AFFLVL(target_mpidr, 0);
 

@@ -23,6 +23,18 @@ Changes in this release
   and :kconfig:option:`CONFIG_BT_PER_ADV_SYNC_TRANSFER_SENDER` have been
   added to enable the PAST implementation rather than
   :kconfig:option:`CONFIG_BT_CONN`.
+* Flashdisk: :kconfig:option:`CONFIG_DISK_FLASH_VOLUME_NAME`,
+  :kconfig:option:`CONFIG_DISK_FLASH_DEV_NAME`,
+  :kconfig:option:`CONFIG_DISK_FLASH_START`,
+  :kconfig:option:`CONFIG_DISK_FLASH_MAX_RW_SIZE`,
+  :kconfig:option:`CONFIG_DISK_ERASE_BLOCK_SIZE`,
+  :kconfig:option:`CONFIG_DISK_FLASH_ERASE_ALIGNMENT`,
+  :kconfig:option:`CONFIG_DISK_VOLUME_SIZE` and
+  :kconfig:option:`CONFIG_DISK_FLASH_SECTOR_SIZE` Kconfig options have been
+  removed in favor of new :dtcompatible:`zephyr,flash-disk` devicetree binding.
+
+- Starting from this release ``zephyr-`` prefixed tags won't be created
+  anymore. The project will continue using ``v`` tags, for example ``v3.3.0``.
 
 Removed APIs in this release
 ============================
@@ -104,7 +116,12 @@ Bluetooth
 
 * Host
 
+  * Fixed missing calls to bt_le_per_adv_sync_cb.term when deleting a periodic
+    advertising sync object.
+
 * Mesh
+
+  * Change default advertiser to be extended advertiser.
 
 * Controller
 
@@ -238,19 +255,37 @@ USB
 Devicetree
 **********
 
+* Bindings
+
+  * New:
+
+    * :dtcompatible:`zephyr,flash-disk`
+
 Libraries / Subsystems
 **********************
 
 * Management
 
-  * MCUMGR functionality deprecated in 3.1 has been removed:
+  * MCUmgr functionality deprecated in 3.1 has been removed:
     CONFIG_FS_MGMT_UL_CHUNK_SIZE, CONFIG_IMG_MGMT_UL_CHUNK_SIZE,
     CONFIG_OS_MGMT_ECHO_LENGTH
-  * MCUMGR fs_mgmt issue with erasing a file prior to writing the first block
+  * MCUmgr fs_mgmt issue with erasing a file prior to writing the first block
     of data has been worked around by only truncating/deleting the file data
     if the file exists. This can help work around an issue whereby logging is
     enabled and the command is sent on the same UART as the logging system, in
     which a filesystem error was emitted.
+  * A MCUmgr bug when using the smp_svr sample with Bluetooth transport that
+    could have caused a stack overflow has been fixed.
+  * A MCUmgr issue with Bluetooth transport that could cause a deadlock of the
+    mcumgr thread if the remote device disconnected before the output message
+    was sent has been fixed.
+  * A MCUmgr img_mgmt bug whereby the state of an image upload could persist
+    when it was no longer valid (e.g. after an image erase command) has been
+    fixed.
+
+* LwM2M
+
+  * The ``lwm2m_senml_cbor_*`` files have been regenerated using zcbor 0.6.0.
 
 HALs
 ****
@@ -260,6 +295,19 @@ MCUboot
 
 Trusted Firmware-M
 ******************
+
+zcbor
+*****
+
+Upgraded zcbor to 0.6.0. Among other things, this brings in a few convenient
+changes for Zephyr:
+
+* In the zcbor codebase, the ``ARRAY_SIZE`` macro has been renamed to
+  ``ZCBOR_ARRAY_SIZE`` to not collide with Zephyr's :c:macro:`ARRAY_SIZE` macro.
+* The zcbor codebase now better supports being used in C++ code.
+
+The entire release notes can be found at
+https://github.com/zephyrproject-rtos/zcbor/blob/0.6.0/RELEASE_NOTES.md
 
 Documentation
 *************

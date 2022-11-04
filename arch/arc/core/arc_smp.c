@@ -133,7 +133,9 @@ void arch_sched_ipi(void)
 	/* broadcast sched_ipi request to other cores
 	 * if the target is current core, hardware will ignore it
 	 */
-	for (i = 0U; i < CONFIG_MP_NUM_CPUS; i++) {
+	unsigned int num_cpus = arch_num_cpus();
+
+	for (i = 0U; i < num_cpus; i++) {
 		z_arc_connect_ici_generate(i);
 	}
 }
@@ -172,7 +174,7 @@ static int arc_smp_init(const struct device *dev)
 		z_arc_connect_gfrc_enable();
 
 		/* when all cores halt, gfrc halt */
-		z_arc_connect_gfrc_core_set((1 << CONFIG_MP_NUM_CPUS) - 1);
+		z_arc_connect_gfrc_core_set((1 << arch_num_cpus()) - 1);
 		z_arc_connect_gfrc_clear();
 	} else {
 		__ASSERT(0,

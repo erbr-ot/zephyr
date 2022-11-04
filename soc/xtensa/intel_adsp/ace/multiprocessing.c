@@ -6,6 +6,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/check.h>
+#include <zephyr/arch/cpu.h>
 
 #include <soc.h>
 #include <adsp_boot.h>
@@ -40,13 +41,25 @@ static void ipc_isr(void *arg)
 #endif
 }
 
+#define DFIDCCP			0x2020
+#define CAP_INST_SHIFT		24
+#define CAP_INST_MASK		BIT_MASK(4)
+
+unsigned int soc_num_cpus;
+
 void soc_mp_init(void)
 {
+	/* Need to set soc_num_cpus early to arch_num_cpus() works properly */
+	soc_num_cpus = ((sys_read32(DFIDCCP) >> CAP_INST_SHIFT) & CAP_INST_MASK) + 1;
+	soc_num_cpus = MIN(CONFIG_MP_MAX_NUM_CPUS, soc_num_cpus);
+
 	IRQ_CONNECT(ACE_IRQ_TO_ZEPHYR(ACE_INTL_IDCA), 0, ipc_isr, 0, 0);
 
 	irq_enable(ACE_IRQ_TO_ZEPHYR(ACE_INTL_IDCA));
 
-	for (int i = 0; i < CONFIG_MP_NUM_CPUS; i++) {
+	unsigned int num_cpus = arch_num_cpus();
+
+	for (int i = 0; i < num_cpus; i++) {
 		/* DINT has one bit per IPC, unmask only IPC "Ax" on core "x" */
 		ACE_DINT[i].ie[ACE_INTL_IDCA] = BIT(i);
 
@@ -111,7 +124,9 @@ void arch_sched_ipi(void)
 	uint32_t curr = arch_proc_id();
 
 	/* Signal agent B[n] to cause an interrupt from agent A[n] */
-	for (int core = 0; core < CONFIG_MP_NUM_CPUS; core++) {
+	unsigned int num_cpus = arch_num_cpus();
+
+	for (int core = 0; core < num_cpus; core++) {
 		if (core != curr && soc_cpus_active[core]) {
 			IDC[core].agents[1].ipc.idr = INTEL_ADSP_IPC_BUSY;
 		}
@@ -126,7 +141,7 @@ int soc_adsp_halt_cpu(int id)
 		return -EINVAL;
 	}
 
-	CHECKIF(id <= 0 || id >= CONFIG_MP_NUM_CPUS) {
+	CHECKIF(id <= 0 || id >= arch_num_cpus()) {
 		return -EINVAL;
 	}
 

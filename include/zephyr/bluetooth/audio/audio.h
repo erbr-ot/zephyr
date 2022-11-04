@@ -1297,8 +1297,6 @@ struct bt_audio_stream {
 	const struct bt_codec *codec;
 	/** QoS Configuration */
 	struct bt_codec_qos *qos;
-	/** ISO channel reference */
-	struct bt_iso_chan *iso;
 	/** Audio stream operations */
 	struct bt_audio_stream_ops *ops;
 
@@ -1935,7 +1933,7 @@ int bt_audio_stream_release(struct bt_audio_stream *stream);
  *  @return Bytes sent in case of success or negative value in case of error.
  */
 int bt_audio_stream_send(struct bt_audio_stream *stream, struct net_buf *buf,
-			 uint32_t seq_num, uint32_t ts);
+			 uint16_t seq_num, uint32_t ts);
 
 /** @brief Parameter struct for the unicast group functions
  *

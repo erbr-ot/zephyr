@@ -78,5 +78,5 @@
 #define EVENT_US_TO_US_FRAC(us)             (us)
 #define EVENT_US_FRAC_TO_US(us_frac)        (us_frac)
 #define EVENT_TICKS_TO_US_FRAC(ticks)       HAL_TICKER_TICKS_TO_US(ticks)
-#define EVENT_US_FRAC_TO_TICS(us_frac)      HAL_TICKER_US_TO_TICKS(us_frac)
+#define EVENT_US_FRAC_TO_TICKS(us_frac)     HAL_TICKER_US_TO_TICKS(us_frac)
 #define EVENT_US_FRAC_TO_REMAINDER(us_frac) HAL_TICKER_REMAINDER(us_frac)
