@@ -5646,7 +5646,7 @@ int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 		/* Overwrite time stamp with HCI provided time stamp */
 		time_stamp = net_buf_pull_mem(buf, sizeof(*time_stamp));
 		len -= sizeof(*time_stamp);
-		sdu_frag_tx.time_stamp = *time_stamp;
+		sdu_frag_tx.time_stamp = sys_le32_to_cpu(*time_stamp);
 	}
 
 	/* Extract ISO data header if included (PB_Flag 0b00 or 0b10) */
@@ -5655,8 +5655,8 @@ int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 	if ((pb_flag & 0x01) == 0) {
 		iso_data_hdr = net_buf_pull_mem(buf, sizeof(*iso_data_hdr));
 		len -= sizeof(*iso_data_hdr);
-		sdu_frag_tx.packet_sn = iso_data_hdr->sn;
-		sdu_frag_tx.iso_sdu_length = iso_data_hdr->slen;
+		sdu_frag_tx.packet_sn = sys_le16_to_cpu(iso_data_hdr->sn);
+		sdu_frag_tx.iso_sdu_length = sys_le16_to_cpu(iso_data_hdr->slen);
 	}
 
 	/* Packet boudary flags should be bitwise identical to the SDU state
@@ -5706,8 +5706,9 @@ int hci_iso_handle(struct net_buf *buf, struct net_buf **evt)
 			event_offset -= 1;
 		}
 		sdu_frag_tx.target_event = cis->lll.event_count + event_offset;
-
-		sdu_frag_tx.grp_ref_point = cig->cig_ref_point;
+		sdu_frag_tx.grp_ref_point = isoal_get_wrapped_time_us(cig->cig_ref_point,
+						(event_offset * cig->iso_interval *
+							ISO_INT_UNIT_US));
 
 		/* Get controller's input data path for CIS */
 		dp_in = hdr->datapath_in;

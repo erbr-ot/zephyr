@@ -220,7 +220,7 @@ config BT_CTLR_ISO_RX_BUFFERS
 config BT_CTLR_ISO_TX_BUFFERS
 	int "Number of Isochronous Tx buffers"
 	depends on BT_CTLR_ADV_ISO || BT_CTLR_CONN_ISO
-	range 1 19
+	range 1 32
 	default 3
 	help
 	  Set the number of Isochronous Tx PDUs to be queued for transmission
