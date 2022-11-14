@@ -4125,7 +4125,7 @@ static void le_cis_request(struct pdu_data *pdu_data,
 	LL_ASSERT(IS_PTR_ALIGNED(node, struct node_rx_conn_iso_estab));
 
 	req = node;
-	if (!(ll_feat_get() & LL_FEAT_HOST_BITS_ISO_CHANNELS) ||
+	if (!(ll_feat_get() & BIT64(BT_LE_FEAT_BIT_ISO_CHANNELS)) ||
 	    !(event_mask & BT_EVT_MASK_LE_META_EVENT) ||
 	    !(le_event_mask & BT_EVT_MASK_LE_CIS_REQ)) {
 		ll_cis_reject(req->cis_handle, BT_HCI_ERR_UNSUPP_REMOTE_FEATURE);
@@ -8045,13 +8045,13 @@ static void le_phy_upd_complete(struct pdu_data *pdu_data, uint16_t handle,
 #endif /* CONFIG_BT_CTLR_PHY */
 
 #if defined(CONFIG_BT_CTLR_SCA_UPDATE)
-static void le_req_peer_sca_complete(struct pdu_data *pdu_data, uint16_t handle,
+static void le_req_peer_sca_complete(struct pdu_data *pdu, uint16_t handle,
 				struct net_buf *buf)
 {
 	struct bt_hci_evt_le_req_peer_sca_complete *sep;
 	struct node_rx_sca *scau;
 
-	scau = (void *)pdu_data;
+	scau = (void *)pdu;
 
 	if (!(event_mask & BT_EVT_MASK_LE_META_EVENT) ||
 	    !(le_event_mask & BT_EVT_MASK_LE_REQ_PEER_SCA_COMPLETE)) {
@@ -8411,6 +8411,7 @@ static void le_conn_param_req(struct pdu_data *pdu_data, uint16_t handle,
 		/* event masked, reject the conn param req */
 		ll_conn_update(handle, 2, BT_HCI_ERR_UNSUPP_REMOTE_FEATURE, 0,
 			       0, 0, 0, NULL);
+
 		return;
 	}
 

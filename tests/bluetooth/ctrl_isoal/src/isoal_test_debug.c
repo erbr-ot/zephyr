@@ -198,7 +198,10 @@ void isoal_test_debug_print_tx_sdu(struct isoal_sdu_tx *tx_sdu)
 void isoal_test_debug_print_rx_pdu(struct isoal_pdu_rx *pdu_meta) {}
 void isoal_test_debug_print_rx_sdu(const struct isoal_sink             *sink_ctx,
 				   const struct isoal_emitted_sdu_frag *sdu_frag,
-				   const struct isoal_emitted_sdu      *sdu){}
+				   const struct isoal_emitted_sdu      *sdu)
+{
+
+}
 void isoal_test_debug_print_tx_pdu(struct node_tx_iso *node_tx) {}
 void isoal_test_debug_print_tx_sdu(struct isoal_sdu_tx *tx_sdu) {}
 #endif /* DEBUG_TEST */

@@ -509,7 +509,7 @@ static void rp_cc_state_wait_reply(struct ll_conn *conn, struct proc_ctx *ctx, u
 		/* If timeout is hit, fall through and reject */
 	case RP_CC_EVT_CIS_REQ_REJECT:
 		/* CIS Request is rejected, so clean up CIG/CIS acquisitions */
-		ull_peripheral_iso_dealloc(ctx->data.cis_create.cis_handle);
+		ull_peripheral_iso_release(ctx->data.cis_create.cis_handle);
 		/* Continue procedure in next prepare run */
 		ctx->state = RP_CC_STATE_WAIT_TX_REJECT_IND;
 		break;

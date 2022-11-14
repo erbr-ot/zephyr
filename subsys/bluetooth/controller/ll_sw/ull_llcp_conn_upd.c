@@ -115,7 +115,7 @@ enum {
 	RP_CU_STATE_WAIT_CONN_PARAM_REQ_REPLY,
 	RP_CU_STATE_WAIT_CONN_PARAM_REQ_REPLY_CONTINUE,
 	RP_CU_STATE_WAIT_TX_REJECT_EXT_IND,
-	RP_CU_STATE_WAIT_USER_RESPONSE,
+	RP_CU_STATE_WAIT_USER_REPLY,
 	RP_CU_STATE_WAIT_TX_CONN_PARAM_RSP,
 	RP_CU_STATE_WAIT_TX_CONN_UPDATE_IND,
 	RP_CU_STATE_WAIT_RX_CONN_UPDATE_IND,
@@ -142,7 +142,7 @@ enum {
 	RP_CU_EVT_CONN_PARAM_REQ_NEG_REPLY,
 
 	/* CONN_PARAM_REQ Ancjor Point Move reply */
-	RP_CU_EVT_CONN_PARAM_REQ_USER_RESPONSE,
+	RP_CU_EVT_CONN_PARAM_REQ_USER_REPLY,
 };
 
 /*
@@ -203,6 +203,7 @@ static void cu_prepare_update_ind(struct ll_conn *conn, struct proc_ctx *ctx)
 #if defined(CONFIG_BT_CTLR_CONN_PARAM_REQ)
 	/* Handle preferred periodicity */
 	const uint8_t preferred_periodicity = ctx->data.cu.preferred_periodicity;
+
 	if (preferred_periodicity) {
 		const uint16_t interval_max = (ctx->data.cu.interval_max / preferred_periodicity) *
 			preferred_periodicity;
@@ -212,6 +213,7 @@ static void cu_prepare_update_ind(struct ll_conn *conn, struct proc_ctx *ctx)
 		}
 	}
 
+#if !defined(CONFIG_BT_CTLR_SCHED_ADVANCED)
 	/* Use valid offset0 in range [0..interval]. An offset of
 	 * 0xffff means not valid. Disregard other preferred offsets.
 	 */
@@ -219,7 +221,9 @@ static void cu_prepare_update_ind(struct ll_conn *conn, struct proc_ctx *ctx)
 	if (ctx->data.cu.offsets[0] <= ctx->data.cu.interval_max) {
 		ctx->data.cu.win_offset_us = ctx->data.cu.offsets[0] * CONN_INT_UNIT_US;
 	}
-#endif
+#endif /* !CONFIG_BT_CTLR_SCHED_ADVANCED */
+#endif /* CONFIG_BT_CTLR_CONN_PARAM_REQ */
+
 	ctx->data.cu.instant = ull_conn_event_counter(conn) + conn->lll.latency +
 			       CONN_UPDATE_INSTANT_DELTA;
 }
@@ -929,7 +933,7 @@ static void rp_cu_st_wait_conn_param_req_available(struct ll_conn *conn, struct 
 				    DEFER_APM_CHECK(conn, ctx->data.cu.offsets,
 						    &ctx->data.cu.error)) {
 					/* Wait for user response */
-					ctx->state = RP_CU_STATE_WAIT_USER_RESPONSE;
+					ctx->state = RP_CU_STATE_WAIT_USER_REPLY;
 					break;
 				}
 #endif /* CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE */
@@ -1055,7 +1059,7 @@ static void rp_cu_st_wait_user_response(struct ll_conn *conn, struct proc_ctx *c
 					    void *param)
 {
 	switch (evt) {
-	case RP_CU_EVT_CONN_PARAM_REQ_USER_RESPONSE:
+	case RP_CU_EVT_CONN_PARAM_REQ_USER_REPLY:
 		/* Continue procedure in next prepare run */
 		ctx->state = RP_CU_STATE_WAIT_CONN_PARAM_REQ_REPLY_CONTINUE;
 		break;
@@ -1199,7 +1203,7 @@ static void rp_cu_execute_fsm(struct ll_conn *conn, struct proc_ctx *ctx, uint8_
 		rp_cu_st_wait_tx_conn_param_rsp(conn, ctx, evt, param);
 		break;
 #if defined(CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE)
-	case RP_CU_STATE_WAIT_USER_RESPONSE:
+	case RP_CU_STATE_WAIT_USER_REPLY:
 		rp_cu_st_wait_user_response(conn, ctx, evt, param);
 		break;
 #endif /* CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE */
@@ -1279,12 +1283,12 @@ void llcp_rp_conn_param_req_neg_reply(struct ll_conn *conn, struct proc_ctx *ctx
 #if defined(CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE)
 bool llcp_rp_conn_param_req_apm_awaiting_reply(struct proc_ctx *ctx)
 {
-	return (ctx->state == RP_CU_STATE_WAIT_USER_RESPONSE);
+	return (ctx->state == RP_CU_STATE_WAIT_USER_REPLY);
 }
 
 void llcp_rp_conn_param_req_apm_reply(struct ll_conn *conn, struct proc_ctx *ctx)
 {
-	rp_cu_execute_fsm(conn, ctx, RP_CU_EVT_CONN_PARAM_REQ_USER_RESPONSE, NULL);
+	rp_cu_execute_fsm(conn, ctx, RP_CU_EVT_CONN_PARAM_REQ_USER_REPLY, NULL);
 }
 #endif /* CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE */
 #endif /* CONFIG_BT_CTLR_CONN_PARAM_REQ */

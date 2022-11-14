@@ -183,7 +183,7 @@ config BT_SCA_UPDATE
 	default y if BT_ISO_PERIPHERAL || BT_ISO_CENTRAL
 	depends on !BT_CTLR || BT_CTLR_SCA_UPDATE_SUPPORT
 	help
-	  Enable support for Bluetooth 5.1 Sleep Clock Accuracy Update procedure
+	  Enable support for Bluetooth 5.1 Sleep Clock Accuracy Update Procedure
 endif # BT_CONN
 
 rsource "Kconfig.iso"
@@ -191,6 +191,7 @@ rsource "common/Kconfig"
 rsource "host/Kconfig"
 rsource "controller/Kconfig"
 rsource "shell/Kconfig"
+rsource "crypto/Kconfig"
 
 endif # BT_HCI
 

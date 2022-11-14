@@ -1457,7 +1457,7 @@ ZTEST(test_tx_unframed, test_tx_unframed_1_sdu_3_frag_2_pdu)
 /**
  * Test Suite  :   TX unframed SDU fragmentation
  *
- * Tests boundry conditions for the time difference function
+ * Tests boundary conditions for the time difference function
  */
 ZTEST(test_tx_unframed, test_tx_time_diff)
 {
@@ -1469,7 +1469,7 @@ ZTEST(test_tx_unframed, test_tx_time_diff)
 	result = 0;
 
 	/* Check that the difference from maximum to 0 is 1 */
-	time_before = ISOAL_TIME_WRAPPING_POINT;
+	time_before = ISOAL_TIME_WRAPPING_POINT_US;
 	time_after = 0;
 	valid = isoal_get_time_diff_test(time_before, time_after, &result);
 	zassert_true(valid, NULL);
@@ -1479,12 +1479,12 @@ ZTEST(test_tx_unframed, test_tx_time_diff)
 	 * invalid
 	 */
 	time_before = 0;
-	time_after = ISOAL_TIME_WRAPPING_POINT;
+	time_after = ISOAL_TIME_WRAPPING_POINT_US;
 	valid = isoal_get_time_diff_test(time_before, time_after, &result);
 	zassert_false(valid, NULL);
 
-	time_before = ISOAL_TIME_WRAPPING_POINT;
-	time_after = ISOAL_TIME_WRAPPING_POINT - 1;
+	time_before = ISOAL_TIME_WRAPPING_POINT_US;
+	time_after = ISOAL_TIME_WRAPPING_POINT_US - 1;
 	valid = isoal_get_time_diff_test(time_before, time_after, &result);
 	zassert_false(valid, NULL);
 
@@ -1493,18 +1493,18 @@ ZTEST(test_tx_unframed, test_tx_time_diff)
 	valid = isoal_get_time_diff_test(time_before, time_after, &result);
 	zassert_false(valid, NULL);
 
-	time_before = ISOAL_TIME_MID_POINT;
-	time_after = ISOAL_TIME_MID_POINT - 1;
+	time_before = ISOAL_TIME_MID_POINT_US;
+	time_after = ISOAL_TIME_MID_POINT_US - 1;
 	valid = isoal_get_time_diff_test(time_before, time_after, &result);
 	zassert_false(valid, NULL);
 
-	time_before = ISOAL_TIME_MID_POINT + 1;
-	time_after = ISOAL_TIME_MID_POINT;
+	time_before = ISOAL_TIME_MID_POINT_US + 1;
+	time_after = ISOAL_TIME_MID_POINT_US;
 	valid = isoal_get_time_diff_test(time_before, time_after, &result);
 	zassert_false(valid, NULL);
 
-	time_before = ISOAL_TIME_MID_POINT + 1;
-	time_after = ISOAL_TIME_MID_POINT - 1;
+	time_before = ISOAL_TIME_MID_POINT_US + 1;
+	time_after = ISOAL_TIME_MID_POINT_US - 1;
 	valid = isoal_get_time_diff_test(time_before, time_after, &result);
 	zassert_false(valid, NULL);
 
@@ -1515,33 +1515,33 @@ ZTEST(test_tx_unframed, test_tx_time_diff)
 	zassert_true(valid, NULL);
 	zassert_equal(result, 0, "%ld != %ld", result, 0);
 
-	time_before = ISOAL_TIME_WRAPPING_POINT;
-	time_after = ISOAL_TIME_WRAPPING_POINT;
+	time_before = ISOAL_TIME_WRAPPING_POINT_US;
+	time_after = ISOAL_TIME_WRAPPING_POINT_US;
 	valid = isoal_get_time_diff_test(time_before, time_after, &result);
 	zassert_true(valid, NULL);
 	zassert_equal(result, 0, "%ld != %ld", result, 0);
 
-	time_before = ISOAL_TIME_MID_POINT;
-	time_after = ISOAL_TIME_MID_POINT;
+	time_before = ISOAL_TIME_MID_POINT_US;
+	time_after = ISOAL_TIME_MID_POINT_US;
 	valid = isoal_get_time_diff_test(time_before, time_after, &result);
 	zassert_true(valid, NULL);
 	zassert_equal(result, 0, "%ld != %ld", result, 0);
 
-	/* Check valid results accross the mid-point */
-	time_before = ISOAL_TIME_MID_POINT;
-	time_after = ISOAL_TIME_MID_POINT + 1;
+	/* Check valid results across the mid-point */
+	time_before = ISOAL_TIME_MID_POINT_US;
+	time_after = ISOAL_TIME_MID_POINT_US + 1;
 	valid = isoal_get_time_diff_test(time_before, time_after, &result);
 	zassert_true(valid, NULL);
 	zassert_equal(result, 1, "%ld != %ld", result, 1);
 
-	time_before = ISOAL_TIME_MID_POINT - 1;
-	time_after = ISOAL_TIME_MID_POINT;
+	time_before = ISOAL_TIME_MID_POINT_US - 1;
+	time_after = ISOAL_TIME_MID_POINT_US;
 	valid = isoal_get_time_diff_test(time_before, time_after, &result);
 	zassert_true(valid, NULL);
 	zassert_equal(result, 1, "%ld != %ld", result, 1);
 
-	time_before = ISOAL_TIME_MID_POINT - 1;
-	time_after = ISOAL_TIME_MID_POINT + 1;
+	time_before = ISOAL_TIME_MID_POINT_US - 1;
+	time_after = ISOAL_TIME_MID_POINT_US + 1;
 	valid = isoal_get_time_diff_test(time_before, time_after, &result);
 	zassert_true(valid, NULL);
 	zassert_equal(result, 2, "%ld != %ld", result, 2);
@@ -1608,8 +1608,8 @@ ZTEST(test_tx_unframed, test_tx_unframed_2_sdu_1_frag_2_pdu_ts_wrap1)
 	pdu_buffer.size = TEST_TX_PDU_PAYLOAD_MAX;
 	sdu_packet_number = 2000;
 	event_number = 2000;
-	sdu_timestamp = ISOAL_TIME_WRAPPING_POINT;
-	ref_point = ISOAL_TIME_WRAPPING_POINT;
+	sdu_timestamp = ISOAL_TIME_WRAPPING_POINT_US;
+	ref_point = ISOAL_TIME_WRAPPING_POINT_US;
 	sdu_total_size = 23;
 	testdata_indx = 0;
 	testdata_size = 23;
@@ -4819,7 +4819,7 @@ ZTEST(test_tx_framed, test_tx_framed_2_sdu_1_frag_2_pdu_ts_wrap1)
 	pdu_buffer.size = TEST_TX_PDU_PAYLOAD_MAX;
 	sdu_packet_number = 2000;
 	event_number = 2000;
-	sdu_timestamp = ISOAL_TIME_WRAPPING_POINT;
+	sdu_timestamp = ISOAL_TIME_WRAPPING_POINT_US;
 	ref_point = 100;
 	sdu_total_size = TEST_TX_PDU_PAYLOAD_MAX -
 		(PDU_ISO_SEG_HDR_SIZE + PDU_ISO_SEG_TIMEOFFSET_SIZE);
@@ -5418,7 +5418,7 @@ ZTEST(test_tx_framed, test_tx_framed_2_sdu_1_frag_pdu_timeout)
 	/* SDU 1 Frag 1 ------------------------------------------------------*/
 	isoal_test_init_tx_pdu_buffer(&tx_pdu_meta_buf);
 	isoal_test_init_tx_sdu_buffer(&tx_sdu_frag_buf);
-	init_test_data_buffer(testdata,40);
+	init_test_data_buffer(testdata, 40);
 	(void)memset(seg_hdr, 0, sizeof(seg_hdr));
 	pdu_buffer.handle = (void *)&tx_pdu_meta_buf.node_tx;
 	pdu_buffer.pdu = (struct pdu_iso *)tx_pdu_meta_buf.node_tx.pdu;
@@ -5689,7 +5689,7 @@ ZTEST(test_tx_framed_ebq, test_tx_framed_cis_fra_per_bv07c)
 	/* SDU 1 Frag 1 ------------------------------------------------------*/
 	isoal_test_init_tx_pdu_buffer(&tx_pdu_meta_buf);
 	isoal_test_init_tx_sdu_buffer(&tx_sdu_frag_buf);
-	init_test_data_buffer(testdata,40);
+	init_test_data_buffer(testdata, 40);
 	(void)memset(seg_hdr, 0, sizeof(seg_hdr));
 	pdu_buffer.handle = (void *)&tx_pdu_meta_buf.node_tx;
 	pdu_buffer.pdu = (struct pdu_iso *)tx_pdu_meta_buf.node_tx.pdu;

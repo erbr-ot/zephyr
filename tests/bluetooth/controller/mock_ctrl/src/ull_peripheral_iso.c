@@ -39,7 +39,7 @@
 #include "ull_conn_iso_internal.h"
 #include "lll_peripheral_iso.h"
 
-void ull_peripheral_iso_dealloc(uint16_t cis_handle)
+void ull_peripheral_iso_release(uint16_t cis_handle)
 {
 }
 

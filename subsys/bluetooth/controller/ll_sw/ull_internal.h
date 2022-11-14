@@ -37,7 +37,8 @@ extern uint16_t ull_conn_interval_min_get(struct ll_conn *conn);
  *   BT_HCI_ERR_UNSUPP_LL_PARAM_VAL - Reject CPR
  */
 struct ll_conn;
-extern bool ull_handle_cpr_anchor_point_move(struct ll_conn *conn, uint16_t *offsets, uint8_t *status);
+extern bool ull_handle_cpr_anchor_point_move(struct ll_conn *conn, uint16_t *offsets,
+					     uint8_t *status);
 #define DEFER_APM_CHECK(x, y, z) (ull_handle_cpr_anchor_point_move(x, y, z))
 #endif /* CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE */
 /* Macro to convert time in us to connection interval units */

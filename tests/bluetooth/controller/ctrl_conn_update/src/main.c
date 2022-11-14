@@ -2466,7 +2466,6 @@ void test_conn_update_periph_rem_apm_accept_right_away(void)
 {
 #if defined(CONFIG_BT_CTLR_USER_CPR_ANCHOR_POINT_MOVE)
 	struct node_tx *tx;
-	// struct node_rx_pdu *ntf;
 	uint16_t instant;
 	/* Default conn_param_req PDU */
 	struct pdu_data_llctrl_conn_param_req conn_param_req_apm = { .interval_min = INTVL_MIN,
@@ -2495,12 +2494,11 @@ void test_conn_update_periph_rem_apm_accept_right_away(void)
 								 .offset3 = 0xffffU,
 								 .offset4 = 0xffffU,
 								 .offset5 = 0xffffU };
-
+	uint8_t error = 0;
 
 	/* Prepare mocked call to ull_handle_cpr_anchor_point_move */
 	/* No APM deferance, accept with error == 0 */
 	ztest_returns_value(ull_handle_cpr_anchor_point_move, false);
-	uint8_t error = 0;
 	ztest_return_data(ull_handle_cpr_anchor_point_move, status, &error);
 
 	/* Role */
@@ -2628,16 +2626,15 @@ void test_conn_update_periph_rem_apm_reject_right_away(void)
 								 .offset3 = 0xffffU,
 								 .offset4 = 0xffffU,
 								 .offset5 = 0xffffU };
-
 	struct pdu_data_llctrl_reject_ext_ind reject_ext_ind = {
 		.reject_opcode = PDU_DATA_LLCTRL_TYPE_CONN_PARAM_REQ,
 		.error_code = BT_HCI_ERR_UNSUPP_LL_PARAM_VAL + 1
 	};
+	uint8_t error = reject_ext_ind.error_code;
 
 	/* Prepare mocked call to ull_handle_cpr_anchor_point_move */
 	/* No APM deferance, reject with some error code */
 	ztest_returns_value(ull_handle_cpr_anchor_point_move, false);
-	uint8_t error = reject_ext_ind.error_code;
 	ztest_return_data(ull_handle_cpr_anchor_point_move, status, &error);
 
 
@@ -2740,7 +2737,6 @@ void test_conn_update_periph_rem_apm_accept_defered(void)
 		0xffffU
 	};
 	struct node_tx *tx;
-	// struct node_rx_pdu *ntf;
 	uint16_t instant;
 	/* Default conn_param_req PDU */
 	struct pdu_data_llctrl_conn_param_req conn_param_req_apm = { .interval_min = INTVL_MIN,
@@ -2769,12 +2765,11 @@ void test_conn_update_periph_rem_apm_accept_defered(void)
 								 .offset3 = 0xffffU,
 								 .offset4 = 0xffffU,
 								 .offset5 = 0xffffU };
-
+	uint8_t error = 0;
 
 	/* Prepare mocked call to ull_handle_cpr_anchor_point_move */
 	/* Defer APM */
 	ztest_returns_value(ull_handle_cpr_anchor_point_move, true);
-	uint8_t error = 0;
 	ztest_return_data(ull_handle_cpr_anchor_point_move, status, &error);
 
 	/* Role */
@@ -2921,16 +2916,15 @@ void test_conn_update_periph_rem_apm_reject_defered(void)
 								 .offset3 = 0xffffU,
 								 .offset4 = 0xffffU,
 								 .offset5 = 0xffffU };
-
 	struct pdu_data_llctrl_reject_ext_ind reject_ext_ind = {
 		.reject_opcode = PDU_DATA_LLCTRL_TYPE_CONN_PARAM_REQ,
 		.error_code = BT_HCI_ERR_UNSUPP_LL_PARAM_VAL
 	};
+	uint8_t error = 0U;
 
 	/* Prepare mocked call to ull_handle_cpr_anchor_point_move */
 	/* Defer APM */
 	ztest_returns_value(ull_handle_cpr_anchor_point_move, true);
-	uint8_t error = 0U;
 	ztest_return_data(ull_handle_cpr_anchor_point_move, status, &error);
 
 
@@ -4693,6 +4687,6 @@ void test_main(void)
 	ztest_run_test_suite(central_loc_no_param_req);
 	ztest_run_test_suite(central_rem_no_param_req);
 	ztest_run_test_suite(periph_loc_no_param_req);
-        ztest_run_test_suite(periph_rem_no_param_req);
+	ztest_run_test_suite(periph_rem_no_param_req);
 #endif /* CONFIG_BT_CTLR_CONN_PARAM_REQ */
 }

@@ -78,5 +78,5 @@ tests:
       - tx_framed_1_sdu_1_frag_pdu_alloc_err
       - tx_framed_1_sdu_1_frag_pdu_emit_err
       - tx_framed_2_sdu_1_frag_pdu_timeout
-      - tx_framed_cis_fra_per_bv07c-
+      - tx_framed_cis_fra_per_bv07c
     platform_allow: native_posix

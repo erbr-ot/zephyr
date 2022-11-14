@@ -609,4 +609,3 @@ struct node_rx_sca {
 	uint8_t status;
 	uint8_t sca;
 };
-

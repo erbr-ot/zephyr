@@ -143,11 +143,11 @@ int ull_peripheral_iso_reset(void)
 	return 0;
 }
 
-/* Use this function to de-allocate CIS/CIG resources on an aborted CIS setup
+/* Use this function to release CIS/CIG resources on an aborted CIS setup
  * ie if CIS setup is 'cancelled' after call to ull_peripheral_iso_acquire()
  * because of a rejection of the CIS request
  */
-void ull_peripheral_iso_dealloc(uint16_t cis_handle)
+void ull_peripheral_iso_release(uint16_t cis_handle)
 {
 	struct ll_conn_iso_stream *cis;
 	struct ll_conn_iso_group *cig;
@@ -397,6 +397,7 @@ static void ticker_cb(uint32_t ticks_at_expire, uint32_t ticks_drift,
 		/* CIG/ACL affilaition established */
 		uint32_t iso_interval_us_frac =
 			EVENT_US_TO_US_FRAC(cig->iso_interval * CONN_INT_UNIT_US);
+
 		cig->lll.window_widening_periodic_us_frac =
 			ceiling_fraction(((lll_clock_ppm_local_get() +
 					   lll_clock_ppm_get(cig->sca_update - 1)) *
@@ -574,4 +575,3 @@ void ull_peripheral_iso_update_peer_sca(struct ll_conn *acl)
 		}
 	}
 }
-

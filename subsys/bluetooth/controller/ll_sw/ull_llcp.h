@@ -129,7 +129,7 @@ uint8_t ull_cp_phy_update(struct ll_conn *conn, uint8_t tx, uint8_t flags, uint8
  * @brief Initiate a Connection Parameter Request Procedure or Connection Update Procedure
  */
 uint8_t ull_cp_conn_update(struct ll_conn *conn, uint16_t interval_min, uint16_t interval_max,
-			   uint16_t latency, uint16_t timeout, uint16_t* offsets);
+			   uint16_t latency, uint16_t timeout, uint16_t *offsets);
 
 /**
  * @brief Accept the remote device’s request to change connection parameters.
@@ -251,4 +251,3 @@ void ull_cp_cte_rsp_enable(struct ll_conn *conn, bool enable, uint8_t max_cte_le
  */
 uint8_t ull_cp_req_peer_sca(struct ll_conn *conn);
 #endif /* CONFIG_BT_CTLR_SCA_UPDATE */
-

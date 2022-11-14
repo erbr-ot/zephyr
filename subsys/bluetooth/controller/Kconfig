@@ -459,7 +459,7 @@ config BT_CTLR_SCA_UPDATE
 	default y if BT_CTLR_CONN_ISO
 	help
 	  Enable support for Bluetooth 5.1 Sleep Clock Accuracy
-	  procedure in the Controller.
+	  Update procedure in the Controller.
 
 config BT_CTLR_CONN_RSSI
 	bool "Connection RSSI"

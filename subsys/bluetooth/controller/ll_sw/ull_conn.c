@@ -207,7 +207,7 @@ static uint8_t force_md_cnt_calc(struct lll_conn *lll_conn, uint32_t tx_rate);
 #endif /* !CONFIG_BT_LL_SW_LLCP_LEGACY */
 #define CONN_TX_CTRL_BUF_SIZE MROUND(offsetof(struct node_tx, pdu) + \
 				     offsetof(struct pdu_data, llctrl) + \
-				     sizeof(struct pdu_data_llctrl))
+				     PDU_DC_CTRL_TX_SIZE_MAX)
 
 /* Terminate procedure state values */
 #define TERM_REQ   1
@@ -390,8 +390,7 @@ int ll_tx_mem_enqueue(uint16_t handle, void *tx)
 }
 
 uint8_t ll_conn_update(uint16_t handle, uint8_t cmd, uint8_t status, uint16_t interval_min,
-		    uint16_t interval_max, uint16_t latency, uint16_t timeout,
-		    uint16_t* offset)
+		    uint16_t interval_max, uint16_t latency, uint16_t timeout, uint16_t *offset)
 {
 	struct ll_conn *conn;
 
@@ -490,7 +489,8 @@ uint8_t ll_conn_update(uint16_t handle, uint8_t cmd, uint8_t status, uint16_t in
 	if (cmd == 0U) {
 		uint8_t err;
 
-		err = ull_cp_conn_update(conn, interval_min, interval_max, latency, timeout, offset);
+		err = ull_cp_conn_update(conn, interval_min, interval_max, latency, timeout,
+					 offset);
 		if (err) {
 			return err;
 		}
