@@ -1578,17 +1578,6 @@ static isoal_status_t isoal_tx_unframed_produce(struct isoal_source *source,
 		 */
 		session->seqn++;
 
-		/* Update payload counter in case time has passed since last
-		 * SDU. This should mean that event count * burst number should
-		 * be greater than the current payload number. In the event of
-		 * an SDU interval smaller than the ISO interval, multiple SDUs
-		 * will be sent in the same event. As such the current payload
-		 * number should be retained. Payload numbers are indexed at 0
-		 * and valid until the PDU is emitted.
-		 */
-		pp->payload_number = MAX(pp->payload_number,
-			(tx_sdu->target_event * session->burst_number));
-
 		/* Get actual event for this payload number */
 		actual_event = pp->payload_number / session->burst_number;
 
