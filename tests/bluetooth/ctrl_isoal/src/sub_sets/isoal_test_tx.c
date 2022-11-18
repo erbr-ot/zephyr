@@ -2909,6 +2909,323 @@ ZTEST(test_tx_unframed, test_tx_unframed_1_sdu_1_frag_pdu_emit_err)
 }
 
 /**
+ * Test Suite  :   TX unframed SDU fragmentation
+ *
+ * Tests fragmentation of a single SDU contained in a single fragment
+ * into a single PDU such that it does not insert a skew into the stream.
+ */
+ZTEST(test_tx_unframed, test_tx_unframed_4_sdu_1_frag_4_pdu_stream_loc)
+{
+	struct tx_pdu_meta_buffer tx_pdu_meta_buf;
+	struct tx_sdu_frag_buffer tx_sdu_frag_buf;
+	uint32_t tx_sync_timestamp_expected;
+	struct isoal_pdu_buffer pdu_buffer;
+	isoal_source_handle_t source_hdl;
+	uint32_t tx_sync_offset_expected;
+	isoal_sdu_len_t sdu_total_size;
+	isoal_pdu_len_t pdu_write_size;
+	uint16_t tx_sync_seq_expected;
+	uint32_t stream_sync_delay;
+	uint64_t sdu_packet_number;
+	uint32_t tx_sync_timestamp;
+	uint32_t group_sync_delay;
+	uint8_t iso_interval_int;
+	uint64_t payload_number;
+	uint32_t tx_sync_offset;
+	uint32_t sdu_timestamp;
+	uint16_t testdata_indx;
+	uint16_t testdata_size;
+	uint16_t pdu_write_loc;
+	uint16_t sdu_read_loc;
+	uint64_t event_number;
+	uint32_t sdu_interval;
+	uint8_t sdu_fragments;
+	uint8_t testdata[53];
+	uint16_t tx_sync_seq;
+	uint32_t ref_point;
+	isoal_status_t err;
+	uint8_t max_octets;
+	uint8_t role;
+	uint8_t BN;
+	uint8_t FT;
+
+
+	/* Settings */
+	role = BT_CONN_ROLE_PERIPHERAL;
+	iso_interval_int = 1;
+	sdu_interval = CONN_INT_UNIT_US / 2;
+	max_octets = TEST_TX_PDU_PAYLOAD_MAX - 5;
+	BN = 2;
+	FT = 1;
+	stream_sync_delay = (iso_interval_int * CONN_INT_UNIT_US) - 200;
+	group_sync_delay = (iso_interval_int * CONN_INT_UNIT_US) - 50;
+
+	/* SDU Frag 1 --------------------------------------------------------*/
+	/* Sets initial fragmentation status */
+	isoal_test_init_tx_pdu_buffer(&tx_pdu_meta_buf);
+	isoal_test_init_tx_sdu_buffer(&tx_sdu_frag_buf);
+	init_test_data_buffer(testdata, 53);
+	pdu_buffer.handle = (void *)&tx_pdu_meta_buf.node_tx;
+	pdu_buffer.pdu = (struct pdu_iso *)tx_pdu_meta_buf.node_tx.pdu;
+	pdu_buffer.size = TEST_TX_PDU_PAYLOAD_MAX;
+	event_number = 2000;
+	sdu_packet_number = (event_number * BN);
+	sdu_timestamp = 9249;
+	ref_point = sdu_timestamp + (iso_interval_int * CONN_INT_UNIT_US) - 50;
+	sdu_total_size = 23;
+	testdata_indx = 0;
+	testdata_size = 23;
+	payload_number = event_number * BN;
+	pdu_write_loc = 0;
+	sdu_read_loc = 0;
+	pdu_write_size = 23;
+
+	source_hdl = basic_tx_test_setup(0xADAD,           /* Handle */
+					 role,             /* Role */
+					 false,            /* Framed */
+					 BN,               /* BN */
+					 FT,               /* FT */
+					 max_octets,       /* max_octets */
+					 sdu_interval,     /* SDU Interval */
+					 iso_interval_int, /* ISO Interval */
+					 stream_sync_delay,/* Stream Sync Delay */
+					 group_sync_delay);/* Group Sync Delay */
+
+	isoal_test_create_sdu_fagment(BT_ISO_SINGLE,
+				&testdata[testdata_indx], (testdata_size - testdata_indx),
+				sdu_total_size, sdu_packet_number,
+				sdu_timestamp, ref_point, event_number,
+				&tx_sdu_frag_buf.sdu_tx);
+
+	SET_NEXT_PDU_ALLOC_BUFFER(&pdu_buffer);
+	SET_NEXT_PDU_ALLOC_BUFFER(&pdu_buffer);
+	SET_NEXT_PDU_ALLOC_BUFFER(&pdu_buffer);
+	SET_NEXT_PDU_ALLOC_BUFFER(&pdu_buffer);
+	PDU_ALLOC_TEST_RETURNS(ISOAL_STATUS_OK);
+	PDU_WRITE_TEST_RETURNS(ISOAL_STATUS_OK);
+	PDU_EMIT_TEST_RETURNS(ISOAL_STATUS_OK);
+	PDU_RELEASE_TEST_RETURNS(ISOAL_STATUS_OK);
+
+	err = isoal_tx_sdu_fragment(source_hdl, &tx_sdu_frag_buf.sdu_tx);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Test fragmentation (Black Box) */
+	/* Valid PDUs */
+	/* PDU 1 */
+	sdu_fragments = 1;
+
+	ZASSERT_PDU_WRITE_TEST(history[0], pdu_buffer,
+					   pdu_write_loc,
+					   &testdata[sdu_read_loc],
+					   (pdu_write_size - pdu_write_loc));
+
+	ZASSERT_PDU_EMIT_TEST(history[0], &tx_pdu_meta_buf.node_tx,
+					  payload_number,
+					  sdu_fragments,
+					  PDU_BIS_LLID_COMPLETE_END,
+					  pdu_write_size,
+					  isoal_global.source_state[source_hdl].session.handle);
+
+	/* PDU release not expected (No Error) */
+	ZASSERT_PDU_RELEASE_TEST_CALL_COUNT(0);
+
+	/* Check TX Sync info */
+	tx_sync_seq_expected = 1;
+	tx_sync_timestamp_expected = ref_point;
+	tx_sync_offset_expected = 0;
+
+	err = isoal_tx_get_sync_info(source_hdl, &tx_sync_seq, &tx_sync_timestamp, &tx_sync_offset);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+	zassert_equal(tx_sync_seq, tx_sync_seq_expected, "%d != %d", tx_sync_seq, 2);
+	zassert_equal(tx_sync_timestamp, tx_sync_timestamp_expected, "%d != %d", tx_sync_seq, 2);
+	zassert_equal(tx_sync_offset, tx_sync_offset_expected, "%ld != %ld", tx_sync_seq, 0);
+
+	/* SDU 2 Frag 1 ------------------------------------------------------*/
+	/* Check correct position in stream based on the SDU packet number */
+	isoal_test_init_tx_pdu_buffer(&tx_pdu_meta_buf);
+	isoal_test_init_tx_sdu_buffer(&tx_sdu_frag_buf);
+	sdu_packet_number += 29;
+	sdu_timestamp += ((iso_interval_int * CONN_INT_UNIT_US) * 15) - sdu_interval;
+	event_number += 15;
+	ref_point += (iso_interval_int * CONN_INT_UNIT_US) * 15;
+	sdu_total_size = 10;
+	testdata_indx = testdata_size;
+	testdata_size += 10;
+	sdu_fragments = 0;
+
+	isoal_test_create_sdu_fagment(BT_ISO_SINGLE,
+				&testdata[testdata_indx], (testdata_size - testdata_indx),
+				sdu_total_size, sdu_packet_number,
+				sdu_timestamp, ref_point, event_number,
+				&tx_sdu_frag_buf.sdu_tx);
+
+	err = isoal_tx_sdu_fragment(source_hdl, &tx_sdu_frag_buf.sdu_tx);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Test fragmentation (Black Box) */
+	/* Valid PDUs */
+	/* PDU 2 */
+	payload_number += 29;
+	pdu_write_loc = 0;
+	sdu_read_loc = testdata_indx;
+	pdu_write_size = (testdata_size - testdata_indx);
+	sdu_fragments++;
+
+	ZASSERT_PDU_WRITE_TEST(history[1], pdu_buffer,
+					   pdu_write_loc,
+					   &testdata[sdu_read_loc],
+					   (pdu_write_size - pdu_write_loc));
+
+	ZASSERT_PDU_EMIT_TEST(history[1], &tx_pdu_meta_buf.node_tx,
+					  payload_number,
+					  sdu_fragments,
+					  PDU_BIS_LLID_COMPLETE_END,
+					  pdu_write_size,
+					  isoal_global.source_state[source_hdl].session.handle);
+
+	/* PDU release not expected (No Error) */
+	ZASSERT_PDU_RELEASE_TEST_CALL_COUNT(0);
+
+	/* Check TX Sync info */
+	tx_sync_seq_expected += 29;
+	tx_sync_timestamp_expected = ref_point - (iso_interval_int * CONN_INT_UNIT_US);
+	tx_sync_offset_expected = 0;
+
+	err = isoal_tx_get_sync_info(source_hdl, &tx_sync_seq, &tx_sync_timestamp, &tx_sync_offset);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+	zassert_equal(tx_sync_seq, tx_sync_seq_expected, "%d != %d", tx_sync_seq, 2);
+	zassert_equal(tx_sync_timestamp, tx_sync_timestamp_expected, "%d != %d", tx_sync_seq, 2);
+	zassert_equal(tx_sync_offset, tx_sync_offset_expected, "%ld != %ld", tx_sync_seq, 0);
+
+	/* SDU 3 Frag 1 ------------------------------------------------------*/
+	/* Check correct position in stream based on the SDU time stamp */
+	isoal_test_init_tx_pdu_buffer(&tx_pdu_meta_buf);
+	isoal_test_init_tx_sdu_buffer(&tx_sdu_frag_buf);
+	/* Same SDU packet sequence number for testing */
+	/* Time stamp just before the exact multiple of the SDU interval */
+	sdu_timestamp += ((iso_interval_int * CONN_INT_UNIT_US) * 15) - 1;
+	event_number += 15;
+	ref_point += (iso_interval_int * CONN_INT_UNIT_US) * 15;
+	sdu_total_size = 10;
+	testdata_indx = testdata_size;
+	testdata_size += 10;
+	sdu_fragments = 0;
+
+	isoal_test_create_sdu_fagment(BT_ISO_SINGLE,
+				&testdata[testdata_indx], (testdata_size - testdata_indx),
+				sdu_total_size, sdu_packet_number,
+				sdu_timestamp, ref_point, event_number,
+				&tx_sdu_frag_buf.sdu_tx);
+
+	err = isoal_tx_sdu_fragment(source_hdl, &tx_sdu_frag_buf.sdu_tx);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Test fragmentation (Black Box) */
+	/* Valid PDUs */
+	/* PDU 3 */
+	payload_number += 30;
+	pdu_write_loc = 0;
+	sdu_read_loc = testdata_indx;
+	pdu_write_size = (testdata_size - testdata_indx);
+	sdu_fragments++;
+
+	ZASSERT_PDU_WRITE_TEST(history[2], pdu_buffer,
+					   pdu_write_loc,
+					   &testdata[sdu_read_loc],
+					   (pdu_write_size - pdu_write_loc));
+
+	ZASSERT_PDU_EMIT_TEST(history[2], &tx_pdu_meta_buf.node_tx,
+					  payload_number,
+					  sdu_fragments,
+					  PDU_BIS_LLID_COMPLETE_END,
+					  pdu_write_size,
+					  isoal_global.source_state[source_hdl].session.handle);
+
+	/* PDU release not expected (No Error) */
+	ZASSERT_PDU_RELEASE_TEST_CALL_COUNT(0);
+
+	/* Check TX Sync info */
+	tx_sync_seq_expected += 30;
+	tx_sync_timestamp_expected = ref_point - (iso_interval_int * CONN_INT_UNIT_US);
+	tx_sync_offset_expected = 0;
+
+	err = isoal_tx_get_sync_info(source_hdl, &tx_sync_seq, &tx_sync_timestamp, &tx_sync_offset);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+	zassert_equal(tx_sync_seq, tx_sync_seq_expected, "%d != %d", tx_sync_seq, 2);
+	zassert_equal(tx_sync_timestamp, tx_sync_timestamp_expected, "%d != %d", tx_sync_seq, 2);
+	zassert_equal(tx_sync_offset, tx_sync_offset_expected, "%ld != %ld", tx_sync_seq, 0);
+
+	/* SDU 4 Frag 1 ------------------------------------------------------*/
+	/* Check correct position in stream based on the SDU time stamp */
+	isoal_test_init_tx_pdu_buffer(&tx_pdu_meta_buf);
+	isoal_test_init_tx_sdu_buffer(&tx_sdu_frag_buf);
+	/* Same SDU packet sequence number for testing */
+	/* Time stamp just after the exact multiple of the SDU interval.
+	 * +1 (reset to exact multiple of SDU interval from the last SDU)
+	 * +1 (push the time stamp 1us beyond the multiple mark)
+	 */
+	sdu_timestamp += ((iso_interval_int * CONN_INT_UNIT_US) * 15) + 1 + 1;
+	event_number += 15;
+	ref_point += (iso_interval_int * CONN_INT_UNIT_US) * 15;
+	sdu_total_size = 10;
+	testdata_indx = testdata_size;
+	testdata_size += 10;
+	sdu_fragments = 0;
+
+	isoal_test_create_sdu_fagment(BT_ISO_SINGLE,
+				&testdata[testdata_indx], (testdata_size - testdata_indx),
+				sdu_total_size, sdu_packet_number,
+				sdu_timestamp, ref_point, event_number,
+				&tx_sdu_frag_buf.sdu_tx);
+
+	err = isoal_tx_sdu_fragment(source_hdl, &tx_sdu_frag_buf.sdu_tx);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+
+	/* Test fragmentation (Black Box) */
+	/* Valid PDUs */
+	/* PDU 3 */
+	payload_number += 30;
+	pdu_write_loc = 0;
+	sdu_read_loc = testdata_indx;
+	pdu_write_size = (testdata_size - testdata_indx);
+	sdu_fragments++;
+
+	ZASSERT_PDU_WRITE_TEST(history[3], pdu_buffer,
+					   pdu_write_loc,
+					   &testdata[sdu_read_loc],
+					   (pdu_write_size - pdu_write_loc));
+
+	ZASSERT_PDU_EMIT_TEST(history[3], &tx_pdu_meta_buf.node_tx,
+					  payload_number,
+					  sdu_fragments,
+					  PDU_BIS_LLID_COMPLETE_END,
+					  pdu_write_size,
+					  isoal_global.source_state[source_hdl].session.handle);
+
+	/* PDU release not expected (No Error) */
+	ZASSERT_PDU_RELEASE_TEST_CALL_COUNT(0);
+
+	/* Check TX Sync info */
+	tx_sync_seq_expected += 30;
+	tx_sync_timestamp_expected = ref_point - (iso_interval_int * CONN_INT_UNIT_US);
+	tx_sync_offset_expected = 0;
+
+	err = isoal_tx_get_sync_info(source_hdl, &tx_sync_seq, &tx_sync_timestamp, &tx_sync_offset);
+
+	zassert_equal(err, ISOAL_STATUS_OK, "err = 0x%02x", err);
+	zassert_equal(tx_sync_seq, tx_sync_seq_expected, "%d != %d", tx_sync_seq, 2);
+	zassert_equal(tx_sync_timestamp, tx_sync_timestamp_expected, "%d != %d", tx_sync_seq, 2);
+	zassert_equal(tx_sync_offset, tx_sync_offset_expected, "%ld != %ld", tx_sync_seq, 0);
+}
+
+/**
  * Test Suite  :   TX framed SDU segmentation
  *
  * Tests segmentation of a single SDU contained in a single fragment
