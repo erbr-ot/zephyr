@@ -191,11 +191,6 @@ atomic_t hci_state_mask;
 static struct k_poll_signal *hbuf_signal;
 #endif
 
-#if defined(CONFIG_BT_HCI_RESET_SIGNAL)
-static struct k_poll_signal *reset_signal;
-static struct k_sem *process_sem;
-#endif
-
 #if defined(CONFIG_BT_CONN)
 static uint32_t conn_count;
 #endif
@@ -436,10 +431,6 @@ static void set_event_mask_page_2(struct net_buf *buf, struct net_buf **evt)
 
 static void reset(struct net_buf *buf, struct net_buf **evt)
 {
-#if defined(CONFIG_BT_HCI_RESET_SIGNAL)
-	k_sem_take(process_sem, K_FOREVER);
-#endif
-
 #if defined(CONFIG_BT_HCI_MESH_EXT)
 	int i;
 
@@ -483,11 +474,6 @@ static void reset(struct net_buf *buf, struct net_buf **evt)
 		atomic_set_bit(&hci_state_mask, HCI_STATE_BIT_RESET);
 		k_poll_signal_raise(hbuf_signal, 0x0);
 	}
-#endif
-
-#if defined(CONFIG_BT_HCI_RESET_SIGNAL)
-	k_sem_give(process_sem);
-	k_poll_signal_raise(reset_signal, 0x0);
 #endif
 
 	hci_recv_fifo_reset();
@@ -8809,16 +8795,10 @@ uint8_t hci_get_class(struct node_rx_pdu *node_rx)
 #endif
 }
 
-void hci_init(struct k_poll_signal *signal_reset, struct k_poll_signal *signal_host_buf,
-              struct k_sem *sem_process)
+void hci_init(struct k_poll_signal *signal_host_buf)
 {
 #if defined(CONFIG_BT_HCI_ACL_FLOW_CONTROL)
 	hbuf_signal = signal_host_buf;
-#endif
-
-#if defined(CONFIG_BT_HCI_RESET_SIGNAL)
-	reset_signal = signal_reset;
-	process_sem  = sem_process;
 #endif
 	reset(NULL, NULL);
 }
