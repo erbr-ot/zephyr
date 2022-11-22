@@ -692,6 +692,9 @@ enum {
 	/* Reject response received */
 	LP_CC_EVT_REJECT,
 
+	/* CIS established */
+	LP_CC_EVT_ESTABLISHED,
+
 	/* Unknown response received */
 	LP_CC_EVT_UNKNOWN,
 };
@@ -912,10 +915,17 @@ static void lp_cc_st_wait_established(struct ll_conn *conn, struct proc_ctx *ctx
 {
 	switch (evt) {
 	case LP_CC_EVT_RUN:
-		if (cc_check_cis_established_lll(ctx)) {
-			/* CIS was established, so let's got ahead and complete procedure */
+		if (cc_check_cis_established_or_timeout_lll(ctx)) {
+			/* CIS was established or establishement timed out,
+			 * In either case complete procedure and generate
+			 * notification
+			 */
 			lp_cc_complete(conn, ctx, evt, param);
 		}
+		break;
+	case LP_CC_EVT_ESTABLISHED:
+		/* CIS was established, so let's go ahead and complete procedure */
+		lp_cc_complete(conn, ctx, evt, param);
 		break;
 	default:
 		/* Ignore other evts */
@@ -974,5 +984,15 @@ void llcp_lp_cc_run(struct ll_conn *conn, struct proc_ctx *ctx, void *param)
 bool llcp_lp_cc_is_active(struct proc_ctx *ctx)
 {
 	return ctx->state != LP_CC_STATE_IDLE;
+}
+
+bool llcp_lp_cc_awaiting_established(struct proc_ctx *ctx)
+{
+	return (ctx->state == LP_CC_STATE_WAIT_ESTABLISHED);
+}
+
+void llcp_lp_cc_established(struct ll_conn *conn, struct proc_ctx *ctx)
+{
+	rp_cc_execute_fsm(conn, ctx, LP_CC_EVT_ESTABLISHED, NULL);
 }
 #endif /* CONFIG_BT_CTLR_CENTRAL_ISO */

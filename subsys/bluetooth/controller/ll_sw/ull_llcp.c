@@ -1232,6 +1232,7 @@ void ull_cp_cte_req_set_disable(struct ll_conn *conn)
 	conn->llcp.cte_req.req_interval = 0U;
 }
 #endif /* CONFIG_BT_CTLR_DF_CONN_CTE_REQ */
+
 #if defined(CONFIG_BT_PERIPHERAL) && defined(CONFIG_BT_CTLR_PERIPHERAL_ISO)
 bool ull_cp_cc_awaiting_reply(struct ll_conn *conn)
 {
@@ -1276,7 +1277,9 @@ void ull_cp_cc_reject(struct ll_conn *conn, uint8_t error_code)
 		llcp_rp_cc_reject(conn, ctx);
 	}
 }
+#endif /* CONFIG_BT_PERIPHERAL && CONFIG_BT_CTLR_PERIPHERAL_ISO */
 
+#if defined(CONFIG_BT_CTLR_PERIPHERAL_ISO) || defined(CONFIG_BT_CTLR_CENTRAL_ISO)
 bool ull_cp_cc_awaiting_established(struct ll_conn *conn)
 {
 	struct proc_ctx *ctx;
@@ -1285,8 +1288,14 @@ bool ull_cp_cc_awaiting_established(struct ll_conn *conn)
 	if (ctx && ctx->proc == PROC_CIS_CREATE) {
 		return llcp_rp_cc_awaiting_established(ctx);
 	}
-	return false;
 
+#if defined(CONFIG_BT_CTLR_CENTRAL_ISO)
+	ctx = llcp_lr_peek(conn);
+	if (ctx && ctx->proc == PROC_CIS_CREATE) {
+		return llcp_lp_cc_awaiting_established(ctx);
+	}
+#endif /* CONFIG_BT_CTLR_CENTRAL_ISO */
+	return false;
 }
 
 void ull_cp_cc_established(struct ll_conn *conn, uint8_t error_code)
@@ -1298,8 +1307,16 @@ void ull_cp_cc_established(struct ll_conn *conn, uint8_t error_code)
 		ctx->data.cis_create.error = error_code;
 		llcp_rp_cc_established(conn, ctx);
 	}
+
+#if defined(CONFIG_BT_CTLR_CENTRAL_ISO)
+	ctx = llcp_lr_peek(conn);
+	if (ctx && ctx->proc == PROC_CIS_CREATE) {
+		ctx->data.cis_create.error = error_code;
+		llcp_lp_cc_established(conn, ctx);
+	}
+#endif /* CONFIG_BT_CTLR_CENTRAL_ISO */
 }
-#endif /* defined(CONFIG_BT_PERIPHERAL) && defined(CONFIG_BT_CTLR_PERIPHERAL_ISO) */
+#endif /* CONFIG_BT_CTLR_PERIPHERAL_ISO || CONFIG_BT_CTLR_CENTRAL_ISO */
 
 #if defined(CONFIG_BT_CENTRAL) && defined(CONFIG_BT_CTLR_CENTRAL_ISO)
 bool ull_lp_cc_is_active(struct ll_conn *conn)

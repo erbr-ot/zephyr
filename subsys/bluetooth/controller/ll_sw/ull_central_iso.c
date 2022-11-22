@@ -478,6 +478,26 @@ uint8_t ll_cig_parameters_commit(uint8_t cig_id)
 
 	cig->lll.num_cis = cis_count;
 
+#if 0
+	handle_iter = UINT16_MAX;
+	for (uint8_t i = 0; i < cis_count; i++) {
+		cis = ll_conn_iso_stream_get_by_group(cig, &handle_iter);
+
+		printk("   ----------------\n");
+		printk("   cis_id:    %u\n", cis->cis_id);
+		printk("   nse:       %u\n", cis->lll.num_subevents);
+		printk("   sub_int:   %u\n", cis->lll.sub_interval);
+		printk("   c_ft:      %u\n", cis->lll.tx.flush_timeout);
+		printk("   p_ft:      %u\n", cis->lll.rx.flush_timeout);
+		printk("   se_len:    %u\n", se[i].length);
+		printk("   c_pdu:     %u\n", cis->lll.tx.max_octets);
+		printk("   p_pdu:     %u\n", cis->lll.rx.max_octets);
+	}
+	printk("   ----------------\n");
+	printk("   iso_intrv: %u\n", iso_interval_us);
+	printk("   c_latency: %u\n", c_max_latency);
+	printk("   p_latency: %u\n", p_max_latency);
+#endif
 	return BT_HCI_ERR_SUCCESS;
 }
 
