@@ -747,32 +747,27 @@ static void lp_cc_st_idle(struct ll_conn *conn, struct proc_ctx *ctx, uint8_t ev
 	}
 }
 
-static void cc_prepare_cis_ind(struct ll_conn *conn, struct proc_ctx *ctx)
-{
-	uint8_t err;
-
-	/* Setup central parameters based on CIS_RSP */
-	err = ull_central_iso_setup(ctx->data.cis_create.cis_handle,
-				    &ctx->data.cis_create.cig_sync_delay,
-				    &ctx->data.cis_create.cis_sync_delay,
-				    &ctx->data.cis_create.cis_offset_min,
-				    &ctx->data.cis_create.cis_offset_max,
-				    &ctx->data.cis_create.conn_event_count,
-				    ctx->data.cis_create.aa);
-	LL_ASSERT(!err);
-
-	ctx->state = LP_CC_STATE_WAIT_INSTANT;
-	ctx->rx_opcode = PDU_DATA_LLCTRL_TYPE_UNUSED;
-}
-
 static void lp_cc_send_cis_ind(struct ll_conn *conn, struct proc_ctx *ctx, uint8_t evt,
 			       void *param)
 {
 	if (llcp_lr_ispaused(conn) || !llcp_tx_alloc_peek(conn, ctx)) {
 		ctx->state = LP_CC_STATE_WAIT_TX_CIS_IND;
 	} else {
-		cc_prepare_cis_ind(conn, ctx);
-		lp_cc_tx(conn, ctx, PDU_DATA_LLCTRL_TYPE_CIS_IND);
+		if (!ull_central_iso_setup(ctx->data.cis_create.cis_handle,
+					   &ctx->data.cis_create.cig_sync_delay,
+					   &ctx->data.cis_create.cis_sync_delay,
+					   &ctx->data.cis_create.cis_offset_min,
+					   &ctx->data.cis_create.cis_offset_max,
+					   &ctx->data.cis_create.conn_event_count,
+					   ctx->data.cis_create.aa)) {
+			ctx->state = LP_CC_STATE_WAIT_INSTANT;
+			ctx->rx_opcode = PDU_DATA_LLCTRL_TYPE_UNUSED;
+			lp_cc_tx(conn, ctx, PDU_DATA_LLCTRL_TYPE_CIS_IND);
+			break;
+		}
+		/* If we get to here the CIS/CIG resources referred have become void/invalid */
+		/* This cannot happen unless the universe has started to deflate */
+		LL_ASSERT(0);
 	}
 }
 
