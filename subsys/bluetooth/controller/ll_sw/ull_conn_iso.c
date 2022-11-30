@@ -616,7 +616,8 @@ void ull_conn_iso_ticker_cb(uint32_t ticks_at_expire, uint32_t ticks_drift,
 	 * point for the leading CIS is available for this event.
 	 */
 	if (leading_event_count > 0) {
-		cig->cig_ref_point += (cig->iso_interval * CONN_INT_UNIT_US);
+		cig->cig_ref_point = isoal_get_wrapped_time_us(cig->cig_ref_point,
+						cig->iso_interval * CONN_INT_UNIT_US);
 	}
 
 	/* Increment prepare reference count */
@@ -723,9 +724,8 @@ void ull_conn_iso_start(struct ll_conn *acl, uint32_t ticks_at_expire, uint16_t 
 	 * calculation is inaccurate. However it is the best estimate available
 	 * until the first anchor point for the leading CIS is available.
 	 */
-	cig->cig_ref_point = HAL_TICKER_TICKS_TO_US(ticks_at_expire);
-	cig->cig_ref_point += EVENT_OVERHEAD_START_US;
-	cig->cig_ref_point += acl_to_cig_ref_point;
+	cig->cig_ref_point = isoal_get_wrapped_time_us(HAL_TICKER_TICKS_TO_US(ticks_at_expire),
+						EVENT_OVERHEAD_START_US + acl_to_cig_ref_point);
 
 	if (IS_PERIPHERAL(cig)) {
 		uint32_t iso_interval_us_frac;
@@ -745,7 +745,8 @@ void ull_conn_iso_start(struct ll_conn *acl, uint32_t ticks_at_expire, uint16_t 
 		cig_offset_us -= ready_delay_us;
 		cig_offset_us += (acl->lll.interval * CONN_INT_UNIT_US);
 
-		cig->cig_ref_point += (acl->lll.interval * CONN_INT_UNIT_US);
+		cig->cig_ref_point += isoal_get_wrapped_time_us(cig->cig_ref_point,
+							acl->lll.interval * CONN_INT_UNIT_US);
 	} else {
 		uint32_t iso_interval_us;
 
