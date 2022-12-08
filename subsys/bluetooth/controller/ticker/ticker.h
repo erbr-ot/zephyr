@@ -170,7 +170,7 @@ uint32_t ticker_ticks_diff_get(uint32_t ticks_now, uint32_t ticks_old);
 
 #if !defined(CONFIG_BT_TICKER_LOW_LAT) && \
 	!defined(CONFIG_BT_TICKER_SLOT_AGNOSTIC)
-uint32_t ticker_priority_set(uint8_t instance_index, uint8_t user_id,
+uint8_t ticker_priority_set(uint8_t instance_index, uint8_t user_id,
 			     uint8_t ticker_id, int8_t priority,
 			     ticker_op_func fp_op_func, void *op_context);
 #if defined(CONFIG_BT_TICKER_EXT)
