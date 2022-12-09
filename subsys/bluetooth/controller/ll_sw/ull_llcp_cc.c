@@ -193,9 +193,6 @@ static void llcp_rp_cc_tx_rsp(struct ll_conn *conn, struct proc_ctx *ctx)
 		ctx->data.cis_create.cis_offset_max += offset_us;
 	}
 
-	ctx->data.cis_create.conn_event_count = MAX(ctx->data.cis_create.conn_event_count,
-						    cc_event_counter(conn) + 2);
-
 	llcp_pdu_encode_cis_rsp(ctx, pdu);
 	ctx->tx_opcode = pdu->llctrl.opcode;
 

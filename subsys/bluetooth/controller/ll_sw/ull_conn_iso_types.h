@@ -27,7 +27,6 @@ struct ll_conn_iso_stream {
 	uint16_t trx_performed:1;  /* 1 if CIS had a transaction */
 	uint16_t p_max_sdu:12;     /* Maximum SDU size P_To_C */
 	uint16_t c_max_sdu:12;     /* Maximum SDU size C_To_P */
-	uint16_t event_expire;     /* Supervision & Connect Timeout event counter */
 	union {
 		struct {
 			uint8_t  c_rtn;

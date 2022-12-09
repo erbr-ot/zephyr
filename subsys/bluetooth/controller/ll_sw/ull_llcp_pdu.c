@@ -801,15 +801,6 @@ void llcp_pdu_decode_cis_ind(struct proc_ctx *ctx, struct pdu_data *pdu)
 	ctx->data.cis_create.conn_event_count =
 		sys_le16_to_cpu(pdu->llctrl.cis_ind.conn_event_count);
 	/* The remainder of the cis ind is decoded by ull_peripheral_iso_setup, so
-	 *  no need to do it here too
-	*/
-}
-
-void llcp_pdu_decode_cis_ind(struct proc_ctx *ctx, struct pdu_data *pdu)
-{
-	ctx->data.cis_create.conn_event_count =
-		sys_le16_to_cpu(pdu->llctrl.cis_ind.conn_event_count);
-	/* The remainder of the cis ind is decoded by ull_peripheral_iso_setup, so
 	 * no need to do it here too
 	 */
 }
