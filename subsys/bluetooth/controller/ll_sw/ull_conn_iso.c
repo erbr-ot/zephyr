@@ -745,7 +745,7 @@ void ull_conn_iso_start(struct ll_conn *acl, uint32_t ticks_at_expire, uint16_t 
 		cig_offset_us -= ready_delay_us;
 		cig_offset_us += (acl->lll.interval * CONN_INT_UNIT_US);
 
-		cig->cig_ref_point += isoal_get_wrapped_time_us(cig->cig_ref_point,
+		cig->cig_ref_point = isoal_get_wrapped_time_us(cig->cig_ref_point,
 							acl->lll.interval * CONN_INT_UNIT_US);
 	} else {
 		uint32_t iso_interval_us;
