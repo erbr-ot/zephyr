@@ -45,9 +45,6 @@
 #include "ull_llcp_internal.h"
 #include "ull_periph_internal.h"
 
-#define BT_DBG_ENABLED IS_ENABLED(CONFIG_BT_DEBUG_HCI_DRIVER)
-#define LOG_MODULE_NAME bt_ctlr_ull_llcp
-#include "common/log.h"
 #include <soc.h>
 #include "hal/debug.h"
 
@@ -296,6 +293,7 @@ static struct proc_ctx *create_procedure(enum llcp_proc proc, struct llcp_mem_po
 	ctx->collision = 0U;
 	ctx->done = 0U;
 	ctx->rx_greedy = 0U;
+	ctx->tx_ack = NULL;
 
 	/* Clear procedure data */
 	memset((void *)&ctx->data, 0, sizeof(ctx->data));

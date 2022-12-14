@@ -70,10 +70,11 @@
 #include "ull_llcp_features.h"
 #endif /* CONFIG_BT_LL_SW_LLCP_LEGACY */
 
-#define BT_DBG_ENABLED IS_ENABLED(CONFIG_BT_DEBUG_HCI_DRIVER)
-#define LOG_MODULE_NAME bt_ctlr_ull_conn
-#include "common/log.h"
 #include "hal/debug.h"
+
+#define LOG_LEVEL CONFIG_BT_HCI_DRIVER_LOG_LEVEL
+#include <zephyr/logging/log.h>
+LOG_MODULE_REGISTER(bt_ctlr_ull_conn);
 
 static int init_reset(void);
 #if defined(CONFIG_BT_CTLR_RX_ENQUEUE_HOLD)
@@ -343,8 +344,7 @@ int ll_tx_mem_enqueue(uint16_t handle, void *tx)
 			force_md_cnt = force_md_cnt_calc(&conn->lll, tx_rate);
 			previous = lll_conn_force_md_cnt_set(force_md_cnt);
 			if (previous != force_md_cnt) {
-				BT_INFO("force_md_cnt: old= %u, new= %u.",
-					previous, force_md_cnt);
+				LOG_INF("force_md_cnt: old= %u, new= %u.", previous, force_md_cnt);
 			}
 		}
 #endif /* CONFIG_BT_CTLR_FORCE_MD_AUTO */
@@ -372,8 +372,7 @@ int ll_tx_mem_enqueue(uint16_t handle, void *tx)
 	cycle_stamp = k_cycle_get_32();
 	delta = k_cyc_to_ns_floor64(cycle_stamp - last_cycle_stamp);
 	if (delta > BT_CTLR_THROUGHPUT_PERIOD) {
-		BT_INFO("incoming Tx: count= %u, len= %u, rate= %u bps.",
-			tx_cnt, tx_len, tx_rate);
+		LOG_INF("incoming Tx: count= %u, len= %u, rate= %u bps.", tx_cnt, tx_len, tx_rate);
 
 		last_cycle_stamp = cycle_stamp;
 		tx_cnt = 0U;
@@ -1437,8 +1436,10 @@ int ull_conn_llcp(struct ll_conn *conn, uint32_t ticks_at_expire, uint16_t lazy)
 			 * replace any other timeout running
 			 */
 			const uint32_t conn_interval_us = conn->lll.interval * CONN_INT_UNIT_US;
-			conn->procedure_expire = RADIO_CONN_EVENTS((conn->timeout * 10U * 1000U),
-								   conn_interval_us);
+
+			conn->procedure_expire = RADIO_CONN_EVENTS(
+				(conn->supervision_timeout * 10U * 1000U),
+				conn_interval_us);
 
 			/* NOTE: if supervision timeout equals connection
 			 * interval, dont timeout in current event.
@@ -1694,8 +1695,10 @@ void ull_conn_done(struct node_rx_event_done *done)
 		/* Start supervision timeout, if not started already */
 		if (!conn->supervision_expire) {
 			const uint32_t conn_interval_us = conn->lll.interval * CONN_INT_UNIT_US;
-			conn->supervision_expire = RADIO_CONN_EVENTS((conn->timeout * 10U * 1000U),
-								   conn_interval_us);
+
+			conn->supervision_expire = RADIO_CONN_EVENTS(
+				(conn->supervision_timeout * 10U * 1000U),
+				conn_interval_us);
 		}
 	}
 
@@ -1776,8 +1779,7 @@ void ull_conn_done(struct node_rx_event_done *done)
 				rx->type = NODE_RX_TYPE_APTO;
 
 				/* enqueue apto event into rx queue */
-				ll_rx_put(rx->link, rx);
-				ll_rx_sched();
+				ll_rx_put_sched(rx->link, rx);
 			} else {
 				conn->apto_expire = 1U;
 			}
@@ -1853,8 +1855,7 @@ void ull_conn_done(struct node_rx_event_done *done)
 			pdu_data_rx->rssi = lll->rssi_reported;
 
 			/* enqueue connection RSSI structure into queue */
-			ll_rx_put(rx->hdr.link, rx);
-			ll_rx_sched();
+			ll_rx_put_sched(rx->hdr.link, rx);
 		}
 	}
 #endif /* CONFIG_BT_CTLR_CONN_RSSI_EVENT */
@@ -2800,8 +2801,7 @@ static void tx_lll_flush(void *param)
 	rx->hdr.link = NULL;
 
 	/* Enqueue the terminate towards ULL context */
-	ull_rx_put(link, rx);
-	ull_rx_sched();
+	ull_rx_put_sched(link, rx);
 }
 
 #if defined(CONFIG_BT_CTLR_LLID_DATA_START_EMPTY)
@@ -3347,7 +3347,7 @@ static inline int event_conn_upd_prep(struct ll_conn *conn, uint16_t lazy,
 		/* Prepare the rx packet structure */
 		if ((conn->llcp_cu.interval != lll->interval) ||
 		    (conn->llcp_cu.latency != lll->latency) ||
-		    (conn->llcp_cu.timeout != conn->timeout)) {
+		    (conn->llcp_cu.timeout != conn->supervision_timeout)) {
 			struct node_rx_cu *cu;
 
 			rx->hdr.handle = lll->handle;
@@ -3365,8 +3365,7 @@ static inline int event_conn_upd_prep(struct ll_conn *conn, uint16_t lazy,
 			rx_hold_put(conn, rx->hdr.link, rx);
 #else /* !CONFIG_BT_CTLR_RX_ENQUEUE_HOLD */
 			/* enqueue rx node towards Thread */
-			ll_rx_put(rx->hdr.link, rx);
-			ll_rx_sched();
+			ll_rx_put_sched(rx->hdr.link, rx);
 #endif /* !CONFIG_BT_CTLR_RX_ENQUEUE_HOLD */
 
 		} else {
@@ -3374,8 +3373,7 @@ static inline int event_conn_upd_prep(struct ll_conn *conn, uint16_t lazy,
 			rx->hdr.type = NODE_RX_TYPE_RELEASE;
 
 			/* enqueue rx node towards Thread */
-			ll_rx_put(rx->hdr.link, rx);
-			ll_rx_sched();
+			ll_rx_put_sched(rx->hdr.link, rx);
 		}
 
 #if defined(CONFIG_BT_CTLR_XTAL_ADVANCED)
@@ -3479,7 +3477,7 @@ static inline int event_conn_upd_prep(struct ll_conn *conn, uint16_t lazy,
 		lll->interval = conn->llcp_cu.interval;
 		lll->latency = conn->llcp_cu.latency;
 
-		conn->timeout = conn->llcp_cu.timeout;
+		conn->supervision_timeout = conn->llcp_cu.timeout;
 		conn->procedure_reload =
 			RADIO_CONN_EVENTS((40 * 1000 * 1000), conn_interval_us);
 
@@ -3705,8 +3703,7 @@ static inline void event_enc_prep(struct ll_conn *conn)
 			pdu->llctrl.enc_req.ediv[1] = conn->llcp_enc.ediv[1];
 
 			/* enqueue enc req structure into rx queue */
-			ll_rx_put(rx->hdr.link, rx);
-			ll_rx_sched();
+			ll_rx_put_sched(rx->hdr.link, rx);
 
 			/* Wait for LTK reply */
 			conn->llcp.encryption.state = LLCP_ENC_STATE_LTK_WAIT;
@@ -3871,8 +3868,7 @@ static inline void event_fex_prep(struct ll_conn *conn)
 			     pdu->llctrl.feature_req.features);
 
 		/* enqueue feature rsp structure into rx queue */
-		ll_rx_put(rx->hdr.link, rx);
-		ll_rx_sched();
+		ll_rx_put_sched(rx->hdr.link, rx);
 
 		return;
 	}
@@ -3984,8 +3980,7 @@ static inline void event_vex_prep(struct ll_conn *conn)
 			sys_cpu_to_le16(conn->llcp_version.sub_version_number);
 
 		/* enqueue version ind structure into rx queue */
-		ll_rx_put(rx->hdr.link, rx);
-		ll_rx_sched();
+		ll_rx_put_sched(rx->hdr.link, rx);
 	} else {
 		/* tx-ed but no rx, and new request placed */
 		LL_ASSERT(0);
@@ -4258,8 +4253,7 @@ static inline void event_conn_param_app_req(struct ll_conn *conn)
 	p->timeout = sys_cpu_to_le16(conn->llcp_conn_param.timeout);
 
 	/* enqueue connection parameter request into rx queue */
-	ll_rx_put(rx->hdr.link, rx);
-	ll_rx_sched();
+	ll_rx_put_sched(rx->hdr.link, rx);
 }
 
 static inline void event_conn_param_prep(struct ll_conn *conn,
@@ -4573,8 +4567,7 @@ static inline void event_len_prep(struct ll_conn *conn)
 #endif /* CONFIG_BT_CTLR_PHY */
 
 		/* enqueue rx node towards Thread */
-		ll_rx_put(rx->hdr.link, rx);
-		ll_rx_sched();
+		ll_rx_put_sched(rx->hdr.link, rx);
 	}
 	break;
 
@@ -4784,8 +4777,7 @@ static inline void event_phy_upd_ind_prep(struct ll_conn *conn,
 				upd->rx = lll->phy_rx;
 
 				/* Enqueue Rx node */
-				ll_rx_put(rx->hdr.link, rx);
-				ll_rx_sched();
+				ll_rx_put_sched(rx->hdr.link, rx);
 			}
 		} else {
 			struct lll_conn *lll = &conn->lll;
@@ -4975,8 +4967,7 @@ static inline void event_phy_upd_ind_prep(struct ll_conn *conn,
 			rx->hdr.type = NODE_RX_TYPE_RELEASE;
 
 			/* enqueue rx node towards Thread */
-			ll_rx_put(rx->hdr.link, rx);
-			ll_rx_sched();
+			ll_rx_put_sched(rx->hdr.link, rx);
 			return;
 		}
 		lll->max_tx_time = eff_tx_time;
@@ -5643,7 +5634,7 @@ static inline int reject_ind_conn_upd_recv(struct ll_conn *conn,
 	cu->status = rej_ext_ind->error_code;
 	cu->interval = lll->interval;
 	cu->latency = lll->latency;
-	cu->timeout = conn->timeout;
+	cu->timeout = conn->supervision_timeout;
 
 	return 0;
 }
@@ -7270,7 +7261,7 @@ static inline int ctrl_rx(memq_link_t *link, struct node_rx_pdu **rx,
 				     lll->interval) ||
 				    (conn->llcp_conn_param.latency !=
 				     lll->latency) ||
-				    (conn->llcp_conn_param.timeout != conn->timeout)) {
+				    (conn->llcp_conn_param.timeout != conn->supervision_timeout)) {
 #if defined(CONFIG_BT_CTLR_LE_ENC)
 					/* postpone CP request event if under
 					 * encryption setup
@@ -7367,7 +7358,7 @@ static inline int ctrl_rx(memq_link_t *link, struct node_rx_pdu **rx,
 			if ((conn->llcp_conn_param.interval_max !=
 			     lll->interval) ||
 			    (conn->llcp_conn_param.latency != lll->latency) ||
-			    (conn->llcp_conn_param.timeout != conn->timeout)) {
+			    (conn->llcp_conn_param.timeout != conn->supervision_timeout)) {
 				conn->llcp_conn_param.state =
 					LLCP_CPR_STATE_APP_WAIT;
 			} else {
@@ -7591,7 +7582,7 @@ static inline int ctrl_rx(memq_link_t *link, struct node_rx_pdu **rx,
 			cu->status = BT_HCI_ERR_UNSUPP_REMOTE_FEATURE;
 			cu->interval = lll->interval;
 			cu->latency = lll->latency;
-			cu->timeout = conn->timeout;
+			cu->timeout = conn->supervision_timeout;
 #endif /* CONFIG_BT_CTLR_CONN_PARAM_REQ */
 
 #if defined(CONFIG_BT_CTLR_DATA_LENGTH)
@@ -7954,7 +7945,7 @@ static uint8_t force_md_cnt_calc(struct lll_conn *lll_conn, uint32_t tx_rate)
 				   EVENT_IFS_US) << 1;
 		force_md_cnt = (delta + (time_keep_alive - 1)) /
 			       time_keep_alive;
-		BT_DBG("Time: incoming= %u, expected outgoing= %u, delta= %u, "
+		LOG_DBG("Time: incoming= %u, expected outgoing= %u, delta= %u, "
 		       "keepalive= %u, force_md_cnt = %u.",
 		       time_incoming, time_outgoing, delta, time_keep_alive,
 		       force_md_cnt);
@@ -8177,7 +8168,7 @@ void ull_conn_update_parameters(struct ll_conn *conn, uint8_t is_cu_proc, uint8_
 	lll->interval = interval;
 	lll->latency = latency;
 
-	conn->timeout = timeout;
+	conn->supervision_timeout = timeout;
 	ull_cp_prt_reload_set(conn, conn_interval_us);
 
 #if defined(CONFIG_BT_CTLR_LE_PING)

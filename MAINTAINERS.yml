@@ -249,7 +249,9 @@ Bluetooth Audio:
     - MariuszSkamra
     - rymanluk
     - sjanc
+    - szymon-czapracki
     - asbjornsabo
+    - fredrikdanebjer
   files:
     - subsys/bluetooth/audio/
     - include/zephyr/bluetooth/audio/
@@ -321,6 +323,17 @@ CMSIS API layer:
   labels:
     - "area: CMSIS API Layer"
     - "area: Portability"
+
+DSP subsystem:
+  status: maintained
+  maintainers:
+    - stephanosio
+    - yperess
+  files:
+    - subsys/dsp/
+    - tests/subsys/dsp/
+  labels:
+    - "area: DSP"
 
 CMSIS-DSP integration:
   status: maintained
@@ -763,6 +776,19 @@ Release Notes:
     - samples/drivers/fpga/
   labels:
     - "area: FPGA"
+
+"Drivers: Fuel Gauge":
+  status: maintained
+  maintainers:
+    - aaronemassey
+    - teburd
+  files:
+    - drivers/fuel_gauge/
+    - dts/bindings/fuel-gauge/
+    - include/zephyr/drivers/fuel_gauge.h
+    - tests/drivers/fuel_gauge/
+  labels:
+    - "area: Fuel Gauge"
 
 "Drivers: GPIO":
   status: maintained
@@ -1776,7 +1802,6 @@ Nuvoton NPCX Platforms:
     - keith-zephyr
     - jackrosenthal
     - fabiobaltieri
-    - yperess
   files:
     - soc/arm/nuvoton_npcx/
     - boards/arm/npcx*/
@@ -1813,9 +1838,9 @@ SiLabs Platforms:
 Intel Platforms (X86):
   status: maintained
   maintainers:
-    - enjiamai
-  collaborators:
     - jhedberg
+  collaborators:
+    - tbursztyka
     - aasthagr
     - laurenmurphyx64
     - MaureenHelm
@@ -1970,11 +1995,10 @@ Espressif Platforms:
   status: maintained
   maintainers:
     - sylvioalves
-    - glaubermaroto
-    - uLipe
   collaborators:
     - LucasTambor
     - marekmatej
+    - uLipe
   files:
     - drivers/*/*esp32*.c
     - boards/xtensa/esp32*/
@@ -2002,7 +2026,6 @@ ITE Platforms:
     - jackrosenthal
     - keith-zephyr
     - brockus-zephyr
-    - yperess
     - sjg20
   files:
     - boards/riscv/it8xxx2_evb/
@@ -2137,6 +2160,7 @@ USB:
     - samples/subsys/usb/
     - subsys/usb/
     - tests/subsys/usb/
+    - tests/drivers/udc/
   labels:
     - "area: USB"
 
@@ -2769,6 +2793,7 @@ x86 arch:
   maintainers:
     - jhedberg
   collaborators:
+    - tbursztyka
     - andyross
     - nashif
     - dcpleung

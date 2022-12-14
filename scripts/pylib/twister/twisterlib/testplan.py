@@ -14,6 +14,7 @@ from collections import OrderedDict
 from itertools import islice
 import logging
 import copy
+import shutil
 
 logger = logging.getLogger('twister')
 logger.setLevel(logging.DEBUG)
@@ -517,8 +518,10 @@ class TestPlan:
                 )
 
                 instance.metrics['handler_time'] = ts.get('execution_time', 0)
-                instance.metrics['ram_size'] = ts.get("ram_size", 0)
-                instance.metrics['rom_size']  = ts.get("rom_size",0)
+                instance.metrics['used_ram'] = ts.get("used_ram", 0)
+                instance.metrics['used_rom']  = ts.get("used_rom",0)
+                instance.metrics['available_ram'] = ts.get('available_ram', 0)
+                instance.metrics['available_rom'] = ts.get('available_rom', 0)
 
                 status = ts.get('status', None)
                 reason = ts.get("reason", "Unknown")
@@ -597,7 +600,17 @@ class TestPlan:
         elif arch_filter:
             platforms = list(filter(lambda p: p.arch in arch_filter, self.platforms))
         elif default_platforms:
-            platforms = list(filter(lambda p: p.default, self.platforms))
+            _platforms = list(filter(lambda p: p.default, self.platforms))
+            platforms = []
+            # default platforms that can't be run are dropped from the list of
+            # the default platforms list. Default platforms should always be
+            # runnable.
+            for p in _platforms:
+                if p.simulation and p.simulation_exec:
+                    if shutil.which(p.simulation_exec):
+                        platforms.append(p)
+                else:
+                    platforms.append(p)
         else:
             platforms = self.platforms
 

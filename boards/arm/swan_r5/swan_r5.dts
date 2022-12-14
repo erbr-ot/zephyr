@@ -42,7 +42,7 @@
 	};
 
 	supply-3v3 {
-		compatible = "regulator-fixed-sync", "regulator-fixed";
+		compatible = "regulator-fixed";
 		regulator-name = "supply-3v3";
 		enable-gpios = <&gpioe 4 GPIO_ACTIVE_HIGH>;
 		regulator-boot-on;
@@ -55,6 +55,10 @@
 };
 
 &clk_lsi {
+	status = "okay";
+};
+
+&clk_hsi48 {
 	status = "okay";
 };
 

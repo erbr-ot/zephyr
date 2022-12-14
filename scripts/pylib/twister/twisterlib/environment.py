@@ -2,6 +2,7 @@
 # vim: set syntax=python ts=4 :
 #
 # Copyright (c) 2018 Intel Corporation
+# Copyright 2022 NXP
 # SPDX-License-Identifier: Apache-2.0
 
 import os
@@ -377,8 +378,11 @@ structure in the main Zephyr tree: boards/<arch>/<board_name>/""")
                         help="Specify a file where to save logs.")
 
     parser.add_argument(
-        "-M", "--runtime-artifact-cleanup", action="store_true",
-        help="Delete artifacts of passing tests.")
+        "-M", "--runtime-artifact-cleanup", choices=['pass', 'all'],
+        default=None, const='pass', nargs='?',
+        help="""Cleanup test artifacts. The default behavior is 'pass'
+        which only removes artifacts of passing tests. If you wish to
+        remove all artificats including those of failed tests, use 'all'.""")
 
     test_xor_generator.add_argument(
         "-N", "--ninja", action="store_true",
@@ -526,7 +530,9 @@ structure in the main Zephyr tree: boards/<arch>/<board_name>/""")
              "'--ninja' argument (to use Ninja build generator).")
 
     parser.add_argument(
-        "--show-footprint", action="store_true",
+        "--show-footprint",
+        action="store_true",
+        required = "--footprint-from-buildlog" in sys.argv,
         help="Show footprint statistics and deltas since last release."
     )
 
@@ -612,6 +618,12 @@ structure in the main Zephyr tree: boards/<arch>/<board_name>/""")
         help="Don't run twister. Instead, produce a report to "
              "stdout detailing RAM/ROM sizes on the specified filenames. "
              "All other command line arguments ignored.")
+
+    parser.add_argument(
+        "--footprint-from-buildlog",
+        action = "store_true",
+        help="Get information about memory footprint from generated build.log. "
+             "Requires using --show-footprint option.")
 
     options = parser.parse_args(args)
 

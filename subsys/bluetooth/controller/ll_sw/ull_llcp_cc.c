@@ -46,9 +46,6 @@
 #include "ull_peripheral_iso_internal.h"
 #include "ull_central_iso_internal.h"
 
-#define BT_DBG_ENABLED IS_ENABLED(CONFIG_BT_DEBUG_HCI_DRIVER)
-#define LOG_MODULE_NAME bt_ctlr_ull_llcp_cis
-#include "common/log.h"
 #include <soc.h>
 #include "hal/debug.h"
 
@@ -90,8 +87,7 @@ static void cc_ntf_established(struct ll_conn *conn, struct proc_ctx *ctx)
 	pdu->status = ctx->data.cis_create.error;
 
 	/* Enqueue notification towards LL */
-	ll_rx_put(ntf->hdr.link, ntf);
-	ll_rx_sched();
+	ll_rx_put_sched(ntf->hdr.link, ntf);
 }
 
 #if defined(CONFIG_BT_PERIPHERAL)
@@ -197,6 +193,9 @@ static void llcp_rp_cc_tx_rsp(struct ll_conn *conn, struct proc_ctx *ctx)
 		ctx->data.cis_create.cis_offset_max += offset_us;
 	}
 
+	ctx->data.cis_create.conn_event_count = MAX(ctx->data.cis_create.conn_event_count,
+						    cc_event_counter(conn) + 2);
+
 	llcp_pdu_encode_cis_rsp(ctx, pdu);
 	ctx->tx_opcode = pdu->llctrl.opcode;
 
@@ -243,8 +242,7 @@ static void rp_cc_ntf_create(struct ll_conn *conn, struct proc_ctx *ctx)
 	ctx->data.cis_create.host_request_to = 0U;
 
 	/* Enqueue notification towards LL */
-	ll_rx_put(ntf->hdr.link, ntf);
-	ll_rx_sched();
+	ll_rx_put_sched(ntf->hdr.link, ntf);
 }
 
 static void rp_cc_complete(struct ll_conn *conn, struct proc_ctx *ctx, uint8_t evt, void *param)
@@ -615,8 +613,12 @@ void llcp_rp_cc_rx(struct ll_conn *conn, struct proc_ctx *ctx, struct node_rx_pd
 		rp_cc_execute_fsm(conn, ctx, RP_CC_EVT_REJECT, pdu);
 		break;
 	default:
-		/* Unknown opcode */
-		LL_ASSERT(0);
+		/* Invalid behaviour */
+		/* Invalid PDU received so terminate connection */
+		conn->llcp_terminate.reason_final = BT_HCI_ERR_LMP_PDU_NOT_ALLOWED;
+		llcp_rr_complete(conn);
+		ctx->state = RP_CC_STATE_IDLE;
+		break;
 	}
 }
 
@@ -743,8 +745,12 @@ void llcp_lp_cc_rx(struct ll_conn *conn, struct proc_ctx *ctx, struct node_rx_pd
 		lp_cc_execute_fsm(conn, ctx, LP_CC_EVT_REJECT, pdu);
 		break;
 	default:
-		/* Unknown opcode */
-		LL_ASSERT(0);
+		/* Invalid behaviour */
+		/* Invalid PDU received so terminate connection */
+		conn->llcp_terminate.reason_final = BT_HCI_ERR_LMP_PDU_NOT_ALLOWED;
+		llcp_lr_complete(conn);
+		ctx->state = LP_CC_STATE_IDLE;
+		break;
 	}
 }
 

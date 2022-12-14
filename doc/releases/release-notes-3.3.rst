@@ -40,6 +40,18 @@ Changes in this release
 * Starting from this release ``zephyr-`` prefixed tags won't be created
   anymore. The project will continue using ``v`` tags, for example ``v3.3.0``.
 
+* Bluetooth: Deprecate the Bluetooth logging subsystem in favor of the Zephyr
+  standard logging system. To enable debugging for a particular module in the
+  Bluetooth subsystem, enable `CONFIG_BT_(module name)_LOG_LEVEL_DBG` instead of
+  `CONFIG_BT_DEBUG_(module name)`.
+
+* MCUmgr img_mgmt now requires that a full sha256 hash to be used when
+  uploading an image to keep track of the progress, where the sha256 hash
+  is of the whole file being uploaded (different to the hash used when getting
+  image states). Use of a truncated hash or non-sha256 hash will still work
+  but will cause issues and failures in client software with future updates
+  to Zephyr/MCUmgr such as image verification.
+
 Removed APIs in this release
 ============================
 
@@ -104,6 +116,23 @@ Deprecated in this release
   :kconfig:option:`CONFIG_COUNTER_RTC_STM32_CLOCK_LSE` options are now
   deprecated.
 
+* File backend for settings APIs and Kconfig options were deprecated:
+
+  :c:func:`settings_mount_fs_backend` in favor of :c:func:`settings_mount_file_backend`
+
+  :kconfig:option:`CONFIG_SETTINGS_FS` in favor of :kconfig:option:`CONFIG_SETTINGS_FILE`
+
+  :kconfig:option:`CONFIG_SETTINGS_FS_DIR` in favor of :kconfig:option:`CONFIG_SETTINGS_FILE_DIR`
+
+  :kconfig:option:`CONFIG_SETTINGS_FS_FILE` in favor of :kconfig:option:`CONFIG_SETTINGS_FILE_PATH`
+
+  :kconfig:option:`CONFIG_SETTINGS_FS_MAX_LINES` in favor of :kconfig:option:`CONFIG_SETTINGS_FILE_MAX_LINES`
+
+* PCIe APIs :c:func:`pcie_probe` and :c:func:`pcie_bdf_lookup` have been
+  deprecated in favor of a centralized scan of available PCIe devices.
+
+* SPI DT :c:func:`spi_is_ready` function has been deprecated in favor of :c:func:`spi_is_ready_dt`.
+
 Stable API changes in this release
 ==================================
 
@@ -149,6 +178,8 @@ Bluetooth
 
   * Fixed missing calls to bt_le_per_adv_sync_cb.term when deleting a periodic
     advertising sync object.
+
+  * Added local advertising address to bt_le_ext_adv_info.
 
 * Mesh
 
@@ -229,6 +260,12 @@ Drivers and Sensors
 
   * spi_nor: Added property mxicy,mx25r-power-mode to jedec,spi-nor binding for controlling low power/high performance mode on Macronix MX25R* Ultra Low Power flash devices.
 
+  * spi_nor: Added check if the flash is busy during init. This used to cause
+    the flash device to be unavailable until the system was restarted. The fix
+    waits for the flash to become ready before continuing. In cases where a
+    full flash erase was started before a restart, this might result in several
+    minutes of waiting time (depending on flash size and erase speed).
+
 * GPIO
 
 * I2C
@@ -256,6 +293,14 @@ Drivers and Sensors
 * PECI
 
 * Pin control
+
+  * Common pin control properties are now defined at root level in a single
+    file: :zephyr_file:`dts/bindings/pinctrl/pincfg-node.yaml`. Pin control
+    bindings are expected to include it at the level they need. For example,
+    drivers using the grouping representation approach need to include it at
+    grandchild level, while drivers using the node approach need to include it
+    at the child level. This change will only impact out-of-tree pin control
+    drivers, sinc all in-tree drivers have been updated.
 
 * PWM
 
@@ -307,6 +352,12 @@ Devicetree
 
 Libraries / Subsystems
 **********************
+
+* File systems
+
+  * Added new API call `fs_mkfs`.
+  * Added new sample `samples/subsys/fs/format`.
+  * FAT FS driver has been updated to version 0.15 w/patch1.
 
 * Management
 
@@ -370,6 +421,12 @@ Libraries / Subsystems
 
     Private headers for above areas can be accessed, when required, using paths:
     ``mgmt/mcumgr/mgmt/<mcumgr_subarea>/``.
+  * MCUmgr os_mgmt info command has been added that allows querying details on
+    the kernel and application, allowing application-level extensibility
+    see :ref:`mcumgr_os_application_info` for details.
+
+ * MCUMgr :kconfig:option:`CONFIG_APP_LINK_WITH_MCUMGR` has been removed as
+   it has not been doing anything.
 
 * LwM2M
 

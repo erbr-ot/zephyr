@@ -43,9 +43,6 @@
 #include "lll_prof_internal.h"
 #include "lll_scan_internal.h"
 
-#define BT_DBG_ENABLED IS_ENABLED(CONFIG_BT_DEBUG_HCI_DRIVER)
-#define LOG_MODULE_NAME bt_ctlr_lll_scan
-#include "common/log.h"
 #include "hal/debug.h"
 
 /* Maximum primary Advertising Radio Channels to scan */
@@ -1050,8 +1047,7 @@ static void isr_done_cleanup(void *param)
 		/* TODO: add other info by defining a payload struct */
 		node_rx->type = NODE_RX_TYPE_SCAN_INDICATION;
 
-		ull_rx_put(node_rx->link, node_rx);
-		ull_rx_sched();
+		ull_rx_put_sched(node_rx->link, node_rx);
 	}
 #endif /* CONFIG_BT_CTLR_SCAN_INDICATION */
 
@@ -1095,8 +1091,7 @@ static void isr_done_cleanup(void *param)
 
 		node_rx->hdr.rx_ftr.param = lll;
 
-		ull_rx_put(node_rx->hdr.link, node_rx);
-		ull_rx_sched();
+		ull_rx_put_sched(node_rx->hdr.link, node_rx);
 	}
 #endif  /* CONFIG_BT_CTLR_ADV_EXT */
 
@@ -1262,8 +1257,7 @@ static inline int isr_rx_pdu(struct lll_scan *lll, struct pdu_adv *pdu_adv_rx,
 			ftr->extra = ull_pdu_rx_alloc();
 		}
 
-		ull_rx_put(rx->hdr.link, rx);
-		ull_rx_sched();
+		ull_rx_put_sched(rx->hdr.link, rx);
 
 		return 0;
 #endif /* CONFIG_BT_CENTRAL */
@@ -1592,8 +1586,7 @@ static int isr_rx_scan_report(struct lll_scan *lll, uint8_t devmatch_ok,
 	}
 #endif /* CONFIG_BT_CTLR_EXT_SCAN_FP */
 
-	ull_rx_put(node_rx->hdr.link, node_rx);
-	ull_rx_sched();
+	ull_rx_put_sched(node_rx->hdr.link, node_rx);
 
 	return err;
 }

@@ -35,6 +35,7 @@ struct ll_conn_iso_stream {
 			uint16_t instant;
 		} central;
 	};
+	uint16_t event_expire;     /* Supervision & Connect Timeout event counter */
 };
 
 struct ll_conn_iso_group {
